@@ -1,4 +1,4 @@
-# Hippo Cafe
+# Hippo Cafe [![Build Status](https://travis-ci.com/Hippo/HippoCafe.svg?branch=master)](https://travis-ci.com/Hippo/HippoCafe)
 A library to help read and write java bytecode.
 
 This library will attempt to counteract malicious bytecode which will crash other similar libraries.
