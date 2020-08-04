@@ -24,8 +24,7 @@
 
 package rip.hippo.api.testing.hippocafe
 
-import java.io.{FileOutputStream, IOException, InputStream}
-
+import org.junit.Test
 import rip.hippo.api.hippocafe.{ClassReader, ClassWriter}
 
 /**
@@ -33,28 +32,28 @@ import rip.hippo.api.hippocafe.{ClassReader, ClassWriter}
  * @version 1.0.0, 8/1/20
  * @since 1.0.0
  */
-object Main {
+final class Main {
+
+  private val className = "SwitchTest"
+  private val inputStream = Thread.currentThread.getContextClassLoader.getResourceAsStream(s"$className.class")
 
 
   sealed class CustomClassLoader extends ClassLoader {
     def createClass(name: String, bytecode: Array[Byte]): Class[_] = super.defineClass(name, bytecode, 0, bytecode.length)
   }
 
+  @Test def readTest(): Unit = {
+    val classReader = new ClassReader(inputStream)
+    val classFile = classReader.classFile
+    println(classFile.name)
+  }
 
-  def main(args: Array[String]): Unit = {
-    var inputStream: InputStream = null
-    try {
-      val className = "SwitchTest"
-      inputStream = Thread.currentThread.getContextClassLoader.getResourceAsStream(s"$className.class")
-      val classReader = new ClassReader(inputStream)
-      val bytecode = new ClassWriter(classReader.classFile).write
+  @Test def writeTest(): Unit = {
+    val classReader = new ClassReader(inputStream)
+    val bytecode = new ClassWriter(classReader.classFile).write
 
-      val loaded = new CustomClassLoader().createClass(className, bytecode)
+    val loaded = new CustomClassLoader().createClass(className, bytecode)
 
-      loaded.getDeclaredMethod("main", classOf[Array[String]]).invoke(null, args)
-
-    } catch {
-      case e: Exception => e.printStackTrace()
-    } finally if (inputStream != null) inputStream.close()
+    loaded.getDeclaredMethod("main", classOf[Array[String]]).invoke(null, null)
   }
 }
