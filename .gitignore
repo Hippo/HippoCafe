@@ -12,6 +12,7 @@ gradle/
 # Git
 .git/
 
-# Compiled
+# Compiled / Testing
 *.jar
 *.class
+*.java
