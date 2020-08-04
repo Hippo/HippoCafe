@@ -133,6 +133,8 @@ final class ClassReader(parentInputStream: InputStream) {
   classFile.methods.addAll((0 until u2).map(_ => readMethod))
   classFile.attributes.addAll((0 until u2).map(_ => readAttribute()))
 
+  inputStream.close()
+
   def readField: FieldInfo = {
     val accessMask = u2
     val name = constantPool.readUTF8(u2)

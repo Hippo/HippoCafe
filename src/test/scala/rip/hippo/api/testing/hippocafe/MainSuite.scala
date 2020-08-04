@@ -42,22 +42,27 @@ final class MainSuite extends FunSuite {
   }
 
   test("ClassReader.read") {
-    val inputStream = Thread.currentThread.getContextClassLoader.getResourceAsStream(s"$className.class")
-    val classReader = new ClassReader(inputStream)
-    val classFile = classReader.classFile
-    println(classFile.name)
+    Option(Thread.currentThread.getContextClassLoader.getResourceAsStream(s"$className.class")) match {
+      case Some(value) =>
+        val classReader = new ClassReader(value)
+        val classFile = classReader.classFile
+        println(classFile.name)
+      case None => println(s"Could not load resource $className.class")
+    }
 
   }
 
   test("ClassWriter.write") {
-    val inputStream = Thread.currentThread.getContextClassLoader.getResourceAsStream(s"$className.class")
-    val classReader = new ClassReader(inputStream)
-    val bytecode = new ClassWriter(classReader.classFile).write
+    Option(Thread.currentThread.getContextClassLoader.getResourceAsStream(s"$className.class")) match {
+      case Some(value) =>
+        val classReader = new ClassReader(value)
+        val bytecode = new ClassWriter(classReader.classFile).write
 
-    val loaded = new CustomClassLoader().createClass(className, bytecode)
+        val loaded = new CustomClassLoader().createClass(className, bytecode)
 
-    loaded.getDeclaredMethod("main", classOf[Array[String]]).invoke(null, null)
-
+        loaded.getDeclaredMethod("main", classOf[Array[String]]).invoke(null, null)
+      case None => println(s"Could not load resource $className.class")
+    }
   }
 
 }
