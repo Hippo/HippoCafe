@@ -22,32 +22,14 @@
  * SOFTWARE.
  */
 
-package rip.hippo.api.hippocafe
+package rip.hippo.api.hippocafe.instruction.impl
 
-import rip.hippo.api.hippocafe.access.AccessFlag
-import rip.hippo.api.hippocafe.access.AccessFlag.AccessFlag
-import rip.hippo.api.hippocafe.attribute.AttributeInfo
-import rip.hippo.api.hippocafe.constantpool.ConstantPool
-import rip.hippo.api.hippocafe.version.MajorClassFileVersion.MajorClassFileVersion
-
-import scala.collection.mutable.ListBuffer
+import rip.hippo.api.hippocafe.instruction.BytecodeOpcode.BytecodeOpcode
+import rip.hippo.api.hippocafe.instruction.Instruction
 
 /**
  * @author Hippo
- * @version 1.0.0, 8/3/20
+ * @version 1.0.0, 8/4/20
  * @since 1.0.0
  */
-final case class ClassFile(var majorClassFileVersion: MajorClassFileVersion, var name: String, var superName: String, var access: AccessFlag*) {
-
-  val interfaces: ListBuffer[String] = ListBuffer[String]()
-  val fields: ListBuffer[FieldInfo] = ListBuffer[FieldInfo]()
-  val methods: ListBuffer[MethodInfo] = ListBuffer[MethodInfo]()
-  val attributes: ListBuffer[AttributeInfo] = ListBuffer[AttributeInfo]()
-
-  var minorVersion: Int = 0
-
-  var constantPool: Option[ConstantPool] = None
-
-  def this(majorClassFileVersion: MajorClassFileVersion, name: String, superName: String, accessMask: Int) =
-    this(majorClassFileVersion, name, superName, AccessFlag.fromMask(accessMask): _*)
-}
+final case class SimpleInstruction(bytecodeOpcode: BytecodeOpcode) extends Instruction

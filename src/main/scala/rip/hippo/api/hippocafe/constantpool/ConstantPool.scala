@@ -36,11 +36,11 @@ import scala.collection.mutable
  */
 final class ConstantPool {
   val info: mutable.Map[Int, ConstantPoolInfo] = mutable.Map[Int, ConstantPoolInfo]()
-  private var last: ConstantPoolInfo = _
+  private var last: Option[ConstantPoolInfo] = None
 
   def insert(index: Int, constantPoolInfo: ConstantPoolInfo): Unit = {
     info += (index -> constantPoolInfo)
-    last = constantPoolInfo
+    last = Option(constantPoolInfo)
   }
 
 
@@ -68,9 +68,9 @@ final class ConstantPool {
   }
 
   def lastWide: Boolean =
-    Option(last) match {
+    last match {
       case Some(value) =>
-        last = null
+        last = None
         value.wide
       case None => false
     }

@@ -27,6 +27,7 @@ package rip.hippo.api.hippocafe
 import rip.hippo.api.hippocafe.access.AccessFlag
 import rip.hippo.api.hippocafe.access.AccessFlag.AccessFlag
 import rip.hippo.api.hippocafe.attribute.AttributeInfo
+import rip.hippo.api.hippocafe.instruction.Instruction
 
 import scala.collection.mutable.ListBuffer
 
@@ -37,6 +38,7 @@ import scala.collection.mutable.ListBuffer
  */
 final case class MethodInfo(var name: String, var descriptor: String, var accessFlags: AccessFlag*) {
 
+  val instructions: ListBuffer[Instruction] = ListBuffer[Instruction]()
   val attributes: ListBuffer[AttributeInfo] = ListBuffer[AttributeInfo]()
 
   def this(name: String, descriptor: String, accessMask: Int) =

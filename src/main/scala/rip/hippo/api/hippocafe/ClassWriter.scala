@@ -41,7 +41,7 @@ final class ClassWriter(classFile: ClassFile) {
   private val byteOut = new ByteArrayOutputStream()
   private val out = new DataOutputStream(byteOut)
 
-  def write: Array[Byte] = { //todo: security checks to ensure indices are valid
+  def write: Array[Byte] = {
     try {
       out.writeInt(0xCAFEBABE)
 

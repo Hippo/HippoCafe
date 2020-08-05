@@ -34,10 +34,10 @@ object MajorClassFileVersion extends Enumeration {
 
   type MajorClassFileVersion = Value
   
-  val SE1_1: MajorClassFileVersion = 45
-  val SE1_2: MajorClassFileVersion = 46
-  val SE1_3: MajorClassFileVersion = 47
-  val SE1_4: MajorClassFileVersion = 48
+  val JDK1_1: MajorClassFileVersion = 45
+  val JDK1_2: MajorClassFileVersion = 46
+  val JDK1_3: MajorClassFileVersion = 47
+  val JDK1_4: MajorClassFileVersion = 48
   val SE5_0: MajorClassFileVersion = 49
   val SE6: MajorClassFileVersion = 50
   val SE7: MajorClassFileVersion = 51
@@ -48,7 +48,8 @@ object MajorClassFileVersion extends Enumeration {
   val SE12: MajorClassFileVersion = 56
   val SE13: MajorClassFileVersion = 57
   val SE14: MajorClassFileVersion = 58
-  val SE15: MajorClassFileVersion = 59
+  val JDK15: MajorClassFileVersion = 59
+  val JDK16: MajorClassFileVersion = 60
 
   def fromVersion(version: Int): Option[MajorClassFileVersion] =
     MajorClassFileVersion.values.find(_.id == version)

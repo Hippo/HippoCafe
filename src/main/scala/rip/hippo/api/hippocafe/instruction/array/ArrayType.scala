@@ -22,32 +22,29 @@
  * SOFTWARE.
  */
 
-package rip.hippo.api.hippocafe
-
-import rip.hippo.api.hippocafe.access.AccessFlag
-import rip.hippo.api.hippocafe.access.AccessFlag.AccessFlag
-import rip.hippo.api.hippocafe.attribute.AttributeInfo
-import rip.hippo.api.hippocafe.constantpool.ConstantPool
-import rip.hippo.api.hippocafe.version.MajorClassFileVersion.MajorClassFileVersion
-
-import scala.collection.mutable.ListBuffer
+package rip.hippo.api.hippocafe.instruction.array
 
 /**
  * @author Hippo
- * @version 1.0.0, 8/3/20
+ * @version 1.0.0, 8/4/20
  * @since 1.0.0
  */
-final case class ClassFile(var majorClassFileVersion: MajorClassFileVersion, var name: String, var superName: String, var access: AccessFlag*) {
+object ArrayType extends Enumeration {
 
-  val interfaces: ListBuffer[String] = ListBuffer[String]()
-  val fields: ListBuffer[FieldInfo] = ListBuffer[FieldInfo]()
-  val methods: ListBuffer[MethodInfo] = ListBuffer[MethodInfo]()
-  val attributes: ListBuffer[AttributeInfo] = ListBuffer[AttributeInfo]()
+  implicit def toValue(`type`: Int): Value = Value(`type`)
 
-  var minorVersion: Int = 0
+  type ArrayType = Value
 
-  var constantPool: Option[ConstantPool] = None
+  val BOOLEAN: ArrayType = 4
+  val CHAR: ArrayType = 5
+  val FLOAT: ArrayType = 6
+  val DOUBLE: ArrayType = 7
+  val BYTE: ArrayType = 8
+  val SHORT: ArrayType = 9
+  val INT: ArrayType = 10
+  val LONG: ArrayType = 11
 
-  def this(majorClassFileVersion: MajorClassFileVersion, name: String, superName: String, accessMask: Int) =
-    this(majorClassFileVersion, name, superName, AccessFlag.fromMask(accessMask): _*)
+  def fromType(`type`: Int): Option[ArrayType] =
+    ArrayType.values.find(_.id == `type`)
+
 }

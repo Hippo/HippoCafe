@@ -49,7 +49,6 @@ final class MainSuite extends FunSuite {
         println(classFile.name)
       case None => println(s"Could not load resource $className.class")
     }
-
   }
 
   test("ClassWriter.write") {

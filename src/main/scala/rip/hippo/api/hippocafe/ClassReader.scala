@@ -41,6 +41,7 @@ import rip.hippo.api.hippocafe.attribute.{Attribute, AttributeInfo}
 import rip.hippo.api.hippocafe.constantpool.info.impl.{DoubleInfo, DynamicInfo, FloatInfo, IntegerInfo, LongInfo, NameAndTypeInfo, ReferenceInfo, StringInfo, UTF8Info}
 import rip.hippo.api.hippocafe.constantpool.{ConstantPool, ConstantPoolKind}
 import rip.hippo.api.hippocafe.exception.HippoCafeException
+import rip.hippo.api.hippocafe.instruction.CodeTranslator
 import rip.hippo.api.hippocafe.stackmap.StackMapFrame
 import rip.hippo.api.hippocafe.stackmap.impl.{AppendStackMapFrame, ChopStackMapFrame, FullStackMapFrame, SameExtendedStackMapFrame, SameLocalsExtendedStackMapFrame, SameLocalsStackMapFrame, SameStackMapFrame}
 import rip.hippo.api.hippocafe.stackmap.verification.VerificationTypeInfo
@@ -55,7 +56,6 @@ import rip.hippo.api.hippocafe.version.MajorClassFileVersion
  */
 final class ClassReader(parentInputStream: InputStream) {
   private val inputStream = new DataInputStream(parentInputStream)
-
   private def u1: Int = inputStream.readUnsignedByte()
   private def u2: Int = inputStream.readUnsignedShort()
   private def u4: Int = inputStream.readInt()
@@ -66,7 +66,7 @@ final class ClassReader(parentInputStream: InputStream) {
   private val minorVersion = u2
   private val majorVersion = u2
   private val oak = {
-    val version = MajorClassFileVersion.SE1_1.id
+    val version = MajorClassFileVersion.JDK1_1.id
     majorVersion < version || (majorVersion == version && minorVersion < 3)
   }
 
@@ -119,7 +119,7 @@ final class ClassReader(parentInputStream: InputStream) {
 
   val classFile: ClassFile = new ClassFile(MajorClassFileVersion.fromVersion(majorVersion) match {
     case Some(value) => value
-    case None => MajorClassFileVersion.SE8
+    case None => MajorClassFileVersion.SE11
   }, className, superName, accessMask)
 
   classFile.minorVersion = minorVersion
@@ -134,6 +134,17 @@ final class ClassReader(parentInputStream: InputStream) {
   classFile.attributes.addAll((0 until u2).map(_ => readAttribute()))
 
   inputStream.close()
+
+
+
+  classFile.methods.foreach(methodInfo => {
+    methodInfo.attributes.find(_.kind == Attribute.CODE) match {
+      case Some(value: CodeAttribute) =>
+        methodInfo.instructions ++= CodeTranslator.translate(value.code, constantPool)
+      case None =>
+    }
+  })
+
 
   def readField: FieldInfo = {
     val accessMask = u2
