@@ -244,7 +244,7 @@ object CodeTranslator {
               instructions += (instructionOffset -> VariableInstruction(opcode, u1))
 
             case SIPUSH | BIPUSH =>
-              val value = if (opcode == SIPUSH) u2 else u1
+              val value = if (opcode == SIPUSH) s2 else s1
               instructions += (instructionOffset -> PushInstruction(value))
 
             case IINC => instructions += (instructionOffset -> IncrementInstruction(u1, s1))
