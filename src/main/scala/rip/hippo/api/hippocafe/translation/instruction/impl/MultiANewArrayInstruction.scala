@@ -22,28 +22,11 @@
  * SOFTWARE.
  */
 
-package rip.hippo.api.hippocafe
-
-import rip.hippo.api.hippocafe.access.AccessFlag
-import rip.hippo.api.hippocafe.access.AccessFlag.AccessFlag
-import rip.hippo.api.hippocafe.attribute.AttributeInfo
-import rip.hippo.api.hippocafe.translation.instruction.Instruction
-import rip.hippo.api.hippocafe.translation.tcb.TryCatchBlock
-
-import scala.collection.mutable.ListBuffer
+package rip.hippo.api.hippocafe.translation.instruction.impl
 
 /**
  * @author Hippo
- * @version 1.0.0, 8/2/20
+ * @version 1.0.0, 8/4/20
  * @since 1.0.0
  */
-final case class MethodInfo(var name: String, var descriptor: String, var accessFlags: AccessFlag*) {
-
-  val instructions: ListBuffer[Instruction] = ListBuffer[Instruction]()
-  val tryCatchBlocks: ListBuffer[TryCatchBlock] = ListBuffer[TryCatchBlock]()
-  val attributes: ListBuffer[AttributeInfo] = ListBuffer[AttributeInfo]()
-
-  def this(name: String, descriptor: String, accessMask: Int) =
-    this(name, descriptor, AccessFlag.fromMask(accessMask): _*)
-
-}
+final case class MultiANewArrayInstruction(descriptor: String, dimensions: Int)

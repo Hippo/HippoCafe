@@ -22,10 +22,10 @@
  * SOFTWARE.
  */
 
-package rip.hippo.api.hippocafe.instruction.impl
+package rip.hippo.api.hippocafe.translation.instruction.impl
 
-import rip.hippo.api.hippocafe.instruction.BytecodeOpcode.BytecodeOpcode
-import rip.hippo.api.hippocafe.instruction.Instruction
+import rip.hippo.api.hippocafe.translation.instruction.Instruction
+import rip.hippo.api.hippocafe.translation.instruction.BytecodeOpcode.BytecodeOpcode
 
 /**
  * @author Hippo

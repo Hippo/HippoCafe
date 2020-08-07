@@ -22,20 +22,13 @@
  * SOFTWARE.
  */
 
-package rip.hippo.api.hippocafe.instruction.impl
+package rip.hippo.api.hippocafe.translation.tcb
 
-import rip.hippo.api.hippocafe.instruction.Instruction
+import rip.hippo.api.hippocafe.translation.instruction.impl.LabelInstruction
 
 /**
  * @author Hippo
- * @version 1.0.0, 8/4/20
+ * @version 1.0.0, 8/7/20
  * @since 1.0.0
  */
-final class LabelInstruction extends Instruction {
-  override def toString: String = "Label()"
-}
-
-
-object LabelInstruction {
-  def apply(): LabelInstruction = new LabelInstruction
-}
+final case class TryCatchBlock(start: LabelInstruction, end: LabelInstruction, handler: LabelInstruction, catchType: String)

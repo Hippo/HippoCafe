@@ -22,9 +22,9 @@
  * SOFTWARE.
  */
 
-package rip.hippo.api.hippocafe.instruction.impl
+package rip.hippo.api.hippocafe.translation.instruction.impl
 
-import rip.hippo.api.hippocafe.instruction.array.ArrayType.ArrayType
+import rip.hippo.api.hippocafe.translation.instruction.array.ArrayType.ArrayType
 
 /**
  * @author Hippo

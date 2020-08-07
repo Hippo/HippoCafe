@@ -22,18 +22,19 @@
  * SOFTWARE.
  */
 
-package rip.hippo.api.hippocafe.instruction
+package rip.hippo.api.hippocafe.translation.instruction
 
-import java.io.{ByteArrayInputStream, DataInputStream}
-
+import rip.hippo.api.hippocafe.attribute.impl.CodeAttribute
 import rip.hippo.api.hippocafe.constantpool.ConstantPool
 import rip.hippo.api.hippocafe.constantpool.info.ValueAwareness
 import rip.hippo.api.hippocafe.constantpool.info.impl.{ReferenceInfo, StringInfo}
 import rip.hippo.api.hippocafe.exception.HippoCafeException
-import rip.hippo.api.hippocafe.instruction.impl.{BranchInstruction, ConstantInstruction, IncrementInstruction, LabelInstruction, LookupSwitchInstruction, PushInstruction, ReferenceInstruction, SimpleInstruction, TableSwitchInstruction, TypeInstruction, VariableInstruction}
+import rip.hippo.api.hippocafe.translation.instruction.impl.{BranchInstruction, ConstantInstruction, IncrementInstruction, LabelInstruction, LookupSwitchInstruction, PushInstruction, ReferenceInstruction, SimpleInstruction, TableSwitchInstruction, TypeInstruction, VariableInstruction}
+import rip.hippo.api.hippocafe.translation.instruction.impl.PushInstruction
+import rip.hippo.api.hippocafe.translation.tcb.TryCatchBlock
 
-import scala.collection.mutable.ListBuffer
 import scala.collection.mutable
+import scala.collection.mutable.ListBuffer
 
 /**
  * @author Hippo
@@ -43,10 +44,12 @@ import scala.collection.mutable
 object CodeTranslator {
 
 
-  def translate(code: Array[Byte], constantPool: ConstantPool): List[Instruction] = {
+  def translate(codeAttribute: CodeAttribute, constantPool: ConstantPool): (List[Instruction], List[TryCatchBlock]) = {
     val instructions = mutable.SortedMap[Int, Instruction]()
+    val tryCatchBlocks = ListBuffer[TryCatchBlock]()
     var offset = 0
-
+    val code = codeAttribute.code
+    val exceptions = codeAttribute.exceptionTable
 
     def u1: Int = code({
       val index = offset
@@ -65,7 +68,7 @@ object CodeTranslator {
     while (offset < codeLength) {
       val instructionOffset = offset
       val rawOpcode = u1
-      import rip.hippo.api.hippocafe.instruction.BytecodeOpcode._
+      import BytecodeOpcode._
       BytecodeOpcode.fromOpcode(rawOpcode) match {
         case Some(opcode) =>
           opcode match {
@@ -256,7 +259,7 @@ object CodeTranslator {
                   if (value == IINC) {
                     instructions += (instructionOffset -> IncrementInstruction(u2, s2))
                   } else {
-                    instructions += (instructionOffset -> VariableInstruction(value, u2))
+                    instructions += (instructionOffset -> impl.VariableInstruction(value, u2))
                   }
                 case None => throw new HippoCafeException(s"Invalid wide instruction at $offset")
               }
@@ -329,6 +332,17 @@ object CodeTranslator {
       }
     }
 
+
+    exceptions.foreach(exception => {
+      val start = LabelInstruction()
+      val end = LabelInstruction()
+      val handler = LabelInstruction()
+      labels += (exception.startPc -> start)
+      labels += (exception.endPc -> end)
+      labels += (exception.handlerPc -> handler)
+      tryCatchBlocks += TryCatchBlock(start, end, handler, constantPool.readString(exception.catchType))
+    })
+
     labels.foreach(entry => {
       val offset = entry._1
       val label = entry._2
@@ -350,6 +364,6 @@ object CodeTranslator {
     })
     
 
-    instructions.values.toList
+    (instructions.values.toList, tryCatchBlocks.result())
   }
 }

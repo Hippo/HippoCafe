@@ -22,14 +22,17 @@
  * SOFTWARE.
  */
 
-package rip.hippo.api.hippocafe.instruction.impl
+package rip.hippo.api.hippocafe.translation.instruction.impl
 
-import rip.hippo.api.hippocafe.instruction.BytecodeOpcode.BytecodeOpcode
-import rip.hippo.api.hippocafe.instruction.Instruction
+import rip.hippo.api.hippocafe.translation.instruction.Instruction
+
+import scala.collection.mutable
 
 /**
  * @author Hippo
- * @version 1.0.0, 8/5/20
+ * @version 1.0.0, 8/4/20
  * @since 1.0.0
  */
-final case class VariableInstruction(bytecodeOpcode: BytecodeOpcode, index: Int) extends Instruction
+final case class LookupSwitchInstruction(default: LabelInstruction) extends Instruction {
+  val pairs: mutable.Map[Int, LabelInstruction] = mutable.Map[Int, LabelInstruction]()
+}

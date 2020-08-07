@@ -22,11 +22,14 @@
  * SOFTWARE.
  */
 
-package rip.hippo.api.hippocafe.instruction.impl
+package rip.hippo.api.hippocafe.translation.instruction.impl
+
+import rip.hippo.api.hippocafe.translation.instruction.Instruction
+import rip.hippo.api.hippocafe.translation.instruction.BytecodeOpcode.BytecodeOpcode
 
 /**
  * @author Hippo
  * @version 1.0.0, 8/4/20
  * @since 1.0.0
  */
-final case class ANewArrayInstruction(descriptor: String)
+final case class SimpleInstruction(bytecodeOpcode: BytecodeOpcode) extends Instruction

@@ -22,14 +22,13 @@
  * SOFTWARE.
  */
 
-package rip.hippo.api.hippocafe.instruction.impl
+package rip.hippo.api.hippocafe.translation.instruction.impl
 
-import rip.hippo.api.hippocafe.instruction.BytecodeOpcode.BytecodeOpcode
-import rip.hippo.api.hippocafe.instruction.Instruction
+import rip.hippo.api.hippocafe.translation.instruction.Instruction
 
 /**
  * @author Hippo
  * @version 1.0.0, 8/4/20
  * @since 1.0.0
  */
-final case class SimpleInstruction(bytecodeOpcode: BytecodeOpcode) extends Instruction
+final case class IncrementInstruction(localIndex: Int, value: Int) extends Instruction

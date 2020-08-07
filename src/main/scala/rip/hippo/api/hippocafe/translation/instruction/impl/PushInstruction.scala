@@ -22,11 +22,13 @@
  * SOFTWARE.
  */
 
-package rip.hippo.api.hippocafe.instruction.impl
+package rip.hippo.api.hippocafe.translation.instruction.impl
+
+import rip.hippo.api.hippocafe.translation.instruction.Instruction
 
 /**
  * @author Hippo
- * @version 1.0.0, 8/4/20
+ * @version 1.0.0, 8/5/20
  * @since 1.0.0
  */
-final case class MultiANewArrayInstruction(descriptor: String, dimensions: Int)
+final case class PushInstruction(value: Int) extends Instruction

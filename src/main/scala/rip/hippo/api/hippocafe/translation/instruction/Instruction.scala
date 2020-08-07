@@ -22,7 +22,7 @@
  * SOFTWARE.
  */
 
-package rip.hippo.api.hippocafe.instruction
+package rip.hippo.api.hippocafe.translation.instruction
 
 /**
  * @author Hippo

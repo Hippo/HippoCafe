@@ -22,17 +22,11 @@
  * SOFTWARE.
  */
 
-package rip.hippo.api.hippocafe.instruction.impl
-
-import rip.hippo.api.hippocafe.instruction.Instruction
-
-import scala.collection.mutable
+package rip.hippo.api.hippocafe.translation.instruction.impl
 
 /**
  * @author Hippo
  * @version 1.0.0, 8/4/20
  * @since 1.0.0
  */
-final case class LookupSwitchInstruction(default: LabelInstruction) extends Instruction {
-  val pairs: mutable.Map[Int, LabelInstruction] = mutable.Map[Int, LabelInstruction]()
-}
+final case class ANewArrayInstruction(descriptor: String)

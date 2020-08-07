@@ -51,6 +51,21 @@ final class MainSuite extends FunSuite {
     }
   }
 
+  test("ClassReader.translate") {
+    Option(Thread.currentThread.getContextClassLoader.getResourceAsStream(s"$className.class")) match {
+      case Some(value) =>
+        val classReader = new ClassReader(value).translate
+        val classFile = classReader.classFile
+        classFile.methods.foreach(info => {
+          println(info.name)
+          info.instructions.foreach(insn => println(insn))
+          info.tryCatchBlocks.foreach(tcb => println(tcb))
+          println()
+        })
+      case None => println(s"Could not load resource $className.class")
+    }
+  }
+
   test("ClassWriter.write") {
     Option(Thread.currentThread.getContextClassLoader.getResourceAsStream(s"$className.class")) match {
       case Some(value) =>

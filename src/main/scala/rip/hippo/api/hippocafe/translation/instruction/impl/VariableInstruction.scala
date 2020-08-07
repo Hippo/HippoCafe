@@ -22,17 +22,14 @@
  * SOFTWARE.
  */
 
-package rip.hippo.api.hippocafe.instruction.impl
+package rip.hippo.api.hippocafe.translation.instruction.impl
 
-import rip.hippo.api.hippocafe.instruction.Instruction
-
-import scala.collection.mutable.ListBuffer
+import rip.hippo.api.hippocafe.translation.instruction.Instruction
+import rip.hippo.api.hippocafe.translation.instruction.BytecodeOpcode.BytecodeOpcode
 
 /**
  * @author Hippo
- * @version 1.0.0, 8/4/20
+ * @version 1.0.0, 8/5/20
  * @since 1.0.0
  */
-final case class TableSwitchInstruction(default: LabelInstruction, low: Int, high: Int) extends Instruction {
-  val table: ListBuffer[LabelInstruction] = ListBuffer[LabelInstruction]()
-}
+final case class VariableInstruction(bytecodeOpcode: BytecodeOpcode, index: Int) extends Instruction

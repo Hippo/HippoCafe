@@ -41,7 +41,7 @@ import rip.hippo.api.hippocafe.attribute.{Attribute, AttributeInfo}
 import rip.hippo.api.hippocafe.constantpool.info.impl.{DoubleInfo, DynamicInfo, FloatInfo, IntegerInfo, LongInfo, NameAndTypeInfo, ReferenceInfo, StringInfo, UTF8Info}
 import rip.hippo.api.hippocafe.constantpool.{ConstantPool, ConstantPoolKind}
 import rip.hippo.api.hippocafe.exception.HippoCafeException
-import rip.hippo.api.hippocafe.instruction.CodeTranslator
+import rip.hippo.api.hippocafe.translation.instruction.CodeTranslator
 import rip.hippo.api.hippocafe.stackmap.StackMapFrame
 import rip.hippo.api.hippocafe.stackmap.impl.{AppendStackMapFrame, ChopStackMapFrame, FullStackMapFrame, SameExtendedStackMapFrame, SameLocalsExtendedStackMapFrame, SameLocalsStackMapFrame, SameStackMapFrame}
 import rip.hippo.api.hippocafe.stackmap.verification.VerificationTypeInfo
@@ -137,13 +137,19 @@ final class ClassReader(parentInputStream: InputStream) {
 
 
 
-  classFile.methods.foreach(methodInfo => {
-    methodInfo.attributes.find(_.kind == Attribute.CODE) match {
-      case Some(value: CodeAttribute) =>
-        methodInfo.instructions ++= CodeTranslator.translate(value.code, constantPool)
-      case None =>
-    }
-  })
+  def translate: ClassReader = {
+    classFile.methods.foreach(methodInfo => {
+      methodInfo.attributes.find(_.kind == Attribute.CODE) match {
+        case Some(value: CodeAttribute) =>
+          val translate = CodeTranslator.translate(value, constantPool)
+          methodInfo.instructions ++= translate._1
+          methodInfo.tryCatchBlocks ++= translate._2
+          methodInfo.attributes -= value
+        case None =>
+      }
+    })
+    this
+  }
 
 
   def readField: FieldInfo = {
