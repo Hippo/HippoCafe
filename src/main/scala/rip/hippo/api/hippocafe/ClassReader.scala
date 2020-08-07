@@ -138,16 +138,7 @@ final class ClassReader(parentInputStream: InputStream) {
 
 
   def translate: ClassReader = {
-    classFile.methods.foreach(methodInfo => {
-      methodInfo.attributes.find(_.kind == Attribute.CODE) match {
-        case Some(value: CodeAttribute) =>
-          val translate = CodeTranslator.translate(value, constantPool)
-          methodInfo.instructions ++= translate._1
-          methodInfo.tryCatchBlocks ++= translate._2
-          methodInfo.attributes -= value
-        case None =>
-      }
-    })
+    classFile.methods.foreach(methodInfo => CodeTranslator.translate(methodInfo, constantPool))
     this
   }
 
