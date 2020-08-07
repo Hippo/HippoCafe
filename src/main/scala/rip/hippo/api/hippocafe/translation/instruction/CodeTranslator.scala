@@ -55,6 +55,9 @@ object CodeTranslator {
         var offset = 0
         val code = codeAttribute.code
         val exceptions = codeAttribute.exceptionTable
+        val codeLength = code.length
+        val labels = mutable.SortedMap[Int, LabelInstruction]()
+        var labelDebugId = 0
 
         def u1: Int = code({
           val index = offset
@@ -66,9 +69,6 @@ object CodeTranslator {
         def s1: Byte = u1.toByte
         def s2: Short = u2.toShort
 
-
-        val codeLength = code.length
-        val labels = mutable.Map[Int, LabelInstruction]()
 
         while (offset < codeLength) {
           val instructionOffset = offset
@@ -292,7 +292,8 @@ object CodeTranslator {
                      IF_ICMPLT |
                      IF_ICMPNE =>
                   val branchOffset = if (opcode == GOTO_W || opcode == JSR_W) u4 else s2
-                  val label = LabelInstruction()
+                  val label = LabelInstruction(labelDebugId)
+                  labelDebugId += 1
                   labels += (instructionOffset + branchOffset -> label)
                   instructions += (instructionOffset -> BranchInstruction(opcode, label))
 
@@ -305,13 +306,15 @@ object CodeTranslator {
 
                 case LOOKUPSWITCH =>
                   offset += -offset & 3
-                  val default = LabelInstruction()
+                  val default = LabelInstruction(labelDebugId)
+                  labelDebugId += 1
                   labels += (instructionOffset + u4 -> default)
                   val lookupSwitch = LookupSwitchInstruction(default)
                   val cases = u4
                   (0 until cases).foreach(_ => {
                     val key = u4
-                    val branch = LabelInstruction()
+                    val branch = LabelInstruction(labelDebugId)
+                    labelDebugId += 1
                     labels += (instructionOffset + u4 -> branch)
                     lookupSwitch.pairs += (key -> branch)
                   })
@@ -319,14 +322,16 @@ object CodeTranslator {
 
                 case TABLESWITCH =>
                   offset += -offset & 3
-                  val default = LabelInstruction()
+                  val default = LabelInstruction(labelDebugId)
+                  labelDebugId += 1
                   labels += (instructionOffset + u4 -> default)
                   val low = u4
                   val high = u4
                   val cases = high - low + 1
                   val tableSwitch = TableSwitchInstruction(default, low, high)
                   (0 until cases).foreach(_ => {
-                    val branch = LabelInstruction()
+                    val branch = LabelInstruction(labelDebugId)
+                    labelDebugId += 1
                     labels += (instructionOffset + u4 -> branch)
                     tableSwitch.table += branch
                   })
@@ -339,9 +344,16 @@ object CodeTranslator {
 
 
         exceptions.foreach(exception => {
-          val start = LabelInstruction()
-          val end = LabelInstruction()
-          val handler = LabelInstruction()
+          val start = LabelInstruction(labelDebugId)
+          labelDebugId += 1
+          val end = LabelInstruction(labelDebugId)
+          labelDebugId += 1
+          val handler = LabelInstruction(labelDebugId)
+          labelDebugId += 1
+
+          println(exception.handlerPc + " " + exception.endPc)
+          println(instructions)
+
           labels += (exception.startPc -> start)
           labels += (exception.endPc -> end)
           labels += (exception.handlerPc -> handler)
@@ -367,7 +379,7 @@ object CodeTranslator {
             instructions += (offset -> label)
           }
         })
-
+       // println(instructions)
         methodInfo.instructions ++= instructions.values.toList
         methodInfo.tryCatchBlocks ++= tryCatchBlocks.result()
         methodInfo.attributes -= codeAttribute

@@ -58,8 +58,8 @@ final class MainSuite extends FunSuite {
         val classFile = classReader.classFile
         classFile.methods.foreach(info => {
           println(info.name)
-          info.instructions.foreach(insn => println(insn))
-          info.tryCatchBlocks.foreach(tcb => println(tcb))
+          info.instructions.foreach(println(_))
+          info.tryCatchBlocks.foreach(println(_))
           println()
         })
       case None => println(s"Could not load resource $className.class")

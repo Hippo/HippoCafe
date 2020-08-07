@@ -31,11 +31,12 @@ import rip.hippo.api.hippocafe.translation.instruction.Instruction
  * @version 1.0.0, 8/4/20
  * @since 1.0.0
  */
-final class LabelInstruction extends Instruction {
-  override def toString: String = "Label()"
+final class LabelInstruction(var debugId: Int = -1) extends Instruction {
+  override def toString: String = "Label(" + (if (debugId == -1) "" else debugId) + ")"
 }
 
 
 object LabelInstruction {
   def apply(): LabelInstruction = new LabelInstruction
+  def apply(debugId: Int) = new LabelInstruction(debugId)
 }
