@@ -24,7 +24,11 @@
 
 package rip.hippo.api.testing.hippocafe
 
+import java.io.FileOutputStream
+
 import org.scalatest.FunSuite
+import rip.hippo.api.hippocafe.builder.ClassBuilder
+import rip.hippo.api.hippocafe.translation.instruction.impl.{ConstantInstruction, ReferenceInstruction, SimpleInstruction}
 import rip.hippo.api.hippocafe.{ClassReader, ClassWriter}
 
 /**
@@ -51,7 +55,7 @@ final class MainSuite extends FunSuite {
     }
   }
 
-  test("ClassReader.translate") {
+  test("CodeTranslator.translate") {
     Option(Thread.currentThread.getContextClassLoader.getResourceAsStream(s"$className.class")) match {
       case Some(value) =>
         val classReader = new ClassReader(value).translate
@@ -65,6 +69,29 @@ final class MainSuite extends FunSuite {
       case None => println(s"Could not load resource $className.class")
     }
   }
+
+  test("ClassBuilder.result") {
+    import rip.hippo.api.hippocafe.version.MajorClassFileVersion._
+    import rip.hippo.api.hippocafe.access.AccessFlag._
+    import rip.hippo.api.hippocafe.translation.instruction.BytecodeOpcode._
+    val classFile = ClassBuilder(
+      SE8,
+      "HelloWorld",
+      "java/lang/Object",
+      ACC_PUBLIC
+    ).method(
+      "main",
+      "([Ljava/lang/String)V",
+      ACC_PUBLIC, ACC_STATIC
+    ).apply(instructions => {
+      instructions += ReferenceInstruction(GETSTATIC, "java/lang/System", "out", "Ljava/io/PrintSteam;")
+      instructions += ConstantInstruction("Hello World")
+      instructions += ReferenceInstruction(INVOKEVIRTUAL, "java/io/PrintStream", "println", "(Ljava/lang/String;)V")
+      instructions += SimpleInstruction(RETURN)
+    }).result
+    println(classFile.name)
+  }
+
 
   test("ClassWriter.write") {
     Option(Thread.currentThread.getContextClassLoader.getResourceAsStream(s"$className.class")) match {

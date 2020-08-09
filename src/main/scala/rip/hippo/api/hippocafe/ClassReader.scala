@@ -60,8 +60,7 @@ final class ClassReader(parentInputStream: InputStream) {
   private def u2: Int = inputStream.readUnsignedShort()
   private def u4: Int = inputStream.readInt()
 
-  private val magic = u4
-  if (magic != 0xCAFEBABE) throw new HippoCafeException("Magic number is not 0xCAFEBABE")
+  u4
 
   private val minorVersion = u2
   private val majorVersion = u2
