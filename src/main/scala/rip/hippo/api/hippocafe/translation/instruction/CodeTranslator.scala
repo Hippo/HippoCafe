@@ -299,7 +299,7 @@ object CodeTranslator {
 
                 case LDC | LDC_W | LDC2_W =>
                   constantPool.info(if (opcode == LDC) u1 else u2) match {
-                    case aware: ValueAwareness[AnyRef] => instructions += (instructionOffset -> ConstantInstruction(aware.value))
+                    case aware: ValueAwareness[_] => instructions += (instructionOffset -> ConstantInstruction(aware.value))
                     case stringInfo: StringInfo => instructions += (instructionOffset -> ConstantInstruction(stringInfo.value))
                     case _ => throw new HippoCafeException(s"Invalid constant instruction at $offset")
                   }
@@ -383,7 +383,7 @@ object CodeTranslator {
         methodInfo.instructions ++= instructions.values.toList
         methodInfo.tryCatchBlocks ++= tryCatchBlocks.result()
         methodInfo.attributes -= codeAttribute
-      case None =>
+      case _ =>
 
     }
 

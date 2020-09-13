@@ -31,5 +31,5 @@ import rip.hippo.api.hippocafe.translation.instruction.Instruction
  * @version 1.0.0, 8/4/20
  * @since 1.0.0
  */
-final case class ConstantInstruction(constant: AnyRef) extends Instruction
+final case class ConstantInstruction(constant: Any) extends Instruction
 
