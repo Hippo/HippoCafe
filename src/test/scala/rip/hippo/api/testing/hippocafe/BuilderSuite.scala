@@ -24,56 +24,25 @@
 
 package rip.hippo.api.testing.hippocafe
 
-import java.io.FileOutputStream
 
 import org.scalatest.FunSuite
 import rip.hippo.api.hippocafe.builder.ClassBuilder
 import rip.hippo.api.hippocafe.translation.instruction.impl.{ConstantInstruction, ReferenceInstruction, SimpleInstruction}
-import rip.hippo.api.hippocafe.{ClassReader, ClassWriter}
+
+import rip.hippo.api.hippocafe.version.MajorClassFileVersion._
+import rip.hippo.api.hippocafe.access.AccessFlag._
+import rip.hippo.api.hippocafe.translation.instruction.BytecodeOpcode._
 
 /**
  * @author Hippo
  * @version 1.0.0, 8/4/20
  * @since 1.1.0
  */
-final class MainSuite extends FunSuite {
+final class BuilderSuite extends FunSuite {
 
   private val className = "SwitchTest"
 
-
-  sealed class CustomClassLoader extends ClassLoader {
-    def createClass(name: String, bytecode: Array[Byte]): Class[_] = super.defineClass(name, bytecode, 0, bytecode.length)
-  }
-
-  test("ClassReader.read") {
-    Option(Thread.currentThread.getContextClassLoader.getResourceAsStream(s"$className.class")) match {
-      case Some(value) =>
-        val classReader = new ClassReader(value)
-        val classFile = classReader.classFile
-        println(classFile.name)
-      case None => println(s"Could not load resource $className.class")
-    }
-  }
-
-  test("CodeTranslator.translate") {
-    Option(Thread.currentThread.getContextClassLoader.getResourceAsStream(s"$className.class")) match {
-      case Some(value) =>
-        val classReader = new ClassReader(value).translate
-        val classFile = classReader.classFile
-        classFile.methods.foreach(info => {
-          println(info.name)
-          info.instructions.foreach(println(_))
-          info.tryCatchBlocks.foreach(println(_))
-          println()
-        })
-      case None => println(s"Could not load resource $className.class")
-    }
-  }
-
   test("ClassBuilder.result") {
-    import rip.hippo.api.hippocafe.version.MajorClassFileVersion._
-    import rip.hippo.api.hippocafe.access.AccessFlag._
-    import rip.hippo.api.hippocafe.translation.instruction.BytecodeOpcode._
     val classFile = ClassBuilder(
       SE8,
       "HelloWorld",
@@ -90,20 +59,6 @@ final class MainSuite extends FunSuite {
       instructions += SimpleInstruction(RETURN)
     }).result
     println(classFile.name)
-  }
-
-
-  test("ClassWriter.write") {
-    Option(Thread.currentThread.getContextClassLoader.getResourceAsStream(s"$className.class")) match {
-      case Some(value) =>
-        val classReader = new ClassReader(value)
-        val bytecode = new ClassWriter(classReader.classFile).write
-
-        val loaded = new CustomClassLoader().createClass(className, bytecode)
-
-        loaded.getDeclaredMethod("main", classOf[Array[String]]).invoke(null, null)
-      case None => println(s"Could not load resource $className.class")
-    }
   }
 
 }
