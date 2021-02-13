@@ -32,7 +32,7 @@ import rip.hippo.api.hippocafe.{ClassReader, ClassWriter}
  * @version 1.0.0, 8/4/20
  * @since 1.1.0
  */
-final class WriteSuite extends FunSuite {
+final class LowWriteSuite extends FunSuite {
 
   private val className = "SwitchTest"
 
@@ -40,7 +40,7 @@ final class WriteSuite extends FunSuite {
   test("ClassWriter.write") {
     Option(Thread.currentThread.getContextClassLoader.getResourceAsStream(s"$className.class")) match {
       case Some(value) =>
-        val classReader = new ClassReader(value)
+        val classReader = new ClassReader(value, true)
         val bytecode = new ClassWriter(classReader.classFile).write
 
         val loaded = new CustomClassLoader().createClass(className, bytecode)
