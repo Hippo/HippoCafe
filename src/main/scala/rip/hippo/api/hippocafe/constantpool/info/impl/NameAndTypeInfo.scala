@@ -32,11 +32,17 @@ import rip.hippo.api.hippocafe.constantpool.info.ConstantPoolInfo
 
 /**
  * @author Hippo
- * @version 1.0.0, 8/1/20
+ * @version 1.0.1, 8/1/20
  * @since 1.0.0
  */
-final class NameAndTypeInfo(val nameIndex: Int, val descriptorIndex: Int) extends ConstantPoolInfo {
+final case class NameAndTypeInfo(nameIndex: Int, descriptorIndex: Int) extends ConstantPoolInfo {
   override val kind: ConstantPoolKind = ConstantPoolKind.NAME_AND_TYPE
+
+  def this(name: String, descriptor: String) {
+    this(-1, -1)
+    this.name = name;
+    this.descriptor = descriptor;
+  }
 
   var name: String = _
   var descriptor: String = _
@@ -50,4 +56,13 @@ final class NameAndTypeInfo(val nameIndex: Int, val descriptorIndex: Int) extend
     name = constantPool.readUTF8(nameIndex)
     descriptor = constantPool.readUTF8(descriptorIndex)
   }
+
+  override def toString: String =
+    "NameAndTypeInfo(" + (Option(name) match {
+      case Some(value) => value
+      case None => nameIndex
+    }) + ", " + (Option(descriptor) match {
+      case Some(value) => value
+      case None => descriptorIndex
+    }) + ")"
 }

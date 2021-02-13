@@ -32,10 +32,10 @@ import rip.hippo.api.hippocafe.constantpool.info.{ConstantPoolInfo, ValueAwarene
 
 /**
  * @author Hippo
- * @version 1.0.0, 8/1/20
+ * @version 1.0.1, 8/1/20
  * @since 1.0.0
  */
-final class DoubleInfo(val value: Double) extends ConstantPoolInfo with ValueAwareness[Double] {
+final case class DoubleInfo(value: Double) extends ConstantPoolInfo with ValueAwareness[Double] {
   override val kind: ConstantPoolKind = ConstantPoolKind.DOUBLE
   override val wide: Boolean = true
 

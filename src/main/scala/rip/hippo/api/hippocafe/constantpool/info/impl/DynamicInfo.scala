@@ -32,10 +32,10 @@ import rip.hippo.api.hippocafe.constantpool.info.ConstantPoolInfo
 
 /**
  * @author Hippo
- * @version 1.0.0, 8/1/20
+ * @version 1.0.1, 8/1/20
  * @since 1.0.0
  */
-final class DynamicInfo(inputKind: ConstantPoolKind, var bsmAttributeIndex: Int, val nameAndTypeIndex: Int) extends ConstantPoolInfo {
+final case class DynamicInfo(inputKind: ConstantPoolKind, var bsmAttributeIndex: Int, nameAndTypeIndex: Int) extends ConstantPoolInfo {
   override val kind: ConstantPoolKind = inputKind
 
   var nameAndTypeInfo: NameAndTypeInfo = _

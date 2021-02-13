@@ -32,10 +32,16 @@ import rip.hippo.api.hippocafe.constantpool.info.ConstantPoolInfo
 
 /**
  * @author Hippo
- * @version 1.0.0, 8/1/20
+ * @version 1.0.1, 8/1/20
  * @since 1.0.0
  */
-final class StringInfo(val index: Int, inputKind: ConstantPoolKind) extends ConstantPoolInfo {
+final case class StringInfo(index: Int, inputKind: ConstantPoolKind) extends ConstantPoolInfo {
+
+  def this(value: String, inputKind: ConstantPoolKind) {
+    this(-1, inputKind)
+    this.value = value
+  }
+
   override val kind: ConstantPoolKind = inputKind
 
   var value: String = _
@@ -47,4 +53,10 @@ final class StringInfo(val index: Int, inputKind: ConstantPoolKind) extends Cons
   override def readCallback(constantPool: ConstantPool): Unit = {
     value = constantPool.readUTF8(index)
   }
+
+  override def toString: String =
+    "StringInfo(" + (Option(value) match {
+      case Some(value) => value
+      case None => index
+    }) + ", " + inputKind + ")"
 }

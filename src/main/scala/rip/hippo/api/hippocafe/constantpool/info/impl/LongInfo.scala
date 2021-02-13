@@ -32,10 +32,10 @@ import rip.hippo.api.hippocafe.constantpool.info.{ConstantPoolInfo, ValueAwarene
 
 /**
  * @author Hippo
- * @version 1.0.0, 8/1/20
+ * @version 1.0.1, 8/1/20
  * @since 1.0.0
  */
-final class LongInfo(val value: Long) extends ConstantPoolInfo with ValueAwareness[Long] {
+final case class LongInfo(value: Long) extends ConstantPoolInfo with ValueAwareness[Long] {
   override val kind: ConstantPoolKind = ConstantPoolKind.LONG
   override val wide: Boolean = true
 

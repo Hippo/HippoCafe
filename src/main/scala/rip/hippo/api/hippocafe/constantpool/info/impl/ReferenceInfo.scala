@@ -32,11 +32,17 @@ import rip.hippo.api.hippocafe.constantpool.info.ConstantPoolInfo
 
 /**
  * @author Hippo
- * @version 1.0.0, 8/1/20
+ * @version 1.0.1, 8/1/20
  * @since 1.0.0
  */
-final class ReferenceInfo(val classIndex: Int, val nameAndTypeIndex: Int, inputKind: ConstantPoolKind) extends ConstantPoolInfo {
+final case class ReferenceInfo(classIndex: Int, nameAndTypeIndex: Int, inputKind: ConstantPoolKind) extends ConstantPoolInfo {
   override val kind: ConstantPoolKind = inputKind
+
+  def this(classInfo: StringInfo, nameAndTypeInfo: NameAndTypeInfo, inputKind: ConstantPoolKind) {
+    this(-1, -1, inputKind)
+    this.classInfo = classInfo
+    this.nameAndTypeInfo = nameAndTypeInfo
+  }
 
   var classInfo: StringInfo = _
   var nameAndTypeInfo: NameAndTypeInfo = _
@@ -63,4 +69,13 @@ final class ReferenceInfo(val classIndex: Int, val nameAndTypeIndex: Int, inputK
     classInfo = constantPool.info(classIndex).asInstanceOf[StringInfo]
     nameAndTypeInfo = constantPool.info(nameAndTypeIndex).asInstanceOf[NameAndTypeInfo]
   }
+
+  override def toString: String =
+    "ReferenceInfo(" + (Option(classInfo) match {
+      case Some(value) => value
+      case None => classIndex
+    }) + ", " + (Option(nameAndTypeInfo) match {
+      case Some(value) => value
+      case None => nameAndTypeIndex
+    }) + ")"
 }

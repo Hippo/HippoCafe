@@ -25,7 +25,6 @@
 package rip.hippo.api.hippocafe
 
 import java.io.{ByteArrayInputStream, DataInputStream, InputStream}
-
 import rip.hippo.api.hippocafe.attribute.impl.data.annotation.path.{AnnotationTypePath, AnnotationTypePathKind}
 import rip.hippo.api.hippocafe.attribute.impl.data.annotation.path.data.AnnotationTypePathData
 import rip.hippo.api.hippocafe.attribute.impl.data.annotation.target.impl.data.LocalVariableTargetData
@@ -38,7 +37,8 @@ import rip.hippo.api.hippocafe.attribute.impl.data.module.{ExportsModuleData, Op
 import rip.hippo.api.hippocafe.attribute.impl.data.{BootstrapMethodsAttributeData, ClassesAttributeData, ExceptionTableAttributeData, LineNumberTableAttributeData, LocalVariableTableAttributeData, LocalVariableTypeTableAttributeData, MethodParametersAttributeData}
 import rip.hippo.api.hippocafe.attribute.impl.{AnnotationDefaultAttribute, BootstrapMethodsAttribute, CodeAttribute, ConstantValueAttribute, DeprecatedAttribute, EnclosingMethodAttribute, ExceptionsAttribute, InnerClassesAttribute, LineNumberTableAttribute, LocalVariableTableAttribute, LocalVariableTypeTableAttribute, MethodParametersAttribute, ModuleAttribute, ModuleMainClassAttribute, ModulePackagesAttribute, NestHostAttribute, NestMembersAttribute, RuntimeInvisibleAnnotationsAttribute, RuntimeInvisibleParameterAnnotationsAttribute, RuntimeInvisibleTypeAnnotationsAttribute, RuntimeVisibleAnnotationsAttribute, RuntimeVisibleParameterAnnotationsAttribute, RuntimeVisibleTypeAnnotationsAttribute, SignatureAttribute, SourceDebugExtensionAttribute, SourceFileAttribute, StackMapTableAttribute, SyntheticAttribute, UnknownAttribute}
 import rip.hippo.api.hippocafe.attribute.{Attribute, AttributeInfo}
-import rip.hippo.api.hippocafe.constantpool.info.impl.{DoubleInfo, DynamicInfo, FloatInfo, IntegerInfo, LongInfo, NameAndTypeInfo, ReferenceInfo, StringInfo, UTF8Info}
+import rip.hippo.api.hippocafe.constantpool.info.impl.data.ReferenceKind
+import rip.hippo.api.hippocafe.constantpool.info.impl.{DoubleInfo, DynamicInfo, FloatInfo, IntegerInfo, LongInfo, MethodHandleInfo, NameAndTypeInfo, ReferenceInfo, StringInfo, UTF8Info}
 import rip.hippo.api.hippocafe.constantpool.{ConstantPool, ConstantPoolKind}
 import rip.hippo.api.hippocafe.exception.HippoCafeException
 import rip.hippo.api.hippocafe.translation.instruction.CodeTranslator
@@ -51,7 +51,7 @@ import rip.hippo.api.hippocafe.version.MajorClassFileVersion
 
 /**
  * @author Hippo
- * @version 1.0.0, 8/1/20
+ * @version 1.1.0, 8/1/20
  * @since 1.0.0
  */
 final class ClassReader(parentInputStream: InputStream, lowLevel: Boolean = false) {
@@ -89,21 +89,22 @@ final class ClassReader(parentInputStream: InputStream, lowLevel: Boolean = fals
       constantPoolKind match {
         case Some(value) =>
           value match {
-            case UTF8 => constantPool.insert(i, new UTF8Info(inputStream.readUTF()))
+            case UTF8 => constantPool.insert(i, UTF8Info(inputStream.readUTF()))
             case CLASS |
                  STRING |
                  METHOD_TYPE |
                  MODULE |
-                 PACKAGE => constantPool.insert(i, new StringInfo(u2, value))
-            case LONG => constantPool.insert(i, new LongInfo(inputStream.readLong()))
-            case DOUBLE => constantPool.insert(i, new DoubleInfo(inputStream.readDouble()))
-            case INVOKE_DYNAMIC | DYNAMIC => constantPool.insert(i, new DynamicInfo(value, u2, u2))
-            case INTEGER => constantPool.insert(i, new IntegerInfo(u4))
-            case FLOAT => constantPool.insert(i, new FloatInfo(inputStream.readFloat()))
+                 PACKAGE => constantPool.insert(i, StringInfo(u2, value))
+            case LONG => constantPool.insert(i, LongInfo(inputStream.readLong()))
+            case DOUBLE => constantPool.insert(i, DoubleInfo(inputStream.readDouble()))
+            case INVOKE_DYNAMIC | DYNAMIC => constantPool.insert(i, DynamicInfo(value, u2, u2))
+            case INTEGER => constantPool.insert(i, IntegerInfo(u4))
+            case FLOAT => constantPool.insert(i, FloatInfo(inputStream.readFloat()))
             case FIELD_REF |
                  METHOD_REF |
-                 INTERFACE_METHOD_REF => constantPool.insert(i, new ReferenceInfo(u2, u2, value))
-            case NAME_AND_TYPE => constantPool.insert(i, new NameAndTypeInfo(u2, u2))
+                 INTERFACE_METHOD_REF => constantPool.insert(i, ReferenceInfo(u2, u2, value))
+            case NAME_AND_TYPE => constantPool.insert(i, NameAndTypeInfo(u2, u2))
+            case METHOD_HANDLE => constantPool.insert(i, MethodHandleInfo(ReferenceKind.valueOf(u1), u2))
           }
         case None => throw new HippoCafeException(s"Could not find constant pool kind for tag $tag")
       }

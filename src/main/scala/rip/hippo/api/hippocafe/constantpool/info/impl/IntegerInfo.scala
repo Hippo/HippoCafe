@@ -32,10 +32,10 @@ import rip.hippo.api.hippocafe.constantpool.info.{ConstantPoolInfo, ValueAwarene
 
 /**
  * @author Hippo
- * @version 1.0.0, 8/1/20
+ * @version 1.0.1, 8/1/20
  * @since 1.0.0
  */
-final class IntegerInfo(val value: Int) extends ConstantPoolInfo with ValueAwareness[Int] {
+final case class IntegerInfo(value: Int) extends ConstantPoolInfo with ValueAwareness[Int] {
   override val kind: ConstantPoolKind = ConstantPoolKind.INTEGER
 
   override def write(out: DataOutputStream, constantPool: ConstantPool): Unit = out.writeInt(value)

@@ -25,17 +25,23 @@
 package rip.hippo.api.hippocafe.constantpool.info.impl
 
 import java.io.DataOutputStream
-
 import rip.hippo.api.hippocafe.constantpool.{ConstantPool, ConstantPoolKind}
 import rip.hippo.api.hippocafe.constantpool.ConstantPoolKind.ConstantPoolKind
 import rip.hippo.api.hippocafe.constantpool.info.ConstantPoolInfo
+import rip.hippo.api.hippocafe.constantpool.info.impl.data.ReferenceKind
 
 /**
  * @author Hippo
- * @version 1.0.0, 8/1/20
+ * @version 1.0.1, 8/1/20
  * @since 1.0.0
  */
-final class MethodHandleInfo(val referenceKind: Int, val referenceIndex: Int) extends ConstantPoolInfo {
+final case class MethodHandleInfo(referenceKind: ReferenceKind, referenceIndex: Int) extends ConstantPoolInfo {
+
+  def this(referenceKind: ReferenceKind, referenceInfo: ReferenceInfo) {
+    this(referenceKind, -1)
+    this.referenceInfo = referenceInfo
+  }
+
   override val kind: ConstantPoolKind = ConstantPoolKind.METHOD_HANDLE
 
   var referenceInfo: ReferenceInfo = _
@@ -48,11 +54,17 @@ final class MethodHandleInfo(val referenceKind: Int, val referenceIndex: Int) ex
       case _ => false
     }.keys.head
 
-    out.writeByte(referenceKind)
+    out.writeByte(referenceKind.kind)
     out.writeShort(referenceIndex)
   }
 
   override def readCallback(constantPool: ConstantPool): Unit = {
     referenceInfo = constantPool.info(referenceIndex).asInstanceOf[ReferenceInfo]
   }
+
+  override def toString: String =
+    "MethodHandleInfo(" + referenceKind + ", " + (Option(referenceInfo) match {
+      case Some(value) => value
+      case None => referenceIndex
+    }) + ")"
 }

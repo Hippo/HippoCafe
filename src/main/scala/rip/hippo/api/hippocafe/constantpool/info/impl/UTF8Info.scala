@@ -32,10 +32,10 @@ import rip.hippo.api.hippocafe.constantpool.info.{ConstantPoolInfo, ValueAwarene
 
 /**
  * @author Hippo
- * @version 1.0.0, 8/1/20
+ * @version 1.0.1, 8/1/20
  * @since 1.0.0
  */
-final class UTF8Info(val value: String) extends ConstantPoolInfo with ValueAwareness[String] {
+final case class UTF8Info(value: String) extends ConstantPoolInfo with ValueAwareness[String] {
   override val kind: ConstantPoolKind = ConstantPoolKind.UTF8
 
   override def write(out: DataOutputStream, constantPool: ConstantPool): Unit = out.writeUTF(value)
