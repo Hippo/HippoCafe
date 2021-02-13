@@ -25,10 +25,11 @@
 package rip.hippo.api.hippocafe
 
 import java.io.{ByteArrayOutputStream, DataOutputStream}
-
 import rip.hippo.api.hippocafe.access.AccessFlag
+import rip.hippo.api.hippocafe.attribute.AttributeInfo
 import rip.hippo.api.hippocafe.attribute.impl.LineNumberTableAttribute
-import rip.hippo.api.hippocafe.constantpool.ConstantPool
+import rip.hippo.api.hippocafe.constantpool.{ConstantPool, ConstantPoolKind}
+import rip.hippo.api.hippocafe.constantpool.info.impl.{ReferenceInfo, StringInfo, UTF8Info}
 import rip.hippo.api.hippocafe.exception.HippoCafeException
 
 /**
@@ -123,5 +124,32 @@ final class ClassWriter(classFile: ClassFile) {
 
       byteOut.toByteArray
     } finally out.close()
+  }
+
+  def generateConstantPool: ConstantPool = {
+    val constantPool = new ConstantPool
+    var index = 1
+
+    constantPool.insert(index, new StringInfo(classFile.name, ConstantPoolKind.CLASS))
+    index += 1
+    constantPool.insert(index, UTF8Info(classFile.name))
+    index += 1
+
+    classFile.attributes.foreach(attribute => {
+      constantPool.insert(index, UTF8Info(attribute.kind.toString))
+      index += 1
+    })
+    classFile.methods.foreach(methodInfo => {
+      constantPool.insert(index, UTF8Info(methodInfo.name))
+      index += 1
+      constantPool.insert(index, UTF8Info(methodInfo.descriptor))
+      index += 1
+    })
+    classFile.fields.map(_.attributes).foreach(_.foreach(attribute => {
+      constantPool.insert(index, UTF8Info(attribute.kind.toString))
+      index += 1
+    }))
+
+    constantPool
   }
 }

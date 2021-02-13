@@ -41,7 +41,7 @@ final case class NameAndTypeInfo(nameIndex: Int, descriptorIndex: Int) extends C
   def this(name: String, descriptor: String) {
     this(-1, -1)
     this.name = name;
-    this.descriptor = descriptor;
+    this.descriptor = descriptor
   }
 
   var name: String = _
