@@ -32,14 +32,14 @@ import rip.hippo.api.hippocafe.ClassReader
  * @version 1.0.0, 8/4/20
  * @since 1.1.0
  */
-final class TranslateSuite extends FunSuite {
+final class InstructionReadSuite extends FunSuite {
 
   private val className = "SwitchTest"
 
   test("CodeTranslator.translate") {
     Option(Thread.currentThread.getContextClassLoader.getResourceAsStream(s"$className.class")) match {
       case Some(value) =>
-        val classReader = new ClassReader(value).translate
+        val classReader = new ClassReader(value)
         val classFile = classReader.classFile
         classFile.methods.foreach(info => {
           println(info.name)

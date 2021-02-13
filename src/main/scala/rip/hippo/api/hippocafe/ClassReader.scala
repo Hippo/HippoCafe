@@ -54,7 +54,7 @@ import rip.hippo.api.hippocafe.version.MajorClassFileVersion
  * @version 1.0.0, 8/1/20
  * @since 1.0.0
  */
-final class ClassReader(parentInputStream: InputStream) {
+final class ClassReader(parentInputStream: InputStream, lowLevel: Boolean = false) {
   private val inputStream = new DataInputStream(parentInputStream)
   private def u1: Int = inputStream.readUnsignedByte()
   private def u2: Int = inputStream.readUnsignedShort()
@@ -133,14 +133,6 @@ final class ClassReader(parentInputStream: InputStream) {
   classFile.attributes.addAll((0 until u2).map(_ => readAttribute()))
 
   inputStream.close()
-
-
-
-  def translate: ClassReader = {
-    classFile.methods.foreach(methodInfo => CodeTranslator.translate(methodInfo, constantPool))
-    this
-  }
-
 
   def readField: FieldInfo = {
     val accessMask = u2
@@ -464,4 +456,6 @@ final class ClassReader(parentInputStream: InputStream) {
       }
     } finally if (parentStream != null && parentStream != inputStream) parentStream.close()
   }
+
+  if (!lowLevel) classFile.methods.foreach(methodInfo => CodeTranslator.translate(methodInfo, constantPool))
 }

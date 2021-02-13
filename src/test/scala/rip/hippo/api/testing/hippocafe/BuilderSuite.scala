@@ -40,8 +40,6 @@ import rip.hippo.api.hippocafe.translation.instruction.BytecodeOpcode._
  */
 final class BuilderSuite extends FunSuite {
 
-  private val className = "SwitchTest"
-
   test("ClassBuilder.result") {
     val classFile = ClassBuilder(
       SE8,

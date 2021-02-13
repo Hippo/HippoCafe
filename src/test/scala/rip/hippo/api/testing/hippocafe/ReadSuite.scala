@@ -40,7 +40,7 @@ final class ReadSuite extends FunSuite {
   test("ClassReader.read") {
     Option(Thread.currentThread.getContextClassLoader.getResourceAsStream(s"$className.class")) match {
       case Some(value) =>
-        val classReader = new ClassReader(value)
+        val classReader = new ClassReader(value, true)
         val classFile = classReader.classFile
         println(classFile.name)
       case None => println(s"Could not load resource $className.class")
