@@ -25,11 +25,17 @@
 package rip.hippo.api.hippocafe.translation.instruction.impl
 
 import rip.hippo.api.hippocafe.translation.instruction.Instruction
-import rip.hippo.api.hippocafe.translation.instruction.BytecodeOpcode.BytecodeOpcode
+import rip.hippo.api.hippocafe.translation.instruction.BytecodeOpcode.{BytecodeOpcode, INVOKEINTERFACE, INVOKESPECIAL, INVOKESTATIC, INVOKEVIRTUAL}
 
 /**
  * @author Hippo
  * @version 1.0.0, 8/4/20
  * @since 1.0.0
  */
-final case class ReferenceInstruction(bytecodeOpcode: BytecodeOpcode, owner: String, name: String, description: String) extends Instruction
+final case class ReferenceInstruction(bytecodeOpcode: BytecodeOpcode, owner: String, name: String, descriptor: String) extends Instruction {
+  def isMethod: Boolean = bytecodeOpcode match {
+    case INVOKEVIRTUAL | INVOKESTATIC | INVOKEINTERFACE | INVOKESPECIAL => true
+    case _ => false
+  }
+  def isField: Boolean = !isMethod
+}

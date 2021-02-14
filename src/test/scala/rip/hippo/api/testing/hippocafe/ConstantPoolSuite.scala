@@ -9,7 +9,7 @@ import rip.hippo.api.hippocafe.ClassReader
  * @since 1.0.0
  */
 final class ConstantPoolSuite extends FunSuite {
-  private val className = "SwitchTest"
+  private val className = "HelloWorld"
 
   test("ClassReader.read.cp") {
     Option(Thread.currentThread.getContextClassLoader.getResourceAsStream(s"$className.class")) match {

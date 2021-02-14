@@ -26,9 +26,9 @@ package rip.hippo.api.testing.hippocafe
 
 
 import org.scalatest.FunSuite
+import rip.hippo.api.hippocafe.ClassWriter
 import rip.hippo.api.hippocafe.builder.ClassBuilder
 import rip.hippo.api.hippocafe.translation.instruction.impl.{ConstantInstruction, ReferenceInstruction, SimpleInstruction}
-
 import rip.hippo.api.hippocafe.version.MajorClassFileVersion._
 import rip.hippo.api.hippocafe.access.AccessFlag._
 import rip.hippo.api.hippocafe.translation.instruction.BytecodeOpcode._
@@ -47,6 +47,13 @@ final class BuilderSuite extends FunSuite {
       "java/lang/Object",
       ACC_PUBLIC
     ).method(
+      "<init>",
+      "()V"
+    ).apply(instructions => {
+      instructions += SimpleInstruction(ALOAD_0)
+      instructions += ReferenceInstruction(INVOKESPECIAL, "java/lang/Object", "<init>", "()V")
+      instructions += SimpleInstruction(RETURN)
+    }).method(
       "main",
       "([Ljava/lang/String)V",
       ACC_PUBLIC, ACC_STATIC
@@ -57,6 +64,7 @@ final class BuilderSuite extends FunSuite {
       instructions += SimpleInstruction(RETURN)
     }).result
     println(classFile.name)
+    new ClassWriter(classFile).generateConstantPool.info.foreach(println)
   }
 
 }

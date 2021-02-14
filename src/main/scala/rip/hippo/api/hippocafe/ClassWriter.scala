@@ -29,8 +29,10 @@ import rip.hippo.api.hippocafe.access.AccessFlag
 import rip.hippo.api.hippocafe.attribute.AttributeInfo
 import rip.hippo.api.hippocafe.attribute.impl.LineNumberTableAttribute
 import rip.hippo.api.hippocafe.constantpool.{ConstantPool, ConstantPoolKind}
-import rip.hippo.api.hippocafe.constantpool.info.impl.{ReferenceInfo, StringInfo, UTF8Info}
+import rip.hippo.api.hippocafe.constantpool.info.impl.{DoubleInfo, FloatInfo, IntegerInfo, LongInfo, NameAndTypeInfo, ReferenceInfo, StringInfo, UTF8Info}
 import rip.hippo.api.hippocafe.exception.HippoCafeException
+import rip.hippo.api.hippocafe.translation.instruction.impl.{ConstantInstruction, ReferenceInstruction}
+import rip.hippo.api.hippocafe.util.Type
 
 /**
  * @author Hippo
@@ -144,11 +146,71 @@ final class ClassWriter(classFile: ClassFile) {
       index += 1
       constantPool.insert(index, UTF8Info(methodInfo.descriptor))
       index += 1
+      /*Type.getMethodParameterTypes(methodInfo.descriptor).filter(_.isObject).foreach(`type` => {
+        constantPool.insert(index, UTF8Info(`type`.descriptor))
+        index += 1
+        constantPool.insert(index, new StringInfo(`type`.descriptor, ConstantPoolKind.CLASS))
+        index += 1
+      })*/
+      methodInfo.instructions.foreach {
+        case instruction: ReferenceInstruction =>
+          constantPool.insert(index, UTF8Info(instruction.owner))
+          index += 1
+          constantPool.insert(index, new StringInfo(instruction.owner, ConstantPoolKind.CLASS))
+          index += 1
+          constantPool.insert(index, UTF8Info(instruction.name))
+          index += 1
+          constantPool.insert(index, UTF8Info(instruction.descriptor))
+          index += 1
+          constantPool.insert(index, new NameAndTypeInfo(instruction.name, instruction.descriptor))
+          index += 1
+          constantPool.insert(index, new ReferenceInfo(
+            new StringInfo(instruction.owner, ConstantPoolKind.CLASS),
+            new NameAndTypeInfo(instruction.name, instruction.descriptor),
+            if (instruction.isMethod) ConstantPoolKind.METHOD_REF else ConstantPoolKind.FIELD_REF))
+          index += 1
+        case instruction: ConstantInstruction =>
+          instruction.constant match { // TODO: finish
+            case string: String =>
+              constantPool.insert(index, UTF8Info(string))
+              index += 1
+              constantPool.insert(index, new StringInfo(string, ConstantPoolKind.STRING))
+              index += 1
+            case int: Int =>
+              constantPool.insert(index, IntegerInfo(int))
+              index += 1
+            case float: Float =>
+              constantPool.insert(index, FloatInfo(float))
+              index += 1
+            case double: Double =>
+              constantPool.insert(index, DoubleInfo(double))
+              index += 2
+            case long: Long =>
+              constantPool.insert(index, LongInfo(long))
+              index += 2
+          }
+        case _ =>
+      }
+      methodInfo.tryCatchBlocks.map(_.catchType).foreach(catchType => {
+        constantPool.insert(index, UTF8Info(catchType))
+        index += 1
+        constantPool.insert(index, new StringInfo(catchType, ConstantPoolKind.CLASS))
+      })
+      methodInfo.attributes.foreach(attribute => {
+        constantPool.insert(index, UTF8Info(attribute.kind.toString))
+        index += 1
+      })
     })
-    classFile.fields.map(_.attributes).foreach(_.foreach(attribute => {
-      constantPool.insert(index, UTF8Info(attribute.kind.toString))
+    classFile.fields.foreach(fieldInfo => {
+      constantPool.insert(index, UTF8Info(fieldInfo.name))
       index += 1
-    }))
+      constantPool.insert(index, UTF8Info(fieldInfo.descriptor))
+      index += 1
+      fieldInfo.attributes.foreach(attribute => {
+        constantPool.insert(index, UTF8Info(attribute.kind.toString))
+        index += 1
+      })
+    })
 
     constantPool
   }

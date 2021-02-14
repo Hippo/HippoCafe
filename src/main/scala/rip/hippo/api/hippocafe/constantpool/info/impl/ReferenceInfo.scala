@@ -77,5 +77,5 @@ final case class ReferenceInfo(classIndex: Int, nameAndTypeIndex: Int, inputKind
     }) + ", " + (Option(nameAndTypeInfo) match {
       case Some(value) => value
       case None => nameAndTypeIndex
-    }) + ")"
+    }) + "), " + inputKind
 }

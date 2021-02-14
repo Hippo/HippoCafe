@@ -2,6 +2,8 @@ package rip.hippo.api.hippocafe.util
 
 import rip.hippo.api.hippocafe.util.Type.{DOUBLE, LONG}
 
+import scala.collection.mutable.ListBuffer
+
 /**
  * @author Hippo
  * @version 1.0.0, 2/13/21
@@ -35,9 +37,26 @@ object Type {
       case 'D' => DOUBLE
       case _ => OBJECT(descriptor)
     }
+
+  def getMethodParameterTypes(descriptor: String): ListBuffer[Type] = {
+    val types = ListBuffer[Type]()
+    var index = 1
+    while (descriptor.charAt(index) != ')') {
+      val start = index
+      while (descriptor.charAt(index) == '[') index += 1
+      var end = index + 1
+      if (descriptor.charAt(index) == 'L') {
+        end = descriptor.indexOf(';', index) + 1
+      }
+      types += getType(descriptor.substring(start, end))
+      index = end
+    }
+    types
+  }
 }
 
 sealed case class Type(descriptor: String) {
   def isWide: Boolean = this == LONG || this == DOUBLE
   def isArray: Boolean = descriptor.charAt(0) == '['
+  def isObject: Boolean = isArray || descriptor.charAt(0) == 'L'
 }
