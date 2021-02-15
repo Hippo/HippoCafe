@@ -22,11 +22,22 @@
  * SOFTWARE.
  */
 
-package rip.hippo.api.hippocafe.translation.instruction
+package rip.hippo.api.hippocafe.disassembler.instruction.impl
+
+import rip.hippo.api.hippocafe.disassembler.instruction.Instruction
+
+import scala.collection.mutable
+import scala.collection.mutable.ListBuffer
 
 /**
  * @author Hippo
  * @version 1.0.0, 8/4/20
  * @since 1.0.0
  */
-trait Instruction
+final case class LookupSwitchInstruction(default: LabelInstruction) extends Instruction {
+  val pairs: mutable.Map[Int, LabelInstruction] = mutable.Map[Int, LabelInstruction]()
+
+  override def assemble(code: ListBuffer[Byte]): Unit = {
+
+  }
+}

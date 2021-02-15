@@ -32,7 +32,7 @@ import rip.hippo.api.hippocafe.constantpool.info.ConstantPoolInfo
 import rip.hippo.api.hippocafe.constantpool.{ConstantPool, ConstantPoolKind}
 import rip.hippo.api.hippocafe.constantpool.info.impl.{DoubleInfo, FloatInfo, IntegerInfo, LongInfo, NameAndTypeInfo, ReferenceInfo, StringInfo, UTF8Info}
 import rip.hippo.api.hippocafe.exception.HippoCafeException
-import rip.hippo.api.hippocafe.translation.instruction.impl.{ConstantInstruction, ReferenceInstruction}
+import rip.hippo.api.hippocafe.disassembler.instruction.impl.{ConstantInstruction, ReferenceInstruction}
 import rip.hippo.api.hippocafe.util.Type
 
 /**
@@ -53,15 +53,18 @@ final class ClassWriter(classFile: ClassFile) {
       out.writeShort(classFile.majorClassFileVersion.id)
 
       val constantPool = classFile.constantPool match {
-        case Some(value) =>
-          out.writeShort(value.info.values.size + 1)
-          value.info.foreach(entry => {
-            out.writeByte(entry._2.kind.id)
-            entry._2.write(out, value)
-          })
-          value
-        case None => throw new HippoCafeException("Unable to write class without constant pool.") // todo: build new constant pool
+        case Some(value) => if (classFile.lowLevel) value else {
+          val generated = generateConstantPool
+
+          generated
+        }
+        case None => generateConstantPool
       }
+      out.writeShort(constantPool.info.values.size + 1)
+      constantPool.info.foreach(entry => {
+        out.writeByte(entry._2.kind.id)
+        entry._2.write(out, constantPool)
+      })
 
       out.writeShort(AccessFlag.toMask(classFile.access: _*))
       out.writeShort(constantPool.findString(classFile.name))

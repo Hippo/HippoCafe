@@ -41,7 +41,7 @@ import rip.hippo.api.hippocafe.constantpool.info.impl.data.ReferenceKind
 import rip.hippo.api.hippocafe.constantpool.info.impl.{DoubleInfo, DynamicInfo, FloatInfo, IntegerInfo, LongInfo, MethodHandleInfo, NameAndTypeInfo, ReferenceInfo, StringInfo, UTF8Info}
 import rip.hippo.api.hippocafe.constantpool.{ConstantPool, ConstantPoolKind}
 import rip.hippo.api.hippocafe.exception.HippoCafeException
-import rip.hippo.api.hippocafe.translation.instruction.CodeTranslator
+import rip.hippo.api.hippocafe.disassembler.instruction.CodeDisassembler
 import rip.hippo.api.hippocafe.stackmap.StackMapFrame
 import rip.hippo.api.hippocafe.stackmap.impl.{AppendStackMapFrame, ChopStackMapFrame, FullStackMapFrame, SameExtendedStackMapFrame, SameLocalsExtendedStackMapFrame, SameLocalsStackMapFrame, SameStackMapFrame}
 import rip.hippo.api.hippocafe.stackmap.verification.VerificationTypeInfo
@@ -121,6 +121,8 @@ final class ClassReader(parentInputStream: InputStream, lowLevel: Boolean = fals
     case Some(value) => value
     case None => MajorClassFileVersion.SE11
   }, className, superName, accessMask)
+
+  classFile.lowLevel = lowLevel
 
   classFile.minorVersion = minorVersion
   classFile.constantPool = Option(constantPool)
@@ -458,5 +460,5 @@ final class ClassReader(parentInputStream: InputStream, lowLevel: Boolean = fals
     } finally if (parentStream != null && parentStream != inputStream) parentStream.close()
   }
 
-  if (!lowLevel) classFile.methods.foreach(methodInfo => CodeTranslator.translate(methodInfo, constantPool))
+  if (!lowLevel) classFile.methods.foreach(methodInfo => CodeDisassembler.disassemble(methodInfo, constantPool))
 }

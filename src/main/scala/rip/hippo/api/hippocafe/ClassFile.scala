@@ -48,6 +48,8 @@ final case class ClassFile(var majorClassFileVersion: MajorClassFileVersion, var
 
   var constantPool: Option[ConstantPool] = None
 
+  private[hippocafe] var lowLevel: Boolean = _
+
   def this(majorClassFileVersion: MajorClassFileVersion, name: String, superName: String, accessMask: Int) =
     this(majorClassFileVersion, name, superName, AccessFlag.fromMask(accessMask): _*)
 }

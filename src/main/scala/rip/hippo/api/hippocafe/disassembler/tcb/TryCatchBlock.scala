@@ -22,17 +22,13 @@
  * SOFTWARE.
  */
 
-package rip.hippo.api.hippocafe.translation.instruction.impl
+package rip.hippo.api.hippocafe.disassembler.tcb
 
-import rip.hippo.api.hippocafe.translation.instruction.Instruction
-
-import scala.collection.mutable
+import rip.hippo.api.hippocafe.disassembler.instruction.impl.LabelInstruction
 
 /**
  * @author Hippo
- * @version 1.0.0, 8/4/20
+ * @version 1.0.0, 8/7/20
  * @since 1.0.0
  */
-final case class LookupSwitchInstruction(default: LabelInstruction) extends Instruction {
-  val pairs: mutable.Map[Int, LabelInstruction] = mutable.Map[Int, LabelInstruction]()
-}
+final case class TryCatchBlock(start: LabelInstruction, end: LabelInstruction, handler: LabelInstruction, catchType: String)

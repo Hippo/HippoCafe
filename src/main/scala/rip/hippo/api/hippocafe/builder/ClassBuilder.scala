@@ -26,7 +26,7 @@ package rip.hippo.api.hippocafe.builder
 
 import rip.hippo.api.hippocafe.{ClassFile, FieldInfo, MethodInfo}
 import rip.hippo.api.hippocafe.access.AccessFlag.AccessFlag
-import rip.hippo.api.hippocafe.translation.instruction.Instruction
+import rip.hippo.api.hippocafe.disassembler.instruction.Instruction
 import rip.hippo.api.hippocafe.version.MajorClassFileVersion.MajorClassFileVersion
 
 import scala.collection.mutable.ListBuffer

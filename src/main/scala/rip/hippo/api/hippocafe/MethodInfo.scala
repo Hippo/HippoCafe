@@ -27,8 +27,8 @@ package rip.hippo.api.hippocafe
 import rip.hippo.api.hippocafe.access.AccessFlag
 import rip.hippo.api.hippocafe.access.AccessFlag.AccessFlag
 import rip.hippo.api.hippocafe.attribute.AttributeInfo
-import rip.hippo.api.hippocafe.translation.instruction.Instruction
-import rip.hippo.api.hippocafe.translation.tcb.TryCatchBlock
+import rip.hippo.api.hippocafe.disassembler.instruction.Instruction
+import rip.hippo.api.hippocafe.disassembler.tcb.TryCatchBlock
 
 import scala.collection.mutable.ListBuffer
 

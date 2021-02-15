@@ -22,13 +22,25 @@
  * SOFTWARE.
  */
 
-package rip.hippo.api.hippocafe.translation.instruction.impl
+package rip.hippo.api.hippocafe.disassembler.instruction.impl
 
-import rip.hippo.api.hippocafe.translation.instruction.Instruction
+import rip.hippo.api.hippocafe.disassembler.instruction.Instruction
+
+import scala.collection.mutable.ListBuffer
 
 /**
  * @author Hippo
  * @version 1.0.0, 8/4/20
  * @since 1.0.0
  */
-final case class IncrementInstruction(localIndex: Int, value: Int) extends Instruction
+final class LabelInstruction(var debugId: Int = -1) extends Instruction {
+  override def toString: String = "Label(" + (if (debugId == -1) "" else debugId) + ")"
+
+  override def assemble(code: ListBuffer[Byte]): Unit = {}
+}
+
+
+object LabelInstruction {
+  def apply(): LabelInstruction = new LabelInstruction
+  def apply(debugId: Int) = new LabelInstruction(debugId)
+}

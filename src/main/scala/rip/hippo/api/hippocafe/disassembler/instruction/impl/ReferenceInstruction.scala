@@ -22,21 +22,26 @@
  * SOFTWARE.
  */
 
-package rip.hippo.api.hippocafe.translation.instruction.impl
+package rip.hippo.api.hippocafe.disassembler.instruction.impl
 
-import rip.hippo.api.hippocafe.translation.instruction.Instruction
+import rip.hippo.api.hippocafe.disassembler.instruction.Instruction
+import rip.hippo.api.hippocafe.disassembler.instruction.BytecodeOpcode.{BytecodeOpcode, INVOKEINTERFACE, INVOKESPECIAL, INVOKESTATIC, INVOKEVIRTUAL}
+
+import scala.collection.mutable.ListBuffer
 
 /**
  * @author Hippo
  * @version 1.0.0, 8/4/20
  * @since 1.0.0
  */
-final class LabelInstruction(var debugId: Int = -1) extends Instruction {
-  override def toString: String = "Label(" + (if (debugId == -1) "" else debugId) + ")"
-}
+final case class ReferenceInstruction(bytecodeOpcode: BytecodeOpcode, owner: String, name: String, descriptor: String) extends Instruction {
+  def isMethod: Boolean = bytecodeOpcode match {
+    case INVOKEVIRTUAL | INVOKESTATIC | INVOKEINTERFACE | INVOKESPECIAL => true
+    case _ => false
+  }
+  def isField: Boolean = !isMethod
 
+  override def assemble(code: ListBuffer[Byte]): Unit = {
 
-object LabelInstruction {
-  def apply(): LabelInstruction = new LabelInstruction
-  def apply(debugId: Int) = new LabelInstruction(debugId)
+  }
 }

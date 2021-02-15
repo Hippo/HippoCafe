@@ -22,13 +22,29 @@
  * SOFTWARE.
  */
 
-package rip.hippo.api.hippocafe.translation.tcb
-
-import rip.hippo.api.hippocafe.translation.instruction.impl.LabelInstruction
+package rip.hippo.api.hippocafe.disassembler.instruction.array
 
 /**
  * @author Hippo
- * @version 1.0.0, 8/7/20
+ * @version 1.0.0, 8/4/20
  * @since 1.0.0
  */
-final case class TryCatchBlock(start: LabelInstruction, end: LabelInstruction, handler: LabelInstruction, catchType: String)
+object ArrayType extends Enumeration {
+
+  implicit def toValue(`type`: Int): Value = Value(`type`)
+
+  type ArrayType = Value
+
+  val BOOLEAN: ArrayType = 4
+  val CHAR: ArrayType = 5
+  val FLOAT: ArrayType = 6
+  val DOUBLE: ArrayType = 7
+  val BYTE: ArrayType = 8
+  val SHORT: ArrayType = 9
+  val INT: ArrayType = 10
+  val LONG: ArrayType = 11
+
+  def fromType(`type`: Int): Option[ArrayType] =
+    ArrayType.values.find(_.id == `type`)
+
+}

@@ -22,7 +22,7 @@
  * SOFTWARE.
  */
 
-package rip.hippo.api.hippocafe.translation.instruction
+package rip.hippo.api.hippocafe.disassembler.instruction
 
 import rip.hippo.api.hippocafe.MethodInfo
 import rip.hippo.api.hippocafe.attribute.Attribute
@@ -31,9 +31,9 @@ import rip.hippo.api.hippocafe.constantpool.ConstantPool
 import rip.hippo.api.hippocafe.constantpool.info.ValueAwareness
 import rip.hippo.api.hippocafe.constantpool.info.impl.{ReferenceInfo, StringInfo}
 import rip.hippo.api.hippocafe.exception.HippoCafeException
-import rip.hippo.api.hippocafe.translation.instruction.impl.{BranchInstruction, ConstantInstruction, IncrementInstruction, LabelInstruction, LookupSwitchInstruction, PushInstruction, ReferenceInstruction, SimpleInstruction, TableSwitchInstruction, TypeInstruction, VariableInstruction}
-import rip.hippo.api.hippocafe.translation.instruction.impl.PushInstruction
-import rip.hippo.api.hippocafe.translation.tcb.TryCatchBlock
+import rip.hippo.api.hippocafe.disassembler.instruction.impl.{BranchInstruction, ConstantInstruction, IncrementInstruction, LabelInstruction, LookupSwitchInstruction, PushInstruction, ReferenceInstruction, SimpleInstruction, TableSwitchInstruction, TypeInstruction, VariableInstruction}
+import rip.hippo.api.hippocafe.disassembler.instruction.impl.PushInstruction
+import rip.hippo.api.hippocafe.disassembler.tcb.TryCatchBlock
 
 import scala.collection.mutable
 import scala.collection.mutable.ListBuffer
@@ -43,10 +43,10 @@ import scala.collection.mutable.ListBuffer
  * @version 1.0.0, 8/4/20
  * @since 1.0.0
  */
-object CodeTranslator {
+object CodeDisassembler {
 
 
-  def translate(methodInfo: MethodInfo, constantPool: ConstantPool): Unit = {
+  def disassemble(methodInfo: MethodInfo, constantPool: ConstantPool): Unit = {
 
     methodInfo.attributes.find(_.kind == Attribute.CODE) match {
       case Some(codeAttribute: CodeAttribute) =>

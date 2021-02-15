@@ -59,4 +59,5 @@ sealed case class Type(descriptor: String) {
   def isWide: Boolean = this == LONG || this == DOUBLE
   def isArray: Boolean = descriptor.charAt(0) == '['
   def isObject: Boolean = isArray || descriptor.charAt(0) == 'L'
+  def getSize: Int = if (isWide) 2 else 1
 }

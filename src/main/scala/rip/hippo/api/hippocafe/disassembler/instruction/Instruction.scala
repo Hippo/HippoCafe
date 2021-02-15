@@ -22,14 +22,15 @@
  * SOFTWARE.
  */
 
-package rip.hippo.api.hippocafe.translation.instruction.impl
+package rip.hippo.api.hippocafe.disassembler.instruction
 
-import rip.hippo.api.hippocafe.translation.instruction.Instruction
+import scala.collection.mutable.ListBuffer
 
 /**
  * @author Hippo
  * @version 1.0.0, 8/4/20
  * @since 1.0.0
  */
-final case class ConstantInstruction(constant: Any) extends Instruction
-
+trait Instruction {
+  def assemble(code: ListBuffer[Byte]): Unit
+}

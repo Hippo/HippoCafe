@@ -22,13 +22,20 @@
  * SOFTWARE.
  */
 
-package rip.hippo.api.hippocafe.translation.instruction.impl
+package rip.hippo.api.hippocafe.disassembler.instruction.impl
 
-import rip.hippo.api.hippocafe.translation.instruction.array.ArrayType.ArrayType
+import rip.hippo.api.hippocafe.disassembler.instruction.Instruction
+import rip.hippo.api.hippocafe.disassembler.instruction.BytecodeOpcode.BytecodeOpcode
+
+import scala.collection.mutable.ListBuffer
 
 /**
  * @author Hippo
  * @version 1.0.0, 8/4/20
  * @since 1.0.0
  */
-final case class NewArrayInstruction(arrayType: ArrayType)
+final case class TypeInstruction(bytecodeOpcode: BytecodeOpcode, typeName: String) extends Instruction {
+  override def assemble(code: ListBuffer[Byte]): Unit = {
+
+  }
+}

@@ -22,11 +22,21 @@
  * SOFTWARE.
  */
 
-package rip.hippo.api.hippocafe.translation.instruction.impl
+package rip.hippo.api.hippocafe.disassembler.instruction.impl
+
+import rip.hippo.api.hippocafe.disassembler.instruction.Instruction
+
+import scala.collection.mutable.ListBuffer
 
 /**
  * @author Hippo
  * @version 1.0.0, 8/4/20
  * @since 1.0.0
  */
-final case class MultiANewArrayInstruction(descriptor: String, dimensions: Int)
+final case class TableSwitchInstruction(default: LabelInstruction, low: Int, high: Int) extends Instruction {
+  val table: ListBuffer[LabelInstruction] = ListBuffer[LabelInstruction]()
+
+  override def assemble(code: ListBuffer[Byte]): Unit = {
+
+  }
+}

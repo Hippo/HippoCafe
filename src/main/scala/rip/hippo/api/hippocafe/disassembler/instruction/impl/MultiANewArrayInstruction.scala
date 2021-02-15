@@ -22,20 +22,19 @@
  * SOFTWARE.
  */
 
-package rip.hippo.api.hippocafe.translation.instruction.impl
+package rip.hippo.api.hippocafe.disassembler.instruction.impl
 
-import rip.hippo.api.hippocafe.translation.instruction.Instruction
-import rip.hippo.api.hippocafe.translation.instruction.BytecodeOpcode.{BytecodeOpcode, INVOKEINTERFACE, INVOKESPECIAL, INVOKESTATIC, INVOKEVIRTUAL}
+import rip.hippo.api.hippocafe.disassembler.instruction.Instruction
+
+import scala.collection.mutable.ListBuffer
 
 /**
  * @author Hippo
  * @version 1.0.0, 8/4/20
  * @since 1.0.0
  */
-final case class ReferenceInstruction(bytecodeOpcode: BytecodeOpcode, owner: String, name: String, descriptor: String) extends Instruction {
-  def isMethod: Boolean = bytecodeOpcode match {
-    case INVOKEVIRTUAL | INVOKESTATIC | INVOKEINTERFACE | INVOKESPECIAL => true
-    case _ => false
+final case class MultiANewArrayInstruction(descriptor: String, dimensions: Int) extends Instruction {
+  override def assemble(code: ListBuffer[Byte]): Unit = {
+
   }
-  def isField: Boolean = !isMethod
 }

@@ -28,10 +28,10 @@ package rip.hippo.api.testing.hippocafe
 import org.scalatest.FunSuite
 import rip.hippo.api.hippocafe.ClassWriter
 import rip.hippo.api.hippocafe.builder.ClassBuilder
-import rip.hippo.api.hippocafe.translation.instruction.impl.{ConstantInstruction, ReferenceInstruction, SimpleInstruction}
+import rip.hippo.api.hippocafe.disassembler.instruction.impl.{ConstantInstruction, ReferenceInstruction, SimpleInstruction}
 import rip.hippo.api.hippocafe.version.MajorClassFileVersion._
 import rip.hippo.api.hippocafe.access.AccessFlag._
-import rip.hippo.api.hippocafe.translation.instruction.BytecodeOpcode._
+import rip.hippo.api.hippocafe.disassembler.instruction.BytecodeOpcode._
 
 /**
  * @author Hippo
