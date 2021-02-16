@@ -66,8 +66,9 @@ final class BuilderSuite extends FunSuite {
       "([Ljava/lang/String;)V",
       ACC_PUBLIC, ACC_STATIC
     ).apply(instructions => {
+      instructions += ReferenceInstruction(GETSTATIC, "java/lang/System", "out", "Ljava/io/PrintStream;")
       instructions += ConstantInstruction("Hello World")
-      instructions += ReferenceInstruction(INVOKESTATIC, "scala/Predef", "println", "(Ljava/lang/Object;)V")
+      instructions += ReferenceInstruction(INVOKEVIRTUAL, "java/io/PrintStream", "println", "(Ljava/lang/String;)V")
       instructions += SimpleInstruction(RETURN)
     }).result
     val bytecode = new ClassWriter(classFile).write
