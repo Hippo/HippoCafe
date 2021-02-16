@@ -6,7 +6,7 @@ This library will attempt to counteract malicious bytecode which will crash othe
 # Road Map
 - Reading ✅
 - Writing ✅
-- Manipulation
+- Manipulation 
 - Documentation
 
 # Discord
