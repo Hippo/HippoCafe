@@ -29,14 +29,17 @@ import rip.hippo.hippocafe.constantpool.ConstantPool
 import rip.hippo.hippocafe.constantpool.info.impl.DoubleInfo
 import rip.hippo.hippocafe.disassembler.instruction.impl.ReferenceInstruction
 import rip.hippo.hippocafe.access.AccessFlag
-import rip.hippo.hippocafe.attribute.AttributeInfo
-import rip.hippo.hippocafe.attribute.impl.LineNumberTableAttribute
+import rip.hippo.hippocafe.attribute.{Attribute, AttributeInfo}
+import rip.hippo.hippocafe.attribute.impl.data.ExceptionTableAttributeData
+import rip.hippo.hippocafe.attribute.impl.{CodeAttribute, LineNumberTableAttribute}
 import rip.hippo.hippocafe.constantpool.{ConstantPool, ConstantPoolKind}
 import rip.hippo.hippocafe.constantpool.info.{ConstantPoolInfo, impl}
 import rip.hippo.hippocafe.constantpool.info.impl.{DoubleInfo, FloatInfo, IntegerInfo, LongInfo, NameAndTypeInfo, ReferenceInfo, StringInfo, UTF8Info}
 import rip.hippo.hippocafe.disassembler.instruction.impl.{ConstantInstruction, ReferenceInstruction}
 import rip.hippo.hippocafe.exception.HippoCafeException
 import rip.hippo.hippocafe.util.Type
+
+import scala.collection.mutable.ListBuffer
 
 /**
  * @author Hippo
@@ -55,14 +58,41 @@ final class ClassWriter(classFile: ClassFile) {
       out.writeShort(classFile.minorVersion)
       out.writeShort(classFile.majorClassFileVersion.id)
 
-      val constantPool = classFile.constantPool match {
-        case Some(value) => if (classFile.lowLevel) value else {
-          val generated = generateConstantPool
+      val removedCodeAttribute = ListBuffer[MethodInfo]()
 
-          generated
-        }
+
+      val constantPool = classFile.constantPool match {
+        case Some(value) => if (classFile.lowLevel) value else generateConstantPool
         case None => generateConstantPool
       }
+
+      var hasCodeAttribute = constantPool.info.filter(_._2.isInstanceOf[UTF8Info]).exists(_._2.asInstanceOf[UTF8Info].value.equals("Code"))
+      classFile.methods.foreach(method => {
+        if (method.instructions.nonEmpty) {
+          if (!hasCodeAttribute) {
+            val max = constantPool.info.keys.max
+            val index = max + (if (constantPool.info(max).wide) 2 else 1)
+            constantPool.insert(index, UTF8Info("Code"))
+            hasCodeAttribute = true
+          }
+          val methodBytecode = ListBuffer[Byte]()
+          method.instructions.foreach(_.assemble(methodBytecode, constantPool))
+          removedCodeAttribute += method
+          // Temp values for now, calculate next push
+          method.attributes += CodeAttribute(
+            classFile.isOak,
+            5,
+            5,
+            methodBytecode.length,
+            methodBytecode.toArray,
+            0,
+            new Array[ExceptionTableAttributeData](0),
+            0,
+            new Array[AttributeInfo](0)
+          )
+        }
+      })
+
       out.writeShort(constantPool.info.values.size + 1)
       constantPool.info.foreach(entry => {
         out.writeByte(entry._2.kind.id)
@@ -131,6 +161,10 @@ final class ClassWriter(classFile: ClassFile) {
         dataOutputStream.close()
       })
 
+      removedCodeAttribute.foreach(method => {
+        method.attributes.filter(_.kind == Attribute.CODE).foreach(method.attributes.subtractOne)
+      })
+
       byteOut.toByteArray
     } finally out.close()
   }
@@ -150,6 +184,8 @@ final class ClassWriter(classFile: ClassFile) {
 
     add(new StringInfo(classFile.name, ConstantPoolKind.CLASS))
     add(UTF8Info(classFile.name))
+    add(new StringInfo(classFile.superName, ConstantPoolKind.CLASS))
+    add(UTF8Info(classFile.superName))
 
     classFile.attributes.foreach(attribute => {
       add(UTF8Info(attribute.kind.toString))

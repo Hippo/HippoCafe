@@ -42,4 +42,6 @@ final case class FieldInfo(var name: String, var descriptor: String, var accessF
   def this(name: String, descriptor: String, accessMask: Int) =
     this(name, descriptor, AccessFlag.fromMask(accessMask): _*)
 
+
+
 }

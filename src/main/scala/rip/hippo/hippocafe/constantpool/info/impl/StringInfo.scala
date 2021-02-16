@@ -59,4 +59,10 @@ final case class StringInfo(index: Int, inputKind: ConstantPoolKind) extends Con
       case Some(value) => value
       case None => index
     }) + ", " + inputKind + ")"
+
+  override def equals(obj: Any): Boolean =
+    obj match {
+      case info: StringInfo => info.value.equals(value) && info.kind == kind
+      case _ => false
+    }
 }

@@ -25,8 +25,11 @@
 package rip.hippo.hippocafe.disassembler.instruction.impl
 
 import rip.hippo.hippocafe.disassembler.instruction.BytecodeOpcode.{BytecodeOpcode, INVOKEINTERFACE, INVOKESPECIAL, INVOKESTATIC, INVOKEVIRTUAL}
-import rip.hippo.hippocafe.constantpool.ConstantPool
+import rip.hippo.hippocafe.constantpool.{ConstantPool, ConstantPoolKind}
+import rip.hippo.hippocafe.constantpool.info.ConstantPoolInfo
+import rip.hippo.hippocafe.constantpool.info.impl.{NameAndTypeInfo, ReferenceInfo, StringInfo, UTF8Info}
 import rip.hippo.hippocafe.disassembler.instruction.Instruction
+import rip.hippo.hippocafe.util.Type
 
 import scala.collection.mutable.ListBuffer
 
@@ -43,6 +46,55 @@ final case class ReferenceInstruction(bytecodeOpcode: BytecodeOpcode, owner: Str
   def isField: Boolean = !isMethod
 
   override def assemble(code: ListBuffer[Byte], constantPool: ConstantPool): Unit = {
+    var index = -1
+    var refIndex = -1
+    constantPool.info
+      .filter(_._2.isInstanceOf[ReferenceInfo])
+      .filter(_._2.asInstanceOf[ReferenceInfo].classInfo != null)
+      .filter(_._2.asInstanceOf[ReferenceInfo].nameAndTypeInfo != null)
+      .filter(pair => {
+        val referenceInfo = pair._2.asInstanceOf[ReferenceInfo]
+        val nameAndType = referenceInfo.nameAndTypeInfo
+        referenceInfo.classInfo != null &&
+          referenceInfo.classInfo.value != null &&
+          referenceInfo.classInfo.value.equals(owner) &&
+          nameAndType.name != null &&
+          nameAndType.name.equals(name) &&
+          nameAndType.descriptor != null &&
+          nameAndType.descriptor.equals(descriptor)
+      })
+      .keys
+      .foreach(index = _)
+    if (index == -1) {
+      val max = constantPool.info.keys.max
+      index = max + (if (constantPool.info(max).wide) 2 else 1)
+      def add(info: ConstantPoolInfo): Unit = {
+        constantPool.info.values.find(_.equals(info)) match {
+          case Some(_) =>
+          case None =>
+            constantPool.insert(index, info)
+            index += 1
+        }
+      }
+      add(UTF8Info(owner))
+      add(new StringInfo(owner, ConstantPoolKind.CLASS))
+      add(UTF8Info(name))
+      add(UTF8Info(descriptor))
+      add(new NameAndTypeInfo(name, descriptor))
+      refIndex = index
+      add(new ReferenceInfo(
+        new StringInfo(owner, ConstantPoolKind.CLASS),
+        new NameAndTypeInfo(name, descriptor),
+        if (isMethod) ConstantPoolKind.METHOD_REF else ConstantPoolKind.FIELD_REF))
+      
+    } else refIndex = index
+    code += bytecodeOpcode.id.asInstanceOf[Byte]
+    code += (refIndex >> 8).asInstanceOf[Byte]
+    code += (refIndex & 0xFF).asInstanceOf[Byte]
 
+    if (bytecodeOpcode == INVOKEINTERFACE) {
+      code += Type.getMethodParameterTypes(descriptor).map(_.getSize).sum.asInstanceOf[Byte]
+      code += 0
+    }
   }
 }

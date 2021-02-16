@@ -65,4 +65,11 @@ final case class NameAndTypeInfo(nameIndex: Int, descriptorIndex: Int) extends C
       case Some(value) => value
       case None => descriptorIndex
     }) + ")"
+
+  override def equals(obj: Any): Boolean =
+    obj match {
+      case info: NameAndTypeInfo =>
+        info.name.equals(name) && info.descriptor.equals(descriptor)
+      case _ => false
+    }
 }

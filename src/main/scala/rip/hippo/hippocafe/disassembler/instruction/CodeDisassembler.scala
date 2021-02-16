@@ -48,7 +48,6 @@ object CodeDisassembler {
 
 
   def disassemble(methodInfo: MethodInfo, constantPool: ConstantPool): Unit = {
-
     methodInfo.attributes.find(_.kind == Attribute.CODE) match {
       case Some(codeAttribute: CodeAttribute) =>
         val instructions = mutable.SortedMap[Int, Instruction]()
@@ -352,8 +351,6 @@ object CodeDisassembler {
           val handler = LabelInstruction(labelDebugId)
           labelDebugId += 1
 
-          println(exception.handlerPc + " " + exception.endPc)
-          println(instructions)
 
           labels += (exception.startPc -> start)
           labels += (exception.endPc -> end)
@@ -380,7 +377,6 @@ object CodeDisassembler {
             instructions += (offset -> label)
           }
         })
-       // println(instructions)
         methodInfo.instructions ++= instructions.values.toList
         methodInfo.tryCatchBlocks ++= tryCatchBlocks.result()
         methodInfo.attributes -= codeAttribute

@@ -68,6 +68,15 @@ import rip.hippo.hippocafe.version.MajorClassFileVersion
  * @since 1.0.0
  */
 final class ClassReader(parentInputStream: InputStream, lowLevel: Boolean = false) {
+
+  def this(bytecode: Array[Byte], lowLevel: Boolean) {
+    this(new ByteArrayInputStream(bytecode), lowLevel)
+  }
+
+  def this(bytecode: Array[Byte]) {
+    this(bytecode, false)
+  }
+
   private val inputStream = new DataInputStream(parentInputStream)
   private def u1: Int = inputStream.readUnsignedByte()
   private def u2: Int = inputStream.readUnsignedShort()

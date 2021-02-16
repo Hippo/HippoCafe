@@ -27,13 +27,17 @@ package rip.hippo.testing.hippocafe
 
 import org.scalatest.FunSuite
 import rip.hippo.hippocafe.disassembler.instruction.impl.ReferenceInstruction
-import rip.hippo.hippocafe.ClassWriter
+import rip.hippo.hippocafe.{ClassReader, ClassWriter}
 import rip.hippo.hippocafe.version.MajorClassFileVersion._
 import rip.hippo.hippocafe.access.AccessFlag._
 import rip.hippo.hippocafe.builder.ClassBuilder
+import rip.hippo.hippocafe.constantpool.ConstantPoolKind
+import rip.hippo.hippocafe.constantpool.info.impl.StringInfo
 import rip.hippo.hippocafe.disassembler.instruction.BytecodeOpcode._
 import rip.hippo.hippocafe.disassembler.instruction.BytecodeOpcode
 import rip.hippo.hippocafe.disassembler.instruction.impl.{ConstantInstruction, ReferenceInstruction, SimpleInstruction}
+
+import java.io.FileOutputStream
 
 /**
  * @author Hippo
@@ -43,6 +47,7 @@ import rip.hippo.hippocafe.disassembler.instruction.impl.{ConstantInstruction, R
 final class BuilderSuite extends FunSuite {
 
   test("ClassBuilder.result") {
+
     val classFile = ClassBuilder(
       SE8,
       "HelloWorld",
@@ -50,23 +55,27 @@ final class BuilderSuite extends FunSuite {
       ACC_PUBLIC
     ).method(
       "<init>",
-      "()V"
+      "()V",
+      ACC_PUBLIC
     ).apply(instructions => {
       instructions += SimpleInstruction(ALOAD_0)
       instructions += ReferenceInstruction(INVOKESPECIAL, "java/lang/Object", "<init>", "()V")
       instructions += SimpleInstruction(RETURN)
     }).method(
       "main",
-      "([Ljava/lang/String)V",
+      "([Ljava/lang/String;)V",
       ACC_PUBLIC, ACC_STATIC
     ).apply(instructions => {
-      instructions += ReferenceInstruction(GETSTATIC, "java/lang/System", "out", "Ljava/io/PrintSteam;")
+      instructions += ReferenceInstruction(GETSTATIC, "scala/Predef$", "MODULE$", "Lscala/Predef$;")
       instructions += ConstantInstruction("Hello World")
-      instructions += ReferenceInstruction(INVOKEVIRTUAL, "java/io/PrintStream", "println", "(Ljava/lang/String;)V")
+      instructions += ReferenceInstruction(INVOKEVIRTUAL, "scala/Predef$", "println", "(Ljava/lang/Object;)V")
       instructions += SimpleInstruction(RETURN)
     }).result
-    println(classFile.name)
-    new ClassWriter(classFile).generateConstantPool.info.foreach(println)
+    val bytecode = new ClassWriter(classFile).write
+    val read = new ClassReader(bytecode).classFile
+    val classLoader = new CustomClassLoader()
+    val dynamicClass = classLoader.createClass("HelloWorld", bytecode)
+    dynamicClass.getMethod("main", classOf[Array[String]]).invoke(null, null)
   }
 
 }

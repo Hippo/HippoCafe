@@ -78,4 +78,11 @@ final case class ReferenceInfo(classIndex: Int, nameAndTypeIndex: Int, inputKind
       case Some(value) => value
       case None => nameAndTypeIndex
     }) + "), " + inputKind
+
+  override def equals(obj: Any): Boolean =
+    obj match {
+      case info: ReferenceInfo =>
+        info.classInfo.equals(classInfo) && info.nameAndTypeInfo.equals(nameAndTypeInfo)
+      case _ => false
+    }
 }

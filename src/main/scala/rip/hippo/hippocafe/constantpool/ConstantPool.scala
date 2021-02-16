@@ -54,7 +54,8 @@ final class ConstantPool {
 
   def findString(value: String): Int = {
     info.filter(entry => entry._2 match {
-      case string: StringInfo => readUTF8(string.index).equals(value)
+      case string: StringInfo =>
+        string.value.equals(value)
       case _ => false
     }).keys.head
   }

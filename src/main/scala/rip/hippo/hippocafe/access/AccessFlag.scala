@@ -65,5 +65,5 @@ object AccessFlag extends Enumeration {
     lookup.filter(entry => (entry._1 & mask) != 0).values.toSeq
 
   def toMask(accessFlags: AccessFlag*): Int =
-    accessFlags.map(_.mask).reduceLeft(_ | _)
+    if (accessFlags.isEmpty) 0 else accessFlags.map(_.mask).reduceLeft(_ | _)
 }
