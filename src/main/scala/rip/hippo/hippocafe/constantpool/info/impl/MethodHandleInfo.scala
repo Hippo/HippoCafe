@@ -68,4 +68,9 @@ final case class MethodHandleInfo(referenceKind: ReferenceKind, referenceIndex: 
       case Some(value) => value
       case None => referenceIndex
     }) + ")"
+
+  override def equals(obj: Any): Boolean =
+    obj match {
+      case info: MethodHandleInfo => info.referenceInfo.equals(referenceInfo)
+    }
 }
