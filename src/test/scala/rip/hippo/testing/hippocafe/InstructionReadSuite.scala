@@ -36,7 +36,7 @@ final class InstructionReadSuite extends FunSuite {
 
   private val className = "SwitchTest"
 
-  test("CodeTranslator.translate") {
+  test("CodeDisassembler.disassemble") {
     Option(Thread.currentThread.getContextClassLoader.getResourceAsStream(s"$className.class")) match {
       case Some(value) =>
         val classReader = new ClassReader(value)
