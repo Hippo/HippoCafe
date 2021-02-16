@@ -1,5 +1,5 @@
 # SBT
-target/
+/target/
 project/*
 !project/build.properties
 
