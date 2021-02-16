@@ -43,6 +43,9 @@ final case class MethodInfo(var name: String, var descriptor: String, var access
   val tryCatchBlocks: ListBuffer[TryCatchBlock] = ListBuffer[TryCatchBlock]()
   val attributes: ListBuffer[AttributeInfo] = ListBuffer[AttributeInfo]()
 
+  var maxStack = 0
+  var maxLocals = 0
+
   def this(name: String, descriptor: String, accessMask: Int) =
     this(name, descriptor, AccessFlag.fromMask(accessMask): _*)
 

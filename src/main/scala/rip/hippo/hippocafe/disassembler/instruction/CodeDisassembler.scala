@@ -379,6 +379,8 @@ object CodeDisassembler {
         })
         methodInfo.instructions ++= instructions.values.toList
         methodInfo.tryCatchBlocks ++= tryCatchBlocks.result()
+        methodInfo.maxLocals = codeAttribute.maxLocals
+        methodInfo.maxStack = codeAttribute.maxStack
         methodInfo.attributes -= codeAttribute
       case _ =>
 

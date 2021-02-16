@@ -57,7 +57,7 @@ final class BuilderSuite extends FunSuite {
       "<init>",
       "()V",
       ACC_PUBLIC
-    ).apply(instructions => {
+    ).maxStack(1).maxLocals(1).apply(instructions => {
       instructions += SimpleInstruction(ALOAD_0)
       instructions += ReferenceInstruction(INVOKESPECIAL, "java/lang/Object", "<init>", "()V")
       instructions += SimpleInstruction(RETURN)
@@ -65,7 +65,7 @@ final class BuilderSuite extends FunSuite {
       "main",
       "([Ljava/lang/String;)V",
       ACC_PUBLIC, ACC_STATIC
-    ).apply(instructions => {
+    ).maxStack(2).maxLocals(1).apply(instructions => {
       instructions += ReferenceInstruction(GETSTATIC, "java/lang/System", "out", "Ljava/io/PrintStream;")
       instructions += ConstantInstruction("Hello World")
       instructions += ReferenceInstruction(INVOKEVIRTUAL, "java/io/PrintStream", "println", "(Ljava/lang/String;)V")

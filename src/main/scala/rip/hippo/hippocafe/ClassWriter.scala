@@ -78,11 +78,11 @@ final class ClassWriter(classFile: ClassFile) {
           val methodBytecode = ListBuffer[Byte]()
           method.instructions.foreach(_.assemble(methodBytecode, constantPool))
           removedCodeAttribute += method
-          // Temp values for now, calculate next push
+          // todo: compute exceptions and sub-attributes
           method.attributes += CodeAttribute(
             classFile.isOak,
-            5,
-            5,
+            method.maxStack,
+            method.maxLocals,
             methodBytecode.length,
             methodBytecode.toArray,
             0,

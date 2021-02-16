@@ -56,6 +56,17 @@ final class ClassBuilder(version: MajorClassFileVersion,
 
   sealed class MethodBuilder(parent: ClassBuilder, name: String, descriptor: String, access: AccessFlag*) {
     private val methodInfo = MethodInfo(name, descriptor, access: _*)
+
+    def maxStack(size: Int): MethodBuilder = {
+      methodInfo.maxStack = size
+      this
+    }
+
+    def maxLocals(size: Int): MethodBuilder = {
+      methodInfo.maxLocals = size
+      this
+    }
+
     def apply(consumer: ListBuffer[Instruction] => Unit): ClassBuilder = {
       consumer(methodInfo.instructions)
       parent.classFile.methods += methodInfo
