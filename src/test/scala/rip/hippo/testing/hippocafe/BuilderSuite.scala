@@ -72,7 +72,6 @@ final class BuilderSuite extends FunSuite {
       instructions += SimpleInstruction(RETURN)
     }).result
     val bytecode = new ClassWriter(classFile).write
-    val read = new ClassReader(bytecode).classFile
     val classLoader = new CustomClassLoader()
     val dynamicClass = classLoader.createClass("HelloWorld", bytecode)
     dynamicClass.getMethod("main", classOf[Array[String]]).invoke(null, null)
