@@ -25,6 +25,7 @@
 package rip.hippo.hippocafe.disassembler.instruction.impl
 
 import rip.hippo.hippocafe.constantpool.ConstantPool
+import rip.hippo.hippocafe.disassembler.context.AssemblerContext
 import rip.hippo.hippocafe.disassembler.instruction.BytecodeOpcode.BytecodeOpcode
 import rip.hippo.hippocafe.disassembler.instruction.Instruction
 
@@ -36,6 +37,6 @@ import scala.collection.mutable.ListBuffer
  * @since 1.0.0
  */
 final case class SimpleInstruction(bytecodeOpcode: BytecodeOpcode) extends Instruction {
-  override def assemble(code: ListBuffer[Byte], constantPool: ConstantPool): Unit =
-    code += bytecodeOpcode.id.asInstanceOf[Byte]
+  override def assemble(assemblerContext: AssemblerContext, constantPool: ConstantPool): Unit =
+    assemblerContext.code += bytecodeOpcode.id.asInstanceOf[Byte]
 }

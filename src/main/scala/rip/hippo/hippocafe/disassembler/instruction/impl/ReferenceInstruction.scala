@@ -28,6 +28,7 @@ import rip.hippo.hippocafe.disassembler.instruction.BytecodeOpcode.{BytecodeOpco
 import rip.hippo.hippocafe.constantpool.{ConstantPool, ConstantPoolKind}
 import rip.hippo.hippocafe.constantpool.info.ConstantPoolInfo
 import rip.hippo.hippocafe.constantpool.info.impl.{NameAndTypeInfo, ReferenceInfo, StringInfo, UTF8Info}
+import rip.hippo.hippocafe.disassembler.context.AssemblerContext
 import rip.hippo.hippocafe.disassembler.instruction.Instruction
 import rip.hippo.hippocafe.util.Type
 
@@ -45,7 +46,8 @@ final case class ReferenceInstruction(bytecodeOpcode: BytecodeOpcode, owner: Str
   }
   def isField: Boolean = !isMethod
 
-  override def assemble(code: ListBuffer[Byte], constantPool: ConstantPool): Unit = {
+  override def assemble(assemblerContext: AssemblerContext, constantPool: ConstantPool): Unit = {
+    val code = assemblerContext.code
     var index = -1
     var refIndex = -1
     constantPool.info

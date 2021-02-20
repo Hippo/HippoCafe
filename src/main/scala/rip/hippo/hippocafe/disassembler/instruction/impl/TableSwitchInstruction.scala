@@ -25,6 +25,7 @@
 package rip.hippo.hippocafe.disassembler.instruction.impl
 
 import rip.hippo.hippocafe.constantpool.ConstantPool
+import rip.hippo.hippocafe.disassembler.context.AssemblerContext
 import rip.hippo.hippocafe.disassembler.instruction.Instruction
 
 import scala.collection.mutable.ListBuffer
@@ -37,7 +38,7 @@ import scala.collection.mutable.ListBuffer
 final case class TableSwitchInstruction(default: LabelInstruction, low: Int, high: Int) extends Instruction {
   val table: ListBuffer[LabelInstruction] = ListBuffer[LabelInstruction]()
 
-  override def assemble(code: ListBuffer[Byte], constantPool: ConstantPool): Unit = {
+  override def assemble(assemblerContext: AssemblerContext, constantPool: ConstantPool): Unit = {
 
   }
 }

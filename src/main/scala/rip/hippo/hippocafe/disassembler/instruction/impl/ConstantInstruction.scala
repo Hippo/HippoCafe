@@ -30,6 +30,7 @@ import rip.hippo.hippocafe.disassembler.instruction.Instruction
 import rip.hippo.hippocafe.constantpool.{ConstantPool, ConstantPoolKind}
 import rip.hippo.hippocafe.constantpool.info.ValueAwareness
 import rip.hippo.hippocafe.constantpool.info.impl.{DoubleInfo, FloatInfo, IntegerInfo, LongInfo, StringInfo, UTF8Info}
+import rip.hippo.hippocafe.disassembler.context.AssemblerContext
 import rip.hippo.hippocafe.disassembler.instruction.{BytecodeOpcode, Instruction}
 
 import scala.collection.mutable.ListBuffer
@@ -40,7 +41,8 @@ import scala.collection.mutable.ListBuffer
  * @since 1.0.0
  */
 final case class ConstantInstruction(constant: Any) extends Instruction {
-  override def assemble(code: ListBuffer[Byte], constantPool: ConstantPool): Unit = {
+  override def assemble(assemblerContext: AssemblerContext, constantPool: ConstantPool): Unit = {
+    val code = assemblerContext.code
     var index = -1
     // find if the constant is already present
     constant match {

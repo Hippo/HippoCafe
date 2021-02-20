@@ -35,6 +35,7 @@ import rip.hippo.hippocafe.attribute.impl.{CodeAttribute, LineNumberTableAttribu
 import rip.hippo.hippocafe.constantpool.{ConstantPool, ConstantPoolKind}
 import rip.hippo.hippocafe.constantpool.info.{ConstantPoolInfo, impl}
 import rip.hippo.hippocafe.constantpool.info.impl.{DoubleInfo, FloatInfo, IntegerInfo, LongInfo, NameAndTypeInfo, ReferenceInfo, StringInfo, UTF8Info}
+import rip.hippo.hippocafe.disassembler.context.AssemblerContext
 import rip.hippo.hippocafe.disassembler.instruction.impl.{ConstantInstruction, ReferenceInstruction}
 import rip.hippo.hippocafe.exception.HippoCafeException
 import rip.hippo.hippocafe.util.Type
@@ -75,8 +76,9 @@ final class ClassWriter(classFile: ClassFile) {
             constantPool.insert(index, UTF8Info("Code"))
             hasCodeAttribute = true
           }
-          val methodBytecode = ListBuffer[Byte]()
-          method.instructions.foreach(_.assemble(methodBytecode, constantPool))
+          val assemblerContext = new AssemblerContext
+          method.instructions.foreach(_.assemble(assemblerContext, constantPool))
+          val methodBytecode = assemblerContext.code
           removedCodeAttribute += method
           // todo: compute exceptions and sub-attributes
           method.attributes += CodeAttribute(
