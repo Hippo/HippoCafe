@@ -28,6 +28,8 @@ import org.scalatest.FunSuite
 import rip.hippo.hippocafe.ClassReader
 import rip.hippo.hippocafe.{ClassReader, ClassWriter}
 
+import scala.util.Using
+
 /**
  * @author Hippo
  * @version 1.0.0, 8/4/20
@@ -41,12 +43,15 @@ final class LowWriteSuite extends FunSuite {
   test("ClassWriter.write") {
     Option(Thread.currentThread.getContextClassLoader.getResourceAsStream(s"$className.class")) match {
       case Some(value) =>
-        val classReader = new ClassReader(value, true)
-        val bytecode = new ClassWriter(classReader.classFile).write
+        Using(new ClassReader(value, true)) {
+          classReader =>
+            val bytecode = new ClassWriter(classReader.classFile).write
 
-        val loaded = new CustomClassLoader().createClass(className, bytecode)
+            val loaded = new CustomClassLoader().createClass(className, bytecode)
 
-        loaded.getDeclaredMethod("main", classOf[Array[String]]).invoke(null, null)
+            loaded.getDeclaredMethod("main", classOf[Array[String]]).invoke(null, null)
+        }
+        value.close()
       case None => println(s"Could not load resource $className.class")
     }
   }

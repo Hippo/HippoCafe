@@ -24,22 +24,17 @@
 
 package rip.hippo.hippocafe
 
-import java.io.{ByteArrayOutputStream, DataOutputStream}
-import rip.hippo.hippocafe.constantpool.ConstantPool
-import rip.hippo.hippocafe.constantpool.info.impl.DoubleInfo
-import rip.hippo.hippocafe.disassembler.instruction.impl.ReferenceInstruction
 import rip.hippo.hippocafe.access.AccessFlag
-import rip.hippo.hippocafe.attribute.{Attribute, AttributeInfo}
+import rip.hippo.hippocafe.attribute.impl.CodeAttribute
 import rip.hippo.hippocafe.attribute.impl.data.ExceptionTableAttributeData
-import rip.hippo.hippocafe.attribute.impl.{CodeAttribute, LineNumberTableAttribute}
-import rip.hippo.hippocafe.constantpool.{ConstantPool, ConstantPoolKind}
+import rip.hippo.hippocafe.attribute.{Attribute, AttributeInfo}
+import rip.hippo.hippocafe.constantpool.info.impl._
 import rip.hippo.hippocafe.constantpool.info.{ConstantPoolInfo, impl}
-import rip.hippo.hippocafe.constantpool.info.impl.{DoubleInfo, FloatInfo, IntegerInfo, LongInfo, NameAndTypeInfo, ReferenceInfo, StringInfo, UTF8Info}
+import rip.hippo.hippocafe.constantpool.{ConstantPool, ConstantPoolKind}
 import rip.hippo.hippocafe.disassembler.context.AssemblerContext
 import rip.hippo.hippocafe.disassembler.instruction.impl.{ConstantInstruction, ReferenceInstruction}
-import rip.hippo.hippocafe.exception.HippoCafeException
-import rip.hippo.hippocafe.util.Type
 
+import java.io.{ByteArrayOutputStream, DataOutputStream}
 import scala.collection.mutable.ListBuffer
 
 /**
@@ -47,110 +42,73 @@ import scala.collection.mutable.ListBuffer
  * @version 1.0.0, 8/3/20
  * @since 1.0.0
  */
-final class ClassWriter(classFile: ClassFile) {
+final class ClassWriter(classFile: ClassFile) extends AutoCloseable {
 
   private val byteOut = new ByteArrayOutputStream()
   private val out = new DataOutputStream(byteOut)
 
   def write: Array[Byte] = {
-    try {
-      out.writeInt(0xCAFEBABE)
+    out.writeInt(0xCAFEBABE)
 
-      out.writeShort(classFile.minorVersion)
-      out.writeShort(classFile.majorClassFileVersion.id)
+    out.writeShort(classFile.minorVersion)
+    out.writeShort(classFile.majorClassFileVersion.id)
 
-      val removedCodeAttribute = ListBuffer[MethodInfo]()
+    val removedCodeAttribute = ListBuffer[MethodInfo]()
 
 
-      val constantPool = classFile.constantPool match {
-        case Some(value) => if (classFile.lowLevel) value else generateConstantPool
-        case None => generateConstantPool
-      }
+    val constantPool = classFile.constantPool match {
+      case Some(value) => if (classFile.lowLevel) value else generateConstantPool
+      case None => generateConstantPool
+    }
 
-      var hasCodeAttribute = constantPool.info.filter(_._2.isInstanceOf[UTF8Info]).exists(_._2.asInstanceOf[UTF8Info].value.equals("Code"))
-      classFile.methods.foreach(method => {
-        if (method.instructions.nonEmpty) {
-          if (!hasCodeAttribute) {
-            val max = constantPool.info.keys.max
-            val index = max + (if (constantPool.info(max).wide) 2 else 1)
-            constantPool.insert(index, UTF8Info("Code"))
-            hasCodeAttribute = true
-          }
-          val assemblerContext = new AssemblerContext
-          method.instructions.foreach(_.assemble(assemblerContext, constantPool))
-          val methodBytecode = assemblerContext.code
-          removedCodeAttribute += method
-          // todo: compute exceptions and sub-attributes
-          method.attributes += CodeAttribute(
-            classFile.isOak,
-            method.maxStack,
-            method.maxLocals,
-            methodBytecode.length,
-            methodBytecode.toArray,
-            0,
-            new Array[ExceptionTableAttributeData](0),
-            0,
-            new Array[AttributeInfo](0)
-          )
+    var hasCodeAttribute = constantPool.info.filter(_._2.isInstanceOf[UTF8Info]).exists(_._2.asInstanceOf[UTF8Info].value.equals("Code"))
+    classFile.methods.foreach(method => {
+      if (method.instructions.nonEmpty) {
+        if (!hasCodeAttribute) {
+          val max = constantPool.info.keys.max
+          val index = max + (if (constantPool.info(max).wide) 2 else 1)
+          constantPool.insert(index, UTF8Info("Code"))
+          hasCodeAttribute = true
         }
-      })
+        val assemblerContext = new AssemblerContext
+        method.instructions.foreach(_.assemble(assemblerContext, constantPool))
+        val methodBytecode = assemblerContext.code
+        removedCodeAttribute += method
+        // todo: compute exceptions and sub-attributes
+        method.attributes += CodeAttribute(
+          classFile.isOak,
+          method.maxStack,
+          method.maxLocals,
+          methodBytecode.length,
+          methodBytecode.toArray,
+          0,
+          new Array[ExceptionTableAttributeData](0),
+          0,
+          new Array[AttributeInfo](0)
+        )
+      }
+    })
 
-      out.writeShort(constantPool.info.values.size + 1)
-      constantPool.info.foreach(entry => {
-        out.writeByte(entry._2.kind.id)
-        entry._2.write(out, constantPool)
-      })
+    out.writeShort(constantPool.info.values.size + 1)
+    constantPool.info.foreach(entry => {
+      out.writeByte(entry._2.kind.id)
+      entry._2.write(out, constantPool)
+    })
 
-      out.writeShort(AccessFlag.toMask(classFile.access: _*))
-      out.writeShort(constantPool.findString(classFile.name))
-      out.writeShort(constantPool.findString(classFile.superName))
+    out.writeShort(AccessFlag.toMask(classFile.access: _*))
+    out.writeShort(constantPool.findString(classFile.name))
+    out.writeShort(constantPool.findString(classFile.superName))
 
-      out.writeShort(classFile.interfaces.size)
-      classFile.interfaces.foreach(interface => out.writeShort(constantPool.findString(interface)))
+    out.writeShort(classFile.interfaces.size)
+    classFile.interfaces.foreach(interface => out.writeShort(constantPool.findString(interface)))
 
-      out.writeShort(classFile.fields.size)
-      classFile.fields.foreach(field => {
-        out.writeShort(AccessFlag.toMask(field.accessFlags: _*))
-        out.writeShort(constantPool.findUTF8(field.name))
-        out.writeShort(constantPool.findUTF8(field.descriptor))
-        out.writeShort(field.attributes.size)
-        field.attributes.foreach(attribute => {
-          val byteArrayOutputStream = new ByteArrayOutputStream()
-          val dataOutputStream = new DataOutputStream(byteArrayOutputStream)
-          attribute.write(dataOutputStream, constantPool)
-          val attributeData = byteArrayOutputStream.toByteArray
-
-          out.writeShort(constantPool.findUTF8(attribute.kind.toString))
-          out.writeInt(attributeData.length)
-          out.write(attributeData)
-
-          dataOutputStream.close()
-        })
-      })
-
-      out.writeShort(classFile.methods.size)
-      classFile.methods.foreach(method => {
-        out.writeShort(AccessFlag.toMask(method.accessFlags: _*))
-        out.writeShort(constantPool.findUTF8(method.name))
-        out.writeShort(constantPool.findUTF8(method.descriptor))
-        out.writeShort(method.attributes.size)
-
-        method.attributes.foreach(attribute => {
-          val byteArrayOutputStream = new ByteArrayOutputStream()
-          val dataOutputStream = new DataOutputStream(byteArrayOutputStream)
-          attribute.write(dataOutputStream, constantPool)
-          val attributeData = byteArrayOutputStream.toByteArray
-
-          out.writeShort(constantPool.findUTF8(attribute.kind.toString))
-          out.writeInt(attributeData.length)
-          out.write(attributeData)
-
-          dataOutputStream.close()
-        })
-      })
-
-      out.writeShort(classFile.attributes.size)
-      classFile.attributes.foreach(attribute => {
+    out.writeShort(classFile.fields.size)
+    classFile.fields.foreach(field => {
+      out.writeShort(AccessFlag.toMask(field.accessFlags: _*))
+      out.writeShort(constantPool.findUTF8(field.name))
+      out.writeShort(constantPool.findUTF8(field.descriptor))
+      out.writeShort(field.attributes.size)
+      field.attributes.foreach(attribute => {
         val byteArrayOutputStream = new ByteArrayOutputStream()
         val dataOutputStream = new DataOutputStream(byteArrayOutputStream)
         attribute.write(dataOutputStream, constantPool)
@@ -162,13 +120,48 @@ final class ClassWriter(classFile: ClassFile) {
 
         dataOutputStream.close()
       })
+    })
 
-      removedCodeAttribute.foreach(method => {
-        method.attributes.filter(_.kind == Attribute.CODE).foreach(method.attributes.subtractOne)
+    out.writeShort(classFile.methods.size)
+    classFile.methods.foreach(method => {
+      out.writeShort(AccessFlag.toMask(method.accessFlags: _*))
+      out.writeShort(constantPool.findUTF8(method.name))
+      out.writeShort(constantPool.findUTF8(method.descriptor))
+      out.writeShort(method.attributes.size)
+
+      method.attributes.foreach(attribute => {
+        val byteArrayOutputStream = new ByteArrayOutputStream()
+        val dataOutputStream = new DataOutputStream(byteArrayOutputStream)
+        attribute.write(dataOutputStream, constantPool)
+        val attributeData = byteArrayOutputStream.toByteArray
+
+        out.writeShort(constantPool.findUTF8(attribute.kind.toString))
+        out.writeInt(attributeData.length)
+        out.write(attributeData)
+
+        dataOutputStream.close()
       })
+    })
 
-      byteOut.toByteArray
-    } finally out.close()
+    out.writeShort(classFile.attributes.size)
+    classFile.attributes.foreach(attribute => {
+      val byteArrayOutputStream = new ByteArrayOutputStream()
+      val dataOutputStream = new DataOutputStream(byteArrayOutputStream)
+      attribute.write(dataOutputStream, constantPool)
+      val attributeData = byteArrayOutputStream.toByteArray
+
+      out.writeShort(constantPool.findUTF8(attribute.kind.toString))
+      out.writeInt(attributeData.length)
+      out.write(attributeData)
+
+      dataOutputStream.close()
+    })
+
+    removedCodeAttribute.foreach(method => {
+      method.attributes.filter(_.kind == Attribute.CODE).foreach(method.attributes.subtractOne)
+    })
+
+    byteOut.toByteArray
   }
 
   def generateConstantPool: ConstantPool = {
@@ -240,4 +233,6 @@ final class ClassWriter(classFile: ClassFile) {
 
     constantPool
   }
+
+  override def close(): Unit = out.close()
 }

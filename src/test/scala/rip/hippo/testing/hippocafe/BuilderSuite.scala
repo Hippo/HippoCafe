@@ -37,7 +37,7 @@ import rip.hippo.hippocafe.disassembler.instruction.BytecodeOpcode._
 import rip.hippo.hippocafe.disassembler.instruction.BytecodeOpcode
 import rip.hippo.hippocafe.disassembler.instruction.impl.{ConstantInstruction, ReferenceInstruction, SimpleInstruction}
 
-import java.io.FileOutputStream
+import scala.util.Using
 
 /**
  * @author Hippo
@@ -71,10 +71,13 @@ final class BuilderSuite extends FunSuite {
       instructions += ReferenceInstruction(INVOKEVIRTUAL, "java/io/PrintStream", "println", "(Ljava/lang/String;)V")
       instructions += SimpleInstruction(RETURN)
     }).result
-    val bytecode = new ClassWriter(classFile).write
-    val classLoader = new CustomClassLoader()
-    val dynamicClass = classLoader.createClass("HelloWorld", bytecode)
-    dynamicClass.getMethod("main", classOf[Array[String]]).invoke(null, null)
+    Using(new ClassWriter(classFile)) {
+      classWriter =>
+        val bytecode = classWriter.write
+        val classLoader = new CustomClassLoader()
+        val dynamicClass = classLoader.createClass("HelloWorld", bytecode)
+        dynamicClass.getMethod("main", classOf[Array[String]]).invoke(null, null)
+    }
   }
 
 }

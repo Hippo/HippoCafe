@@ -67,7 +67,7 @@ import rip.hippo.hippocafe.version.MajorClassFileVersion
  * @version 1.1.0, 8/1/20
  * @since 1.0.0
  */
-final class ClassReader(parentInputStream: InputStream, lowLevel: Boolean = false) {
+final class ClassReader(parentInputStream: InputStream, lowLevel: Boolean = false) extends AutoCloseable {
 
   def this(bytecode: Array[Byte], lowLevel: Boolean) {
     this(new ByteArrayInputStream(bytecode), lowLevel)
@@ -156,8 +156,6 @@ final class ClassReader(parentInputStream: InputStream, lowLevel: Boolean = fals
   classFile.fields.addAll((0 until u2).map(_ => readField))
   classFile.methods.addAll((0 until u2).map(_ => readMethod))
   classFile.attributes.addAll((0 until u2).map(_ => readAttribute()))
-
-  inputStream.close()
 
   def readField: FieldInfo = {
     val accessMask = u2
@@ -483,4 +481,6 @@ final class ClassReader(parentInputStream: InputStream, lowLevel: Boolean = fals
   }
 
   if (!lowLevel) classFile.methods.foreach(methodInfo => CodeDisassembler.disassemble(methodInfo, constantPool))
+
+  override def close(): Unit = inputStream.close()
 }

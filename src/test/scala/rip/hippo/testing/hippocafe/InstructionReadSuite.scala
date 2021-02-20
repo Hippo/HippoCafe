@@ -27,6 +27,8 @@ package rip.hippo.testing.hippocafe
 import org.scalatest.FunSuite
 import rip.hippo.hippocafe.ClassReader
 
+import scala.util.Using
+
 /**
  * @author Hippo
  * @version 1.0.0, 8/4/20
@@ -39,14 +41,17 @@ final class InstructionReadSuite extends FunSuite {
   test("CodeDisassembler.disassemble") {
     Option(Thread.currentThread.getContextClassLoader.getResourceAsStream(s"$className.class")) match {
       case Some(value) =>
-        val classReader = new ClassReader(value)
-        val classFile = classReader.classFile
-        classFile.methods.foreach(info => {
-          println(info.name)
-          info.instructions.foreach(println(_))
-          info.tryCatchBlocks.foreach(println(_))
-          println()
-        })
+        Using(new ClassReader(value)) {
+          classReader =>
+            val classFile = classReader.classFile
+            classFile.methods.foreach(info => {
+              println(info.name)
+              info.instructions.foreach(println(_))
+              info.tryCatchBlocks.foreach(println(_))
+              println()
+            })
+        }
+        value.close()
       case None => println(s"Could not load resource $className.class")
     }
   }

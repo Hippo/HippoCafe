@@ -38,6 +38,5 @@ import scala.collection.mutable.ListBuffer
  */
 final case class VariableInstruction(bytecodeOpcode: BytecodeOpcode, index: Int) extends Instruction {
   override def assemble(assemblerContext: AssemblerContext, constantPool: ConstantPool): Unit = {
-
   }
 }

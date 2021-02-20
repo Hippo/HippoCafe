@@ -11,4 +11,7 @@ class AssemblerContext {
   val code: ListBuffer[Byte] = ListBuffer[Byte]()
   var maxStack = 0
   var maxLocals = 0
+
+  def setMaxStack(size: Int): Unit = maxStack = Math.max(maxStack, size)
+  def setMaxLocals(size: Int): Unit = maxLocals = Math.max(maxLocals, size)
 }
