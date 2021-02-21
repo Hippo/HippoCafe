@@ -115,6 +115,7 @@ object BytecodeOpcode extends Enumeration {
   val FDIV: BytecodeOpcode = 0x6e
   val FLOAD: BytecodeOpcode = 0x17
   val FLOAD_0: BytecodeOpcode = 0x22
+  val FLOAD_1: BytecodeOpcode = 0x23
   val FLOAD_2: BytecodeOpcode = 0x24
   val FLOAD_3: BytecodeOpcode = 0x25
   val FMUL: BytecodeOpcode = 0x6a

@@ -31,10 +31,12 @@ import rip.hippo.hippocafe.attribute.{Attribute, AttributeInfo}
 import rip.hippo.hippocafe.constantpool.info.impl._
 import rip.hippo.hippocafe.constantpool.info.{ConstantPoolInfo, impl}
 import rip.hippo.hippocafe.constantpool.{ConstantPool, ConstantPoolKind}
-import rip.hippo.hippocafe.disassembler.context.AssemblerContext
+import rip.hippo.hippocafe.disassembler.context.{AssemblerContext, AssemblerFlag}
 import rip.hippo.hippocafe.disassembler.instruction.impl.{ConstantInstruction, ReferenceInstruction}
+import rip.hippo.hippocafe.util.Type
 
 import java.io.{ByteArrayOutputStream, DataOutputStream}
+import scala.collection.mutable
 import scala.collection.mutable.ListBuffer
 
 /**
@@ -44,6 +46,8 @@ import scala.collection.mutable.ListBuffer
  */
 final class ClassWriter(classFile: ClassFile) extends AutoCloseable {
 
+
+  private val flags = mutable.Set[AssemblerFlag]()
   private val byteOut = new ByteArrayOutputStream()
   private val out = new DataOutputStream(byteOut)
 
@@ -70,15 +74,23 @@ final class ClassWriter(classFile: ClassFile) extends AutoCloseable {
           constantPool.insert(index, UTF8Info("Code"))
           hasCodeAttribute = true
         }
-        val assemblerContext = new AssemblerContext
+        val assemblerContext = new AssemblerContext(flags.toSet)
+        assemblerContext.setMaxLocals(method.maxLocals)
+        assemblerContext.setMaxStack(method.maxStack)
+
+        if (assemblerContext.calculateMaxes) {
+          val defaultSize = Type.getMethodParameterTypes(method.descriptor).map(_.getSize).sum + (if (method.accessFlags.contains(AccessFlag.ACC_STATIC)) 0 else 1)
+          assemblerContext.setMaxLocals(defaultSize);
+        }
+
         method.instructions.foreach(_.assemble(assemblerContext, constantPool))
         val methodBytecode = assemblerContext.code
         removedCodeAttribute += method
         // todo: compute exceptions and sub-attributes
         method.attributes += CodeAttribute(
           classFile.isOak,
-          method.maxStack,
-          method.maxLocals,
+          assemblerContext.maxStack,
+          assemblerContext.maxLocals,
           methodBytecode.length,
           methodBytecode.toArray,
           0,
@@ -234,5 +246,17 @@ final class ClassWriter(classFile: ClassFile) extends AutoCloseable {
     constantPool
   }
 
+  def calculateMaxes: ClassWriter = {
+    flags += AssemblerFlag.CALCULATE_MAXES
+    this
+  }
+
+  def generateFrames: ClassWriter = {
+    flags += AssemblerFlag.GENERATE_FRAMES
+    this
+  }
   override def close(): Unit = out.close()
+
+  override def toString: String =
+    "ClassWriter(" + classFile + ", " + flags + ")"
 }

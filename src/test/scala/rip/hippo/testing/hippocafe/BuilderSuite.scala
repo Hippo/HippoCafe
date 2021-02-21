@@ -26,16 +26,12 @@ package rip.hippo.testing.hippocafe
 
 
 import org.scalatest.FunSuite
-import rip.hippo.hippocafe.disassembler.instruction.impl.ReferenceInstruction
-import rip.hippo.hippocafe.{ClassReader, ClassWriter}
-import rip.hippo.hippocafe.version.MajorClassFileVersion._
+import rip.hippo.hippocafe.ClassWriter
 import rip.hippo.hippocafe.access.AccessFlag._
 import rip.hippo.hippocafe.builder.ClassBuilder
-import rip.hippo.hippocafe.constantpool.ConstantPoolKind
-import rip.hippo.hippocafe.constantpool.info.impl.StringInfo
 import rip.hippo.hippocafe.disassembler.instruction.BytecodeOpcode._
-import rip.hippo.hippocafe.disassembler.instruction.BytecodeOpcode
-import rip.hippo.hippocafe.disassembler.instruction.impl.{ConstantInstruction, ReferenceInstruction, SimpleInstruction}
+import rip.hippo.hippocafe.disassembler.instruction.impl._
+import rip.hippo.hippocafe.version.MajorClassFileVersion._
 
 import scala.util.Using
 
@@ -57,7 +53,7 @@ final class BuilderSuite extends FunSuite {
       "<init>",
       "()V",
       ACC_PUBLIC
-    ).maxStack(1).maxLocals(1).apply(instructions => {
+    ).maxStack(1).apply(instructions => {
       instructions += SimpleInstruction(ALOAD_0)
       instructions += ReferenceInstruction(INVOKESPECIAL, "java/lang/Object", "<init>", "()V")
       instructions += SimpleInstruction(RETURN)
@@ -65,13 +61,13 @@ final class BuilderSuite extends FunSuite {
       "main",
       "([Ljava/lang/String;)V",
       ACC_PUBLIC, ACC_STATIC
-    ).maxStack(2).maxLocals(1).apply(instructions => {
+    ).maxStack(2).apply(instructions => {
       instructions += ReferenceInstruction(GETSTATIC, "java/lang/System", "out", "Ljava/io/PrintStream;")
       instructions += ConstantInstruction("Hello World")
       instructions += ReferenceInstruction(INVOKEVIRTUAL, "java/io/PrintStream", "println", "(Ljava/lang/String;)V")
       instructions += SimpleInstruction(RETURN)
     }).result
-    Using(new ClassWriter(classFile)) {
+    Using(new ClassWriter(classFile).calculateMaxes) {
       classWriter =>
         val bytecode = classWriter.write
         val classLoader = new CustomClassLoader()

@@ -25,7 +25,6 @@
 package rip.hippo.testing.hippocafe
 
 import org.scalatest.FunSuite
-import rip.hippo.hippocafe.ClassReader
 import rip.hippo.hippocafe.{ClassReader, ClassWriter}
 
 import scala.util.Using
