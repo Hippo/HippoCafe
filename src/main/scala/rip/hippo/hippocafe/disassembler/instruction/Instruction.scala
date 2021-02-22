@@ -27,6 +27,7 @@ package rip.hippo.hippocafe.disassembler.instruction
 import rip.hippo.hippocafe.constantpool.ConstantPool
 import rip.hippo.hippocafe.disassembler.context.AssemblerContext
 
+import java.util.UUID
 import scala.collection.mutable.ListBuffer
 
 /**
@@ -35,5 +36,8 @@ import scala.collection.mutable.ListBuffer
  * @since 1.0.0
  */
 trait Instruction {
+
+  val uniqueId: UUID = UUID.randomUUID()
+
   def assemble(assemblerContext: AssemblerContext, constantPool: ConstantPool): Unit
 }

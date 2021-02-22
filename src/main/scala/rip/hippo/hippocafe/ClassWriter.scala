@@ -76,7 +76,7 @@ final class ClassWriter(classFile: ClassFile) extends AutoCloseable {
         }
         val assemblerContext = new AssemblerContext(flags.toSet)
         assemblerContext.setMaxLocals(method.maxLocals)
-        assemblerContext.setMaxStack(method.maxStack)
+        assemblerContext.updateStack(method.maxStack)
 
         if (assemblerContext.calculateMaxes) {
           val defaultSize = Type.getMethodParameterTypes(method.descriptor).map(_.getSize).sum + (if (method.accessFlags.contains(AccessFlag.ACC_STATIC)) 0 else 1)

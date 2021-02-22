@@ -26,7 +26,7 @@ package rip.hippo.hippocafe.disassembler.instruction.impl
 
 import rip.hippo.hippocafe.constantpool.ConstantPool
 import rip.hippo.hippocafe.disassembler.context.AssemblerContext
-import rip.hippo.hippocafe.disassembler.instruction.Instruction
+import rip.hippo.hippocafe.disassembler.instruction.{BytecodeOpcode, Instruction}
 
 import scala.collection.mutable.ListBuffer
 
@@ -37,6 +37,18 @@ import scala.collection.mutable.ListBuffer
  */
 final case class PushInstruction(value: Int) extends Instruction {
   override def assemble(assemblerContext: AssemblerContext, constantPool: ConstantPool): Unit = {
-
+    val code = assemblerContext.code
+    value match {
+      case x if x >= -1 && x < 5 =>
+        code += (x + 3).toByte
+      case x if x >= Byte.MinValue && x <= Byte.MaxValue =>
+        code += BytecodeOpcode.BIPUSH.id.toByte
+        code += x.toByte
+      case x if x >= Short.MinValue && x <= Short.MaxValue =>
+        code += BytecodeOpcode.SIPUSH.id.toByte
+        code += (x << 8).toByte
+        code += (x & 0xFF).toByte
+      case _ => ConstantInstruction(value).assemble(assemblerContext, constantPool)
+    }
   }
 }

@@ -44,7 +44,7 @@ final case class ConstantInstruction(constant: Any) extends Instruction {
   override def assemble(assemblerContext: AssemblerContext, constantPool: ConstantPool): Unit = {
     val code = assemblerContext.code
     var index = -1
-    // find if the constant is already present
+
     constant match {
       case _: String =>
         constantPool.info
@@ -59,7 +59,7 @@ final case class ConstantInstruction(constant: Any) extends Instruction {
           .keys
           .foreach(index = _)
     }
-    // if not make it
+
     if (index == -1) {
       val max = constantPool.info.keys.max
       index = max + (if (constantPool.info(max).wide) 2 else 1)
@@ -81,17 +81,17 @@ final case class ConstantInstruction(constant: Any) extends Instruction {
 
     constant match {
       case _: Double | Long =>
-        code += BytecodeOpcode.LDC2_W.id.asInstanceOf[Byte]
-        code += (index << 8).asInstanceOf[Byte]
-        code += (index & 0xFF).asInstanceOf[Byte]
+        code += BytecodeOpcode.LDC2_W.id.toByte
+        code += (index << 8).toByte
+        code += (index & 0xFF).toByte
       case _ =>
         if (index > 255) {
-          code += BytecodeOpcode.LDC_W.id.asInstanceOf[Byte]
-          code += (index << 8).asInstanceOf[Byte]
-          code += (index & 0xFF).asInstanceOf[Byte]
+          code += BytecodeOpcode.LDC_W.id.toByte
+          code += (index << 8).toByte
+          code += (index & 0xFF).toByte
         } else {
-          code += BytecodeOpcode.LDC.id.asInstanceOf[Byte]
-          code += (index).asInstanceOf[Byte]
+          code += BytecodeOpcode.LDC.id.toByte
+          code += index.toByte
         }
     }
   }

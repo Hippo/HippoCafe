@@ -90,12 +90,12 @@ final case class ReferenceInstruction(bytecodeOpcode: BytecodeOpcode, owner: Str
         if (isMethod) ConstantPoolKind.METHOD_REF else ConstantPoolKind.FIELD_REF))
       
     } else refIndex = index
-    code += bytecodeOpcode.id.asInstanceOf[Byte]
-    code += (refIndex >> 8).asInstanceOf[Byte]
-    code += (refIndex & 0xFF).asInstanceOf[Byte]
+    code += bytecodeOpcode.id.toByte
+    code += (refIndex >> 8).toByte
+    code += (refIndex & 0xFF).toByte
 
     if (bytecodeOpcode == INVOKEINTERFACE) {
-      code += Type.getMethodParameterTypes(descriptor).map(_.getSize).sum.asInstanceOf[Byte]
+      code += Type.getMethodParameterTypes(descriptor).map(_.getSize).sum.toByte
       code += 0
     }
   }

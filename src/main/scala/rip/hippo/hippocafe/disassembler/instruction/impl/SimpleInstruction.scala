@@ -38,7 +38,7 @@ import scala.collection.mutable.ListBuffer
  */
 final case class SimpleInstruction(bytecodeOpcode: BytecodeOpcode) extends Instruction {
   override def assemble(assemblerContext: AssemblerContext, constantPool: ConstantPool): Unit = {
-    assemblerContext.code += bytecodeOpcode.id.asInstanceOf[Byte]
+    assemblerContext.code += bytecodeOpcode.id.toByte
     
     if (assemblerContext.calculateMaxes) {
       bytecodeOpcode match {
