@@ -5,10 +5,12 @@ import rip.hippo.hippocafe.ClassWriter
 import rip.hippo.hippocafe.access.AccessFlag.{ACC_PUBLIC, ACC_STATIC}
 import rip.hippo.hippocafe.builder.ClassBuilder
 import rip.hippo.hippocafe.disassembler.instruction.BytecodeOpcode._
+import rip.hippo.hippocafe.disassembler.instruction.Instruction
 import rip.hippo.hippocafe.disassembler.instruction.impl._
 import rip.hippo.hippocafe.version.MajorClassFileVersion.SE8
 import rip.hippo.testing.hippocafe.CustomClassLoader
 
+import scala.collection.mutable
 import scala.util.Using
 
 
