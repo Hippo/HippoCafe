@@ -7,6 +7,6 @@ import rip.hippo.hippocafe.MethodInfo
  * @version 1.0.0, 2/22/21
  * @since 1.0.0
  */
-trait MaxStackHeightCalculator {
-  def findMaxStack(methodInfo: MethodInfo): Int
+trait MaxStackDepthCalculator {
+  def calculateMaxStack(methodInfo: MethodInfo): Int
 }

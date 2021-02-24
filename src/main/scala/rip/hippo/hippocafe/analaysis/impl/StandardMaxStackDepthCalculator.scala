@@ -1,7 +1,7 @@
 package rip.hippo.hippocafe.analaysis.impl
 
 import rip.hippo.hippocafe.MethodInfo
-import rip.hippo.hippocafe.analaysis.MaxStackHeightCalculator
+import rip.hippo.hippocafe.analaysis.MaxStackDepthCalculator
 import rip.hippo.hippocafe.disassembler.instruction.Instruction
 import rip.hippo.hippocafe.disassembler.instruction.impl.LabelInstruction
 
@@ -12,10 +12,10 @@ import scala.collection.mutable
  * @version 1.0.0, 2/22/21
  * @since 1.0.0
  */
-final class StandardMaxStackHeightCalculator extends MaxStackHeightCalculator {
+final class StandardMaxStackDepthCalculator extends MaxStackDepthCalculator {
 
 
-  override def findMaxStack(methodInfo: MethodInfo): Int = {
+  override def calculateMaxStack(methodInfo: MethodInfo): Int = {
     var height = 0
     val stackJumpCarry = mutable.Map[LabelInstruction, Int]()
     val handlers = methodInfo.tryCatchBlocks.map(_.handler).toList

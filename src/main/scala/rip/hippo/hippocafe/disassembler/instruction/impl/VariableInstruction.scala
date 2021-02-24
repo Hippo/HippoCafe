@@ -27,9 +27,8 @@ package rip.hippo.hippocafe.disassembler.instruction.impl
 import rip.hippo.hippocafe.disassembler.instruction.BytecodeOpcode.{BytecodeOpcode, DLOAD, DSTORE, LLOAD, LSTORE}
 import rip.hippo.hippocafe.constantpool.ConstantPool
 import rip.hippo.hippocafe.disassembler.context.AssemblerContext
-import rip.hippo.hippocafe.disassembler.instruction.Instruction
+import rip.hippo.hippocafe.disassembler.instruction.{BytecodeOpcode, Instruction}
 
-import scala.collection.mutable.ListBuffer
 
 /**
  * @author Hippo
@@ -39,8 +38,17 @@ import scala.collection.mutable.ListBuffer
 final case class VariableInstruction(bytecodeOpcode: BytecodeOpcode, index: Int) extends Instruction {
   override def assemble(assemblerContext: AssemblerContext, constantPool: ConstantPool): Unit = {
     val code = assemblerContext.code
+    val wide = index > 255
+    if (wide) {
+      code += BytecodeOpcode.WIDE.id.toByte
+    }
     code += bytecodeOpcode.id.toByte
-    code += index.toByte
+    if (wide) {
+      code += (index << 8).toByte
+      code += (index & 0xFF).toByte
+    } else {
+      code += index.toByte
+    }
 
     if (assemblerContext.calculateMaxes) {
       assemblerContext.setMaxLocals(index + ( bytecodeOpcode match {
