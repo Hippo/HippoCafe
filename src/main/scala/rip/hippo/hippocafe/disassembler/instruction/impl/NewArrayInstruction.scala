@@ -27,7 +27,7 @@ package rip.hippo.hippocafe.disassembler.instruction.impl
 import rip.hippo.hippocafe.disassembler.instruction.array.ArrayType.ArrayType
 import rip.hippo.hippocafe.constantpool.ConstantPool
 import rip.hippo.hippocafe.disassembler.context.AssemblerContext
-import rip.hippo.hippocafe.disassembler.instruction.Instruction
+import rip.hippo.hippocafe.disassembler.instruction.{BytecodeOpcode, Instruction}
 
 import scala.collection.mutable.ListBuffer
 
@@ -38,6 +38,7 @@ import scala.collection.mutable.ListBuffer
  */
 final case class NewArrayInstruction(arrayType: ArrayType) extends Instruction {
   override def assemble(assemblerContext: AssemblerContext, constantPool: ConstantPool): Unit = {
-
+    assemblerContext.code += BytecodeOpcode.NEWARRAY.id.toByte
+    assemblerContext.code += arrayType.id.toByte
   }
 }

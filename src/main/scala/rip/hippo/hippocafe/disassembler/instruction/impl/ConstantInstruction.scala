@@ -65,7 +65,10 @@ final case class ConstantInstruction(constant: Any) extends Instruction {
       index = max + (if (constantPool.info(max).wide) 2 else 1)
       constant match { // TODO: finish
         case string: String =>
-          constantPool.insert(index, UTF8Info(string))
+          if (!constantPool.info.values.exists(info => info.isInstanceOf[UTF8Info] && info.asInstanceOf[UTF8Info].value.equals(string))) {
+            constantPool.insert(index, UTF8Info(string))
+            index += 1
+          }
           constantPool.insert(index, new StringInfo(string, ConstantPoolKind.STRING))
         case int: Int =>
           constantPool.insert(index, IntegerInfo(int))

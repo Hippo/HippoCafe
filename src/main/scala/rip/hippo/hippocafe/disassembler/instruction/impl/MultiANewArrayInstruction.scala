@@ -24,9 +24,10 @@
 
 package rip.hippo.hippocafe.disassembler.instruction.impl
 
-import rip.hippo.hippocafe.constantpool.ConstantPool
+import rip.hippo.hippocafe.constantpool.info.impl.{StringInfo, UTF8Info}
+import rip.hippo.hippocafe.constantpool.{ConstantPool, ConstantPoolKind}
 import rip.hippo.hippocafe.disassembler.context.AssemblerContext
-import rip.hippo.hippocafe.disassembler.instruction.Instruction
+import rip.hippo.hippocafe.disassembler.instruction.{BytecodeOpcode, Instruction}
 
 import scala.collection.mutable.ListBuffer
 
@@ -37,6 +38,25 @@ import scala.collection.mutable.ListBuffer
  */
 final case class MultiANewArrayInstruction(descriptor: String, dimensions: Int) extends Instruction {
   override def assemble(assemblerContext: AssemblerContext, constantPool: ConstantPool): Unit = {
+    var index = -1
+    constantPool.info
+      .filter(_._2.isInstanceOf[StringInfo])
+      .filter(_._2.asInstanceOf[StringInfo].value.equals(descriptor))
+      .keys
+      .foreach(index = _)
+    if (index == -1) {
+      val max = constantPool.info.keys.max
+      index = max + (if (constantPool.info(max).wide) 2 else 1)
+      if (!constantPool.info.values.exists(info => info.isInstanceOf[UTF8Info] && info.asInstanceOf[UTF8Info].value.equals(descriptor))) {
+        constantPool.insert(index, UTF8Info(descriptor))
+        index += 1
+      }
+      constantPool.insert(index, new StringInfo(descriptor, ConstantPoolKind.CLASS))
+    }
 
+    assemblerContext.code += BytecodeOpcode.MULTIANEWARRAY.id.toByte
+    assemblerContext.code += (index << 8).toByte
+    assemblerContext.code += (index & 0xFF).toByte
+    assemblerContext.code += dimensions.toByte
   }
 }
