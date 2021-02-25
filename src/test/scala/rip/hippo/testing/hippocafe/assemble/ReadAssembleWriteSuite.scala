@@ -22,27 +22,28 @@
  * SOFTWARE.
  */
 
-package rip.hippo.testing.hippocafe
+package rip.hippo.testing.hippocafe.assemble
 
 import org.scalatest.FunSuite
 import rip.hippo.hippocafe.{ClassReader, ClassWriter}
+import rip.hippo.testing.hippocafe.CustomClassLoader
 
-import scala.util.{Failure, Success, Using}
+import scala.util.{Failure, Using}
 
 /**
  * @author Hippo
- * @version 1.0.0, 8/4/20
+ * @version 1.0.0, 2/25/21
  * @since 1.1.0
  */
-final class LowWriteSuite extends FunSuite {
+final class ReadAssembleWriteSuite extends FunSuite {
 
-  private val className = "SwitchTest"
+  private val className = "ArrayTest"
 
 
-  test("ClassWriter.write") {
+  test("assemble.readThenLoad") {
     Option(Thread.currentThread.getContextClassLoader.getResourceAsStream(s"$className.class")) match {
       case Some(value) =>
-        val test = Using(new ClassReader(value, true)) {
+        val test = Using(new ClassReader(value)) {
           classReader =>
             val writerTest = Using(new ClassWriter(classReader.classFile)) {
               classWriter =>
