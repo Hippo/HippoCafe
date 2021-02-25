@@ -101,7 +101,11 @@ sealed case class Block() {
     instruction match {
       case ANewArrayInstruction(descriptor) => 0
       case BranchInstruction(bytecodeOpcode, branch) => 0
-      case ConstantInstruction(constant) => 0
+      case ConstantInstruction(constant) =>
+        constant match {
+          case _: Double | Long => 2
+          case _ => 1
+        }
       case IncrementInstruction(localIndex, value) => 0
       case LookupSwitchInstruction(default) => 0
       case MultiANewArrayInstruction(descriptor, dimensions) => 0
