@@ -25,14 +25,14 @@
 package rip.hippo.hippocafe.disassembler.instruction
 
 import rip.hippo.hippocafe.constantpool.info.impl.ReferenceInfo
-import rip.hippo.hippocafe.disassembler.instruction.impl.VariableInstruction
+import rip.hippo.hippocafe.disassembler.instruction.impl.{ANewArrayInstruction, BranchInstruction, ConstantInstruction, IncrementInstruction, LabelInstruction, LookupSwitchInstruction, MultiANewArrayInstruction, NewArrayInstruction, PushInstruction, ReferenceInstruction, SimpleInstruction, TableSwitchInstruction, TypeInstruction, VariableInstruction}
 import rip.hippo.hippocafe.MethodInfo
 import rip.hippo.hippocafe.attribute.Attribute
 import rip.hippo.hippocafe.attribute.impl.CodeAttribute
 import rip.hippo.hippocafe.constantpool.ConstantPool
 import rip.hippo.hippocafe.constantpool.info.ValueAwareness
 import rip.hippo.hippocafe.constantpool.info.impl.{ReferenceInfo, StringInfo}
-import rip.hippo.hippocafe.disassembler.instruction.impl.{BranchInstruction, ConstantInstruction, IncrementInstruction, LabelInstruction, LookupSwitchInstruction, PushInstruction, ReferenceInstruction, SimpleInstruction, TableSwitchInstruction, TypeInstruction, VariableInstruction}
+import rip.hippo.hippocafe.disassembler.instruction.array.ArrayType
 import rip.hippo.hippocafe.disassembler.tcb.TryCatchBlock
 import rip.hippo.hippocafe.exception.HippoCafeException
 
@@ -337,6 +337,18 @@ object CodeDisassembler {
                   })
                   instructions += (instructionOffset -> tableSwitch)
 
+                case ANEWARRAY =>
+                  instructions += (instructionOffset -> ANewArrayInstruction(constantPool.readString(u2)))
+                case NEWARRAY =>
+                  val typeId = u1
+                  ArrayType.fromType(typeId) match {
+                    case Some(value) =>
+                      instructions += (instructionOffset -> NewArrayInstruction(value))
+                    case None =>
+                      throw new HippoCafeException(s"Could not find array type for $typeId")
+                  }
+                case MULTIANEWARRAY =>
+                  instructions += (instructionOffset -> MultiANewArrayInstruction(constantPool.readString(u2), u1))
               }
             case None => throw new HippoCafeException(s"Could not find opcode for $rawOpcode")
           }

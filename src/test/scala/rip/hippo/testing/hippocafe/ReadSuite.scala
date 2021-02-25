@@ -28,7 +28,7 @@ package rip.hippo.testing.hippocafe
 import org.scalatest.FunSuite
 import rip.hippo.hippocafe.ClassReader
 
-import scala.util.Using
+import scala.util.{Failure, Using}
 
 /**
  * @author Hippo
@@ -42,10 +42,14 @@ final class ReadSuite extends FunSuite {
   test("ClassReader.read") {
     Option(Thread.currentThread.getContextClassLoader.getResourceAsStream(s"$className.class")) match {
       case Some(value) =>
-        Using(new ClassReader(value, true)) {
+        val test = Using(new ClassReader(value, true)) {
           classReader =>
             val classFile = classReader.classFile
             println(classFile.name)
+        }
+        test match {
+          case Failure(exception) => throw exception
+          case _ =>
         }
       case None => println(s"Could not load resource $className.class")
     }

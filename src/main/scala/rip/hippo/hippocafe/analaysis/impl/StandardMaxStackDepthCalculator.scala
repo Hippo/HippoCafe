@@ -100,14 +100,19 @@ sealed case class Block() {
   def getInstructionDepth(instruction: Instruction): Int =
     instruction match {
       case ANewArrayInstruction(descriptor) => 0
-      case BranchInstruction(bytecodeOpcode, branch) => 0
+      case BranchInstruction(bytecodeOpcode, branch) =>
+        bytecodeOpcode match {
+          case IFEQ | IFNE | IFLT | IFLE | IFGT | IFGE | IFNONNULL | IFNULL => -1
+          case IF_ICMPEQ | IF_ICMPGE | IF_ICMPGT | IF_ICMPLE | IF_ICMPLT | IF_ICMPNE => -2
+          case JSR | JSR_W => 1
+          case _ => 0
+        }
       case ConstantInstruction(constant) =>
         constant match {
           case _: Double | Long => 2
           case _ => 1
         }
-      case IncrementInstruction(localIndex, value) => 0
-      case LookupSwitchInstruction(default) => 0
+      case LookupSwitchInstruction(_) => -1
       case MultiANewArrayInstruction(descriptor, dimensions) => 0
       case NewArrayInstruction(arrayType) => 0
       case PushInstruction(_) => 1
@@ -151,9 +156,14 @@ sealed case class Block() {
 
           case _ => 0
         }
-      case TableSwitchInstruction(default, low, high) => 0
-      case TypeInstruction(bytecodeOpcode, typeName) => 0
-      case VariableInstruction(bytecodeOpcode, index) => 0
+      case TableSwitchInstruction(_, _, _) => -1
+      case TypeInstruction(bytecodeOpcode, _) if bytecodeOpcode == NEW => 1
+      case variable: VariableInstruction =>
+        if (variable.isLoad) {
+          if (variable.bytecodeOpcode == DLOAD || variable.bytecodeOpcode == LLOAD) 2 else 1
+        } else {
+          if (variable.bytecodeOpcode == DSTORE || variable.bytecodeOpcode == LSTORE) -2 else -1
+        }
       case _ => 0
     }
 

@@ -33,7 +33,7 @@ import rip.hippo.hippocafe.disassembler.instruction.BytecodeOpcode._
 import rip.hippo.hippocafe.disassembler.instruction.impl._
 import rip.hippo.hippocafe.version.MajorClassFileVersion._
 
-import scala.util.Using
+import scala.util.{Failure, Using}
 
 /**
  * @author Hippo
@@ -67,12 +67,16 @@ final class BuilderSuite extends FunSuite {
       instructions += ReferenceInstruction(INVOKEVIRTUAL, "java/io/PrintStream", "println", "(Ljava/lang/String;)V")
       instructions += SimpleInstruction(RETURN)
     }).result
-    Using(new ClassWriter(classFile).calculateMaxes) {
+    val test = Using(new ClassWriter(classFile).calculateMaxes) {
       classWriter =>
         val bytecode = classWriter.write
         val classLoader = new CustomClassLoader()
         val dynamicClass = classLoader.createClass("HelloWorld", bytecode)
         dynamicClass.getMethod("main", classOf[Array[String]]).invoke(null, null)
+    }
+    test match {
+      case Failure(exception) => throw exception
+      case _ =>
     }
   }
 

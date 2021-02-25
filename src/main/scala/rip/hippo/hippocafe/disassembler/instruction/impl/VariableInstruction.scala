@@ -24,7 +24,7 @@
 
 package rip.hippo.hippocafe.disassembler.instruction.impl
 
-import rip.hippo.hippocafe.disassembler.instruction.BytecodeOpcode.{BytecodeOpcode, DLOAD, DSTORE, LLOAD, LSTORE}
+import rip.hippo.hippocafe.disassembler.instruction.BytecodeOpcode.{BytecodeOpcode, DLOAD, DSTORE, FLOAD, ILOAD, LLOAD, LSTORE}
 import rip.hippo.hippocafe.constantpool.ConstantPool
 import rip.hippo.hippocafe.disassembler.context.AssemblerContext
 import rip.hippo.hippocafe.disassembler.instruction.{BytecodeOpcode, Instruction}
@@ -36,6 +36,14 @@ import rip.hippo.hippocafe.disassembler.instruction.{BytecodeOpcode, Instruction
  * @since 1.0.0
  */
 final case class VariableInstruction(bytecodeOpcode: BytecodeOpcode, index: Int) extends Instruction {
+
+  def isLoad: Boolean = bytecodeOpcode match {
+    case ILOAD | FLOAD | DLOAD | LLOAD => true
+    case _ => false
+  }
+
+  def isStore: Boolean = !isLoad
+
   override def assemble(assemblerContext: AssemblerContext, constantPool: ConstantPool): Unit = {
     val code = assemblerContext.code
     val wide = index > 255

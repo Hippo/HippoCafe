@@ -27,7 +27,7 @@ package rip.hippo.testing.hippocafe
 import org.scalatest.FunSuite
 import rip.hippo.hippocafe.ClassReader
 
-import scala.util.Using
+import scala.util.{Failure, Success, Using}
 
 /**
  * @author Hippo
@@ -36,12 +36,12 @@ import scala.util.Using
  */
 final class InstructionReadSuite extends FunSuite {
 
-  private val className = "SwitchTest"
+  private val className = "ArrayTest"
 
   test("CodeDisassembler.disassemble") {
     Option(Thread.currentThread.getContextClassLoader.getResourceAsStream(s"$className.class")) match {
       case Some(value) =>
-        Using(new ClassReader(value)) {
+        val test = Using(new ClassReader(value)) {
           classReader =>
             val classFile = classReader.classFile
             classFile.methods.foreach(info => {
@@ -50,6 +50,10 @@ final class InstructionReadSuite extends FunSuite {
               info.tryCatchBlocks.foreach(println(_))
               println()
             })
+        }
+        test match {
+          case Failure(exception) => throw exception
+          case _ =>
         }
         value.close()
       case None => println(s"Could not load resource $className.class")
