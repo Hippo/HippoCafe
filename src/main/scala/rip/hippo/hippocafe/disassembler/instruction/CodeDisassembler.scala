@@ -153,7 +153,7 @@ object CodeDisassembler {
                      I2C |
                      I2D |
                      I2F |
-                     I2l |
+                     I2L |
                      I2S |
                      IADD |
                      IALOAD |

@@ -25,6 +25,8 @@
 package rip.hippo.hippocafe
 
 import rip.hippo.hippocafe.access.AccessFlag
+import rip.hippo.hippocafe.analaysis.MaxStackDepthCalculator
+import rip.hippo.hippocafe.analaysis.impl.StandardMaxStackDepthCalculator
 import rip.hippo.hippocafe.attribute.impl.CodeAttribute
 import rip.hippo.hippocafe.attribute.impl.data.ExceptionTableAttributeData
 import rip.hippo.hippocafe.attribute.{Attribute, AttributeInfo}
@@ -50,6 +52,7 @@ final class ClassWriter(classFile: ClassFile) extends AutoCloseable {
   private val flags = mutable.Set[AssemblerFlag]()
   private val byteOut = new ByteArrayOutputStream()
   private val out = new DataOutputStream(byteOut)
+  private var stackDepthCalculator: MaxStackDepthCalculator = new StandardMaxStackDepthCalculator
 
   def write: Array[Byte] = {
     out.writeInt(0xCAFEBABE)
@@ -75,12 +78,16 @@ final class ClassWriter(classFile: ClassFile) extends AutoCloseable {
           hasCodeAttribute = true
         }
         val assemblerContext = new AssemblerContext(flags.toSet)
-        assemblerContext.setMaxLocals(method.maxLocals)
-        assemblerContext.updateStack(method.maxStack)
 
         if (assemblerContext.calculateMaxes) {
           val defaultSize = Type.getMethodParameterTypes(method.descriptor).map(_.getSize).sum + (if (method.accessFlags.contains(AccessFlag.ACC_STATIC)) 0 else 1)
-          assemblerContext.setMaxLocals(defaultSize);
+          val maxStack = stackDepthCalculator.calculateMaxStack(method)
+          println(s"${method.name} $maxStack")
+          assemblerContext.setMaxLocals(defaultSize)
+          assemblerContext.setMaxStack(maxStack)
+        } else {
+          assemblerContext.setMaxLocals(method.maxLocals)
+          assemblerContext.setMaxStack(method.maxStack)
         }
 
         method.instructions.foreach(_.assemble(assemblerContext, constantPool))
@@ -255,6 +262,12 @@ final class ClassWriter(classFile: ClassFile) extends AutoCloseable {
     flags += AssemblerFlag.GENERATE_FRAMES
     this
   }
+
+  def setStackCalculator(maxStackDepthCalculator: MaxStackDepthCalculator): ClassWriter = {
+    this.stackDepthCalculator = maxStackDepthCalculator
+    this
+  }
+
   override def close(): Unit = out.close()
 
   override def toString: String =

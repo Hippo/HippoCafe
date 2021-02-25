@@ -11,13 +11,8 @@ class AssemblerContext(flags: Set[AssemblerFlag]) {
   val code: ListBuffer[Byte] = ListBuffer[Byte]()
   var maxStack = 0
   var maxLocals = 0
-  private var stackWatcher = 0
 
-  def updateStack(size: Int): Unit = {
-    stackWatcher += size
-    maxStack = Math.max(maxStack, stackWatcher)
-  }
-
+  def setMaxStack(size: Int): Unit = maxStack = Math.max(maxStack, size)
   def setMaxLocals(size: Int): Unit = maxLocals = Math.max(maxLocals, size)
 
   def calculateMaxes: Boolean = flags.contains(AssemblerFlag.CALCULATE_MAXES)

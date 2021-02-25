@@ -3,7 +3,9 @@ package rip.hippo.hippocafe.analaysis.impl
 import rip.hippo.hippocafe.MethodInfo
 import rip.hippo.hippocafe.analaysis.MaxStackDepthCalculator
 import rip.hippo.hippocafe.disassembler.instruction.Instruction
-import rip.hippo.hippocafe.disassembler.instruction.impl.{BranchInstruction, LabelInstruction}
+import rip.hippo.hippocafe.disassembler.instruction.impl.{ANewArrayInstruction, BranchInstruction, ConstantInstruction, IncrementInstruction, LabelInstruction, LookupSwitchInstruction, MultiANewArrayInstruction, NewArrayInstruction, PushInstruction, ReferenceInstruction, SimpleInstruction, TableSwitchInstruction, TypeInstruction, VariableInstruction}
+import rip.hippo.hippocafe.disassembler.instruction.BytecodeOpcode._
+import rip.hippo.hippocafe.util.Type
 
 import scala.collection.mutable
 import scala.collection.mutable.ListBuffer
@@ -71,7 +73,9 @@ sealed case class Block() {
     var depth = 0
 
     instructions.foreach(instruction => {
+      print(instruction + " " + depth + " -> ")
       depth += getInstructionDepth(instruction)
+      println(depth)
       maxDepth = Math.max(maxDepth, depth)
     })
 
@@ -93,7 +97,74 @@ sealed case class Block() {
       case _ => Option.empty
     }
 
-  def getInstructionDepth(instruction: Instruction): Int = {
-    0
+  def getInstructionDepth(instruction: Instruction): Int =
+    instruction match {
+      case ANewArrayInstruction(descriptor) => 0
+      case BranchInstruction(bytecodeOpcode, branch) => 0
+      case ConstantInstruction(constant) => 0
+      case IncrementInstruction(localIndex, value) => 0
+      case LookupSwitchInstruction(default) => 0
+      case MultiANewArrayInstruction(descriptor, dimensions) => 0
+      case NewArrayInstruction(arrayType) => 0
+      case PushInstruction(_) => 1
+      case ReferenceInstruction(bytecodeOpcode, _, _, descriptor) =>
+        bytecodeOpcode match {
+          case GETSTATIC => Type.getType(descriptor).getSize
+          case PUTSTATIC => -Type.getType(descriptor).getSize
+          case GETFIELD => Type.getType(descriptor).getSize - 1
+          case PUTFIELD => Type.getType(descriptor).getSize + 1
+          case INVOKEVIRTUAL | INVOKESPECIAL | INVOKEINTERFACE => getMethodStackDepth(instruction) - 1
+          case INVOKESTATIC => getMethodStackDepth(instruction)
+        }
+      case SimpleInstruction(bytecodeOpcode) => 
+        bytecodeOpcode match {
+          case ALOAD_0 | ALOAD_1 | ALOAD_2 | ALOAD_3 |
+               ILOAD_0 | ILOAD_1 | ILOAD_2 | ILOAD_3 |
+               FLOAD_0 | FLOAD_1 | FLOAD_2 | FLOAD_3 |
+               ACONST_NULL |
+               ICONST_M1 | ICONST_0 | ICONST_1 | ICONST_2 | ICONST_3 | ICONST_4 | ICONST_5 |
+               DUP | DUP_X1 | DUP_X2 |
+               FCONST_0 | FCONST_1 | FCONST_2 |
+               I2L | I2D | F2L | F2D => 1
+
+          case ASTORE_0 | ASTORE_1 | ASTORE_2 | ASTORE_3 |
+               ISTORE_0 | ISTORE_1 | ISTORE_2 | ISTORE_3 |
+               FSTORE_0 | FSTORE_1 | FSTORE_2 | FSTORE_3 |
+               IALOAD | FALOAD | AALOAD | BALOAD | CALOAD | SALOAD |
+               POP |
+               IADD | FADD |
+               ISUB | FSUB |
+               IMUL | FMUL |
+               IDIV | FDIV |
+               IREM | FREM |
+               ISHL | ISHR | IUSHR | LSHR | LSHL | LUSHR |
+               IAND | IOR | IXOR |
+               L2I | L2F | D2I | D2F |
+               FCMPL | FCMPG |
+               IRETURN | FRETURN | ARETURN |
+               ATHROW |
+               MONITORENTER | MONITOREXIT => -1
+
+          case _ => 0
+        }
+      case TableSwitchInstruction(default, low, high) => 0
+      case TypeInstruction(bytecodeOpcode, typeName) => 0
+      case VariableInstruction(bytecodeOpcode, index) => 0
+      case _ => 0
+    }
+
+  private def getMethodStackDepth(instruction: Instruction): Int = {
+    var size = 0
+    val parameters: ListBuffer[Type] = ListBuffer[Type]()
+    var returnType: Type = null
+    instruction match {
+      case ReferenceInstruction(_, _, _, descriptor) =>
+        parameters.addAll(Type.getMethodParameterTypes(descriptor))
+        returnType = Type.getMethodReturnType(descriptor)
+      //TODO: Invoke dynamic
+    }
+    parameters.foreach(size -= _.getSize)
+    size += returnType.getSize
+    size
   }
 }

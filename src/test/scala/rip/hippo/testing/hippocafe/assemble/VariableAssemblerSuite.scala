@@ -31,7 +31,7 @@ final class VariableAssemblerSuite extends FunSuite {
       "<init>",
       "()V",
       ACC_PUBLIC
-    ).maxStack(1).apply(instructions => {
+    ).apply(instructions => {
       instructions += SimpleInstruction(ALOAD_0)
       instructions += ReferenceInstruction(INVOKESPECIAL, "java/lang/Object", "<init>", "()V")
       instructions += SimpleInstruction(RETURN)
@@ -39,7 +39,7 @@ final class VariableAssemblerSuite extends FunSuite {
       "main",
       "([Ljava/lang/String;)V",
       ACC_PUBLIC, ACC_STATIC
-    ).maxStack(2).apply(instructions => {
+    ).apply(instructions => {
       instructions += PushInstruction(69)
       instructions += SimpleInstruction(ISTORE_1)
       instructions += ReferenceInstruction(GETSTATIC, "java/lang/System", "out", "Ljava/io/PrintStream;")

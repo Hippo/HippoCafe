@@ -1,6 +1,6 @@
 package rip.hippo.hippocafe.util
 
-import Type.{DOUBLE, LONG}
+import Type.{DOUBLE, LONG, VOID}
 
 import scala.collection.mutable.ListBuffer
 
@@ -53,11 +53,14 @@ object Type {
     }
     types
   }
+
+  def getMethodReturnType(descriptor: String): Type =
+    Type.getType(descriptor.substring(descriptor.lastIndexOf(')') + 1))
 }
 
 sealed case class Type(descriptor: String) {
   def isWide: Boolean = this == LONG || this == DOUBLE
   def isArray: Boolean = descriptor.charAt(0) == '['
   def isObject: Boolean = isArray || descriptor.charAt(0) == 'L'
-  def getSize: Int = if (isWide) 2 else 1
+  def getSize: Int = if (isWide) 2 else if (this == VOID) 0 else 1
 }

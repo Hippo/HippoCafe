@@ -13,5 +13,6 @@ final class TypeSuite extends FunSuite {
   test("Type.methodParams") {
     val descriptor = "(Ljava/lang/String;[IIBZLjava/lang/Object;)V"
     Type.getMethodParameterTypes(descriptor).foreach(println)
+    println(Type.getMethodReturnType(descriptor))
   }
 }

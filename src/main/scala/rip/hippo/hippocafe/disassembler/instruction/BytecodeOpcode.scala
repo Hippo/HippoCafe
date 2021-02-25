@@ -139,7 +139,7 @@ object BytecodeOpcode extends Enumeration {
   val I2C: BytecodeOpcode = 0x92
   val I2D: BytecodeOpcode = 0x87
   val I2F: BytecodeOpcode = 0x86
-  val I2l: BytecodeOpcode = 0x85
+  val I2L: BytecodeOpcode = 0x85
   val I2S: BytecodeOpcode = 0x93
   val IADD: BytecodeOpcode = 0x60
   val IALOAD: BytecodeOpcode = 0x2e
