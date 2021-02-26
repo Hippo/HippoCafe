@@ -49,4 +49,8 @@ final case class InnerClassesAttribute(numberOfClasses: Int, classes: Array[Clas
       out.writeShort(data.innerClassAccessFlags)
     })
   }
+
+  override def buildConstantPool(constantPool: ConstantPool): Unit = {
+
+  }
 }

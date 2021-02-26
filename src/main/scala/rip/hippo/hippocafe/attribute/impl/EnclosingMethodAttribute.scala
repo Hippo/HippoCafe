@@ -43,4 +43,8 @@ final case class EnclosingMethodAttribute(classIndex: Int, methodIndex: Int) ext
     out.writeShort(classIndex)
     out.writeShort(methodIndex)
   }
+
+  override def buildConstantPool(constantPool: ConstantPool): Unit = {
+
+  }
 }

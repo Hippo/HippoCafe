@@ -78,4 +78,8 @@ final case class CodeAttribute(oak: Boolean,
       out.write(attributeData)
     })
   }
+
+  override def buildConstantPool(constantPool: ConstantPool): Unit = {
+
+  }
 }

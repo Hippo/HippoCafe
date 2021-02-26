@@ -43,4 +43,8 @@ final case class NestMembersAttribute(numberOfClasses: Int, classes: Array[Int])
     out.writeShort(numberOfClasses)
     classes.foreach(data => out.writeShort(data))
   }
+
+  override def buildConstantPool(constantPool: ConstantPool): Unit = {
+
+  }
 }

@@ -36,4 +36,5 @@ import rip.hippo.hippocafe.constantpool.ConstantPool
 trait AttributeInfo {
   val kind: Attribute
   def write(out: DataOutputStream, constantPool: ConstantPool): Unit
+  def buildConstantPool(constantPool: ConstantPool): Unit
 }

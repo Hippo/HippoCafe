@@ -41,4 +41,8 @@ final case class UnknownAttribute(name: String, data: Array[Byte]) extends Attri
 
 
   override def write(out: DataOutputStream, constantPool: ConstantPool): Unit = out.write(data)
+
+  override def buildConstantPool(constantPool: ConstantPool): Unit = {
+
+  }
 }

@@ -44,4 +44,8 @@ final case class ModulePackagesAttribute(packageCount: Int, packageIndex: Array[
     out.writeShort(packageCount)
     packageIndex.foreach(index => out.writeShort(index))
   }
+
+  override def buildConstantPool(constantPool: ConstantPool): Unit = {
+
+  }
 }

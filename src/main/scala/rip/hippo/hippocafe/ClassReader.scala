@@ -24,6 +24,8 @@
 
 package rip.hippo.hippocafe
 
+import rip.hippo.hippocafe.access.AccessFlag
+
 import java.io.{ByteArrayInputStream, DataInputStream, InputStream}
 import rip.hippo.hippocafe.constantpool.ConstantPoolKind._
 import rip.hippo.hippocafe.attribute.impl.{AnnotationDefaultAttribute, BootstrapMethodsAttribute, CodeAttribute, ConstantValueAttribute, DeprecatedAttribute, EnclosingMethodAttribute, ExceptionsAttribute, InnerClassesAttribute, LineNumberTableAttribute, LocalVariableTableAttribute, LocalVariableTypeTableAttribute, MethodParametersAttribute, ModuleAttribute, ModuleMainClassAttribute, ModulePackagesAttribute, NestHostAttribute, NestMembersAttribute, RuntimeInvisibleAnnotationsAttribute, RuntimeInvisibleParameterAnnotationsAttribute, RuntimeInvisibleTypeAnnotationsAttribute, RuntimeVisibleAnnotationsAttribute, RuntimeVisibleParameterAnnotationsAttribute, RuntimeVisibleTypeAnnotationsAttribute, SignatureAttribute, SourceDebugExtensionAttribute, SourceFileAttribute, StackMapTableAttribute, SyntheticAttribute, UnknownAttribute}
@@ -120,6 +122,8 @@ final class ClassReader(parentInputStream: InputStream, lowLevel: Boolean = fals
   }
 
   constantPool.info.values.foreach(info => info.readCallback(constantPool))
+
+  println("READER " + constantPool.info)
 
 
   private val accessMask = u2
@@ -328,7 +332,7 @@ final class ClassReader(parentInputStream: InputStream, lowLevel: Boolean = fals
             case ENCLOSING_METHOD => EnclosingMethodAttribute(u2, u2)
             case SYNTHETIC => SyntheticAttribute()
             case SIGNATURE => SignatureAttribute(u2)
-            case SOURCE_FILE => SourceFileAttribute(u2)
+            case SOURCE_FILE => SourceFileAttribute(constantPool.readUTF8(u2))
             case SOURCE_DEBUG_EXTENSION => SourceDebugExtensionAttribute(buffer)
             case LINE_NUMBER_TABLE =>
               val lineNumberTableLength = u2

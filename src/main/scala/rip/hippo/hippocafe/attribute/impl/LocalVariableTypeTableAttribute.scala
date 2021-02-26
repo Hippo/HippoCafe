@@ -50,4 +50,8 @@ final case class LocalVariableTypeTableAttribute(localVariableTypeTableLength: I
       out.writeShort(table.index)
     })
   }
+
+  override def buildConstantPool(constantPool: ConstantPool): Unit = {
+
+  }
 }

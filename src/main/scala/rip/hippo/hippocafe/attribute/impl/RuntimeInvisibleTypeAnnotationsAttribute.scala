@@ -45,4 +45,8 @@ final case class RuntimeInvisibleTypeAnnotationsAttribute(numberOfAnnotations: I
     out.writeShort(numberOfAnnotations)
     annotations.foreach(annotation => annotation.write(out))
   }
+
+  override def buildConstantPool(constantPool: ConstantPool): Unit = {
+
+  }
 }

@@ -42,5 +42,7 @@ final case class SignatureAttribute(signatureIndex: Int) extends AttributeInfo {
 
   override def write(out: DataOutputStream, constantPool: ConstantPool): Unit = out.writeShort(signatureIndex)
 
+  override def buildConstantPool(constantPool: ConstantPool): Unit = {
 
+  }
 }

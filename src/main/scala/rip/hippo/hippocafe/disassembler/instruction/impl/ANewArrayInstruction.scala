@@ -41,6 +41,7 @@ final case class ANewArrayInstruction(descriptor: String) extends Instruction {
     var index = -1
     constantPool.info
       .filter(_._2.isInstanceOf[StringInfo])
+      .filter(_._2.kind == ConstantPoolKind.CLASS)
       .filter(_._2.asInstanceOf[StringInfo].value.equals(descriptor))
       .keys
       .foreach(index = _)
@@ -54,8 +55,9 @@ final case class ANewArrayInstruction(descriptor: String) extends Instruction {
       constantPool.insert(index, new StringInfo(descriptor, ConstantPoolKind.CLASS))
     }
 
+
     assemblerContext.code += BytecodeOpcode.ANEWARRAY.id.toByte
-    assemblerContext.code += (index << 8).toByte
+    assemblerContext.code += ((index >> 8) & 0xFF).toByte
     assemblerContext.code += (index & 0xFF).toByte
   }
 }

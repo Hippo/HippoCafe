@@ -40,4 +40,8 @@ final case class SyntheticAttribute() extends AttributeInfo {
   override val kind: Attribute = Attribute.SYNTHETIC
 
   override def write(out: DataOutputStream, constantPool: ConstantPool): Unit = {}
+
+  override def buildConstantPool(constantPool: ConstantPool): Unit = {
+
+  }
 }

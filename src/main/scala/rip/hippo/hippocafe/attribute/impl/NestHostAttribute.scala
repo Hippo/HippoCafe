@@ -41,4 +41,8 @@ final case class NestHostAttribute(hostClassIndex: Int) extends AttributeInfo {
 
 
   override def write(out: DataOutputStream, constantPool: ConstantPool): Unit = out.writeShort(hostClassIndex)
+
+  override def buildConstantPool(constantPool: ConstantPool): Unit = {
+
+  }
 }

@@ -49,4 +49,8 @@ final case class BootstrapMethodsAttribute(numberOfBootstrapMethods: Int, bootst
       data.bootstrapArguments.foreach(arg => out.writeShort(arg))
     })
   }
+
+  override def buildConstantPool(constantPool: ConstantPool): Unit = {
+
+  }
 }

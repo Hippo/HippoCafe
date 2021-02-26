@@ -44,4 +44,7 @@ final case class StackMapTableAttribute(numberOfEntries: Int, entries: Array[Sta
     out.writeShort(numberOfEntries)
     entries.foreach(frame => frame.write(out))
   }
+  override def buildConstantPool(constantPool: ConstantPool): Unit = {
+
+  }
 }

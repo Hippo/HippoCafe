@@ -43,4 +43,8 @@ final case class ExceptionsAttribute(numberOfExceptions: Int, exceptionIndexTabl
     out.writeShort(numberOfExceptions)
     exceptionIndexTable.foreach(index => out.writeShort(index))
   }
+
+  override def buildConstantPool(constantPool: ConstantPool): Unit = {
+
+  }
 }

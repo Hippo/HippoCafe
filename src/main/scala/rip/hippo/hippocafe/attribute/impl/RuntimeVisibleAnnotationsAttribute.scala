@@ -44,4 +44,9 @@ final case class RuntimeVisibleAnnotationsAttribute(numberOfAnnotations: Int, an
   override def write(out: DataOutputStream, constantPool: ConstantPool): Unit = {
     out.writeShort(numberOfAnnotations)
     annotations.foreach(annotation => annotation.write(out))
-  }}
+  }
+
+  override def buildConstantPool(constantPool: ConstantPool): Unit = {
+
+  }
+}

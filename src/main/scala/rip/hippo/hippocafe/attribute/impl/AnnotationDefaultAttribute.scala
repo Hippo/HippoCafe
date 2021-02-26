@@ -42,4 +42,8 @@ final case class AnnotationDefaultAttribute(defaultValue: AnnotationAttributeVal
 
   override def write(out: DataOutputStream, constantPool: ConstantPool): Unit = defaultValue.write(out)
 
+
+  override def buildConstantPool(constantPool: ConstantPool): Unit = {
+
+  }
 }

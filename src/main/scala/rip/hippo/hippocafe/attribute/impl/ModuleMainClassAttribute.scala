@@ -41,4 +41,7 @@ final case class ModuleMainClassAttribute(mainClassIndex: Int) extends Attribute
 
   override def write(out: DataOutputStream, constantPool: ConstantPool): Unit = out.writeShort(mainClassIndex)
 
+  override def buildConstantPool(constantPool: ConstantPool): Unit = {
+
+  }
 }

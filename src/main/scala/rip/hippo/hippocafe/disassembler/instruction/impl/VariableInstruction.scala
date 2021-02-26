@@ -50,9 +50,10 @@ final case class VariableInstruction(bytecodeOpcode: BytecodeOpcode, index: Int)
     if (wide) {
       code += BytecodeOpcode.WIDE.id.toByte
     }
+
     code += bytecodeOpcode.id.toByte
     if (wide) {
-      code += (index << 8).toByte
+      code += ((index >> 8) & 0xFF).toByte
       code += (index & 0xFF).toByte
     } else {
       code += index.toByte

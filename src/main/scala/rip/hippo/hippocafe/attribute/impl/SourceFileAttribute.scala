@@ -29,15 +29,38 @@ import rip.hippo.hippocafe.attribute.Attribute.Attribute
 import rip.hippo.hippocafe.attribute.AttributeInfo
 import rip.hippo.hippocafe.attribute.{Attribute, AttributeInfo}
 import rip.hippo.hippocafe.constantpool.ConstantPool
+import rip.hippo.hippocafe.constantpool.info.impl.UTF8Info
 
 /**
  * @author Hippo
  * @version 1.0.0, 8/2/20
  * @since 1.0.0
  */
-final case class SourceFileAttribute(sourceFileIndex: Int) extends AttributeInfo {
+final case class SourceFileAttribute(sourceFile: String) extends AttributeInfo {
 
   override val kind: Attribute = Attribute.SOURCE_FILE
 
-  override def write(out: DataOutputStream, constantPool: ConstantPool): Unit = out.writeShort(sourceFileIndex)
+  override def write(out: DataOutputStream, constantPool: ConstantPool): Unit = {
+    out.writeShort(constantPool.info
+      .filter(_._2.isInstanceOf[UTF8Info])
+      .filter(_._2.asInstanceOf[UTF8Info].value.equals(sourceFile))
+      .keys.head)
+  }
+
+  override def buildConstantPool(constantPool: ConstantPool): Unit = {
+    var index = -1
+    constantPool.info
+      .filter(_._2.isInstanceOf[UTF8Info])
+      .filter(_._2.asInstanceOf[UTF8Info].value.equals(sourceFile))
+      .keys
+      .foreach(index = _)
+
+
+    if (index == -1) {
+      val max = constantPool.info.keys.max
+      index = max + (if (constantPool.info(max).wide) 2 else 1)
+      constantPool.insert(index, UTF8Info(sourceFile))
+      println(index + " " + constantPool.info(index))
+    }
+  }
 }

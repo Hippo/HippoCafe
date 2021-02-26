@@ -49,6 +49,7 @@ final case class ConstantInstruction(constant: Any) extends Instruction {
       case _: String =>
         constantPool.info
           .filter(_._2.isInstanceOf[StringInfo])
+          .filter(_._2.kind == ConstantPoolKind.STRING)
           .filter(_._2.asInstanceOf[StringInfo].value.equals(constant))
           .keys
           .foreach(index = _)
@@ -82,15 +83,17 @@ final case class ConstantInstruction(constant: Any) extends Instruction {
     }
 
 
+
+
     constant match {
       case _: Double | Long =>
         code += BytecodeOpcode.LDC2_W.id.toByte
-        code += (index << 8).toByte
+        code += ((index >> 8) & 0xFF).toByte
         code += (index & 0xFF).toByte
       case _ =>
         if (index > 255) {
           code += BytecodeOpcode.LDC_W.id.toByte
-          code += (index << 8).toByte
+          code += ((index >> 8) & 0xFF).toByte
           code += (index & 0xFF).toByte
         } else {
           code += BytecodeOpcode.LDC.id.toByte

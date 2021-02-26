@@ -42,6 +42,7 @@ final case class TypeInstruction(bytecodeOpcode: BytecodeOpcode, typeName: Strin
     var index = -1
     constantPool.info
       .filter(_._2.isInstanceOf[StringInfo])
+      .filter(_._2.kind == ConstantPoolKind.CLASS)
       .filter(_._2.asInstanceOf[StringInfo].value.equals(typeName))
       .keys
       .foreach(index = _)
@@ -56,7 +57,7 @@ final case class TypeInstruction(bytecodeOpcode: BytecodeOpcode, typeName: Strin
     }
 
     assemblerContext.code += bytecodeOpcode.id.toByte
-    assemblerContext.code += (index << 8).toByte
+    assemblerContext.code += ((index >> 8) & 0xFF).toByte
     assemblerContext.code += (index & 0xFF).toByte
   }
 }

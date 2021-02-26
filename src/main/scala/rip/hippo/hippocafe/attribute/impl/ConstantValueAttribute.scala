@@ -40,4 +40,8 @@ final case class ConstantValueAttribute(index: Int) extends AttributeInfo {
   override val kind: Attribute = Attribute.CONSTANT_VALUE
 
   override def write(out: DataOutputStream, constantPool: ConstantPool): Unit = out.writeShort(index)
+
+  override def buildConstantPool(constantPool: ConstantPool): Unit = {
+
+  }
 }

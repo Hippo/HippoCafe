@@ -40,4 +40,8 @@ final case class DeprecatedAttribute() extends AttributeInfo {
   override val kind: Attribute = Attribute.DEPRECATED
 
   override def write(out: DataOutputStream, constantPool: ConstantPool): Unit = {}
+
+  override def buildConstantPool(constantPool: ConstantPool): Unit = {
+
+  }
 }

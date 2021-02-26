@@ -47,4 +47,8 @@ final case class MethodParametersAttribute(parametersCount: Int, parameters: Arr
       out.writeShort(parameter.accessFlags)
     })
   }
+
+  override def buildConstantPool(constantPool: ConstantPool): Unit = {
+
+  }
 }

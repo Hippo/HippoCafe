@@ -40,4 +40,8 @@ final case class SourceDebugExtensionAttribute(debugExtension: Array[Byte]) exte
   override val kind: Attribute = Attribute.SOURCE_DEBUG_EXTENSION
 
   override def write(out: DataOutputStream, constantPool: ConstantPool): Unit = out.write(debugExtension)
+
+  override def buildConstantPool(constantPool: ConstantPool): Unit = {
+
+  }
 }

@@ -47,4 +47,8 @@ final case class LineNumberTableAttribute(lineNumberTableLength: Int, lineNumber
       out.writeShort(table.lineNumber)
     })
   }
+
+  override def buildConstantPool(constantPool: ConstantPool): Unit = {
+
+  }
 }

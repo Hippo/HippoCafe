@@ -91,7 +91,9 @@ final case class ModuleAttribute(moduleNameIndex: Int,
       out.writeShort(provide.providesWithCount)
       provide.providesWithIndex.foreach(index => out.writeShort(index))
     })
+  }
 
-    
+  override def buildConstantPool(constantPool: ConstantPool): Unit = {
+
   }
 }

@@ -108,7 +108,10 @@ final class ClassWriter(classFile: ClassFile) extends AutoCloseable {
       }
     })
 
-    out.writeShort(constantPool.info.values.size + 1)
+
+    println("WRITER " + constantPool.info)
+
+    out.writeShort(constantPool.info.keys.max + 1)
     constantPool.info.foreach(entry => {
       out.writeByte(entry._2.kind.id)
       entry._2.write(out, constantPool)
@@ -185,14 +188,17 @@ final class ClassWriter(classFile: ClassFile) extends AutoCloseable {
 
   def generateConstantPool: ConstantPool = {
     val constantPool = new ConstantPool
-    var index = 1
 
     def add(info: ConstantPoolInfo, incr: Int = 1): Unit = {
+      var index = 1
+      if (constantPool.info.nonEmpty) {
+        val max = constantPool.info.keys.max
+        index = max + (if (constantPool.info(max).wide) 2 else 1)
+      }
       constantPool.info.values.find(_.equals(info)) match {
         case Some(_) =>
         case None =>
           constantPool.insert(index, info)
-          index += incr
       }
     }
 
@@ -203,6 +209,7 @@ final class ClassWriter(classFile: ClassFile) extends AutoCloseable {
 
     classFile.attributes.foreach(attribute => {
       add(UTF8Info(attribute.kind.toString))
+      attribute.buildConstantPool(constantPool)
     })
     classFile.methods.foreach(methodInfo => {
       add(UTF8Info(methodInfo.name))
@@ -240,6 +247,7 @@ final class ClassWriter(classFile: ClassFile) extends AutoCloseable {
       })
       methodInfo.attributes.foreach(attribute => {
         add(UTF8Info(attribute.kind.toString))
+        attribute.buildConstantPool(constantPool)
       })
     })
     classFile.fields.foreach(fieldInfo => {
@@ -247,6 +255,7 @@ final class ClassWriter(classFile: ClassFile) extends AutoCloseable {
       add(UTF8Info(fieldInfo.descriptor))
       fieldInfo.attributes.foreach(attribute => {
         add(UTF8Info(attribute.kind.toString))
+        attribute.buildConstantPool(constantPool)
       })
     })
 
