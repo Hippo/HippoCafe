@@ -109,8 +109,7 @@ sealed case class Block() {
         }
       case ConstantInstruction(constant) =>
         constant match {
-          case _: java.lang.Double => 2
-          case _: java.lang.Long => 2
+          case _: Long | Double => 2
           case _ => 1
         }
       case LookupSwitchInstruction(_) => -1

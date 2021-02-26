@@ -41,6 +41,7 @@ final case class ConstantInstruction(constant: Any) extends Instruction {
     val code = assemblerContext.code
     var index = -1
 
+
     constant match {
       case _: String =>
         constantPool.info
@@ -69,22 +70,18 @@ final case class ConstantInstruction(constant: Any) extends Instruction {
           constantPool.insert(index, new StringInfo(string, ConstantPoolKind.STRING))
         case int: Integer =>
           constantPool.insert(index, IntegerInfo(int))
-        case float: java.lang.Float =>
+        case float: Float =>
           constantPool.insert(index, FloatInfo(float))
-        case double: java.lang.Double =>
+        case double: Double =>
           constantPool.insert(index, DoubleInfo(double))
-        case long: java.lang.Long =>
+        case long: Long =>
           constantPool.insert(index, LongInfo(long))
       }
     }
 
 
     constant match {
-      case _: java.lang.Long =>
-        code += BytecodeOpcode.LDC2_W.id.toByte
-        code += ((index >> 8) & 0xFF).toByte
-        code += (index & 0xFF).toByte
-      case _: java.lang.Double =>
+      case _: Long | Double =>
         code += BytecodeOpcode.LDC2_W.id.toByte
         code += ((index >> 8) & 0xFF).toByte
         code += (index & 0xFF).toByte

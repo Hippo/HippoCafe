@@ -231,11 +231,11 @@ final class ClassWriter(classFile: ClassFile) extends AutoCloseable {
               add(new StringInfo(string, ConstantPoolKind.STRING))
             case int: Integer =>
               add(IntegerInfo(int))
-            case float: java.lang.Float =>
+            case float: Float =>
               add(FloatInfo(float))
-            case double: java.lang.Double =>
+            case double: Double =>
               add(DoubleInfo(double), 2)
-            case long: java.lang.Long =>
+            case long: Long =>
               add(LongInfo(long), 2)
           }
         case _ =>
