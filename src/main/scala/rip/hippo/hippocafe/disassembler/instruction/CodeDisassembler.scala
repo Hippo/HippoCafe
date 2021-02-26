@@ -25,10 +25,10 @@
 package rip.hippo.hippocafe.disassembler.instruction
 
 import rip.hippo.hippocafe.constantpool.info.impl.ReferenceInfo
-import rip.hippo.hippocafe.disassembler.instruction.impl.{ANewArrayInstruction, BranchInstruction, ConstantInstruction, IncrementInstruction, LabelInstruction, LookupSwitchInstruction, MultiANewArrayInstruction, NewArrayInstruction, PushInstruction, ReferenceInstruction, SimpleInstruction, TableSwitchInstruction, TypeInstruction, VariableInstruction}
+import rip.hippo.hippocafe.disassembler.instruction.impl.{ANewArrayInstruction, BranchInstruction, ConstantInstruction, IncrementInstruction, LabelInstruction, LineNumberInstruction, LookupSwitchInstruction, MultiANewArrayInstruction, NewArrayInstruction, PushInstruction, ReferenceInstruction, SimpleInstruction, TableSwitchInstruction, TypeInstruction, VariableInstruction}
 import rip.hippo.hippocafe.MethodInfo
 import rip.hippo.hippocafe.attribute.Attribute
-import rip.hippo.hippocafe.attribute.impl.CodeAttribute
+import rip.hippo.hippocafe.attribute.impl.{CodeAttribute, LineNumberTableAttribute}
 import rip.hippo.hippocafe.constantpool.ConstantPool
 import rip.hippo.hippocafe.constantpool.info.ValueAwareness
 import rip.hippo.hippocafe.constantpool.info.impl.{ReferenceInfo, StringInfo}
@@ -56,8 +56,14 @@ object CodeDisassembler {
         val code = codeAttribute.code
         val exceptions = codeAttribute.exceptionTable
         val codeLength = code.length
-        val labels = mutable.SortedMap[Int, LabelInstruction]()
+        val labels = mutable.SortedMap[Int, Instruction]()
         var labelDebugId = 0
+
+        codeAttribute.attributes.find(_.kind == Attribute.LINE_NUMBER_TABLE) match {
+          case Some(lineNumberTableAttribute: LineNumberTableAttribute) =>
+            lineNumberTableAttribute.lineNumberTable.foreach(data => labels += (data.startPc -> LineNumberInstruction(data.lineNumber)))
+          case _ =>
+        }
 
         def u1: Int = code({
           val index = offset

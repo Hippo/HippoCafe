@@ -37,7 +37,7 @@ import scala.util.{Failure, Using}
  */
 final class ReadAssembleWriteSuite extends FunSuite {
 
-  private val className = "OakTest"
+  private val className = "ArrayTest"
 
 
   test("assemble.readThenLoad") {
