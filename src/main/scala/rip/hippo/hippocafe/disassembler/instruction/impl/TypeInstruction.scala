@@ -57,7 +57,7 @@ final case class TypeInstruction(bytecodeOpcode: BytecodeOpcode, typeName: Strin
     }
 
     assemblerContext.code += bytecodeOpcode.id.toByte
-    assemblerContext.code += ((index >> 8) & 0xFF).toByte
+    assemblerContext.code += ((index >>> 8) & 0xFF).toByte
     assemblerContext.code += (index & 0xFF).toByte
   }
 }

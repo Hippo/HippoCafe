@@ -51,7 +51,7 @@ final class StandardMaxStackDepthCalculator extends MaxStackDepthCalculator {
       val carry = block.getBlockDepth._2
       block.getEndingBranch match {
         case Some(value) =>
-          jumpableBlocks.get(value.branch) match {
+          jumpableBlocks.get(value.label) match {
             case Some(value) =>
               value.setInherit(carry)
             case None =>

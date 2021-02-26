@@ -286,6 +286,7 @@ object BytecodeOpcode extends Enumeration {
   val WIDE: BytecodeOpcode = 0xc4
 
   def fromOpcode(opcode: Int): Option[BytecodeOpcode] =
-    BytecodeOpcode.values.find(_.id == opcode)
+    BytecodeOpcode.values.find(_.id == (opcode & 0xFF))
+
 
 }

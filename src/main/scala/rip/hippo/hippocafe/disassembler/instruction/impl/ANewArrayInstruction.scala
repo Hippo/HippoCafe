@@ -57,7 +57,7 @@ final case class ANewArrayInstruction(descriptor: String) extends Instruction {
 
 
     assemblerContext.code += BytecodeOpcode.ANEWARRAY.id.toByte
-    assemblerContext.code += ((index >> 8) & 0xFF).toByte
+    assemblerContext.code += ((index >>> 8) & 0xFF).toByte
     assemblerContext.code += (index & 0xFF).toByte
   }
 }

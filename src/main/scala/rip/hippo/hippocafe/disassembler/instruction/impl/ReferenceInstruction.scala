@@ -91,7 +91,7 @@ final case class ReferenceInstruction(bytecodeOpcode: BytecodeOpcode, owner: Str
       
     } else refIndex = index
     code += bytecodeOpcode.id.toByte
-    code += (refIndex >> 8).toByte
+    code += (refIndex >>> 8).toByte
     code += (refIndex & 0xFF).toByte
 
     if (bytecodeOpcode == INVOKEINTERFACE) {

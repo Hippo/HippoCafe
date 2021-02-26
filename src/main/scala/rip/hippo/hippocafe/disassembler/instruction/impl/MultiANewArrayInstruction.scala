@@ -58,7 +58,7 @@ final case class MultiANewArrayInstruction(descriptor: String, dimensions: Int) 
 
 
     assemblerContext.code += BytecodeOpcode.MULTIANEWARRAY.id.toByte
-    assemblerContext.code += ((index >> 8) & 0xFF).toByte
+    assemblerContext.code += ((index >>> 8) & 0xFF).toByte
     assemblerContext.code += (index & 0xFF).toByte
     assemblerContext.code += dimensions.toByte
   }

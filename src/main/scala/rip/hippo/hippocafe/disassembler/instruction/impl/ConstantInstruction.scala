@@ -83,12 +83,12 @@ final case class ConstantInstruction(constant: Any) extends Instruction {
     constant match {
       case _: Long | Double =>
         code += BytecodeOpcode.LDC2_W.id.toByte
-        code += ((index >> 8) & 0xFF).toByte
+        code += ((index >>> 8) & 0xFF).toByte
         code += (index & 0xFF).toByte
       case _ =>
         if (index > 255) {
           code += BytecodeOpcode.LDC_W.id.toByte
-          code += ((index >> 8) & 0xFF).toByte
+          code += ((index >>> 8) & 0xFF).toByte
           code += (index & 0xFF).toByte
         } else {
           code += BytecodeOpcode.LDC.id.toByte
