@@ -109,7 +109,6 @@ final class ClassWriter(classFile: ClassFile) extends AutoCloseable {
     })
 
 
-    println("WRITER " + constantPool.info)
 
     out.writeShort(constantPool.info.keys.max + 1)
     constantPool.info.foreach(entry => {
@@ -230,13 +229,13 @@ final class ClassWriter(classFile: ClassFile) extends AutoCloseable {
             case string: String =>
               add(UTF8Info(string))
               add(new StringInfo(string, ConstantPoolKind.STRING))
-            case int: Int =>
+            case int: Integer =>
               add(IntegerInfo(int))
-            case float: Float =>
+            case float: java.lang.Float =>
               add(FloatInfo(float))
-            case double: Double =>
+            case double: java.lang.Double =>
               add(DoubleInfo(double), 2)
-            case long: Long =>
+            case long: java.lang.Long =>
               add(LongInfo(long), 2)
           }
         case _ =>

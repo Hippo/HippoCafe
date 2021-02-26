@@ -24,16 +24,12 @@
 
 package rip.hippo.hippocafe.disassembler.instruction.impl
 
-import rip.hippo.hippocafe.constantpool.ConstantPool
-import rip.hippo.hippocafe.constantpool.info.impl.DoubleInfo
-import rip.hippo.hippocafe.disassembler.instruction.Instruction
 import rip.hippo.hippocafe.constantpool.{ConstantPool, ConstantPoolKind}
 import rip.hippo.hippocafe.constantpool.info.ValueAwareness
 import rip.hippo.hippocafe.constantpool.info.impl.{DoubleInfo, FloatInfo, IntegerInfo, LongInfo, StringInfo, UTF8Info}
 import rip.hippo.hippocafe.disassembler.context.AssemblerContext
 import rip.hippo.hippocafe.disassembler.instruction.{BytecodeOpcode, Instruction}
 
-import scala.collection.mutable.ListBuffer
 
 /**
  * @author Hippo
@@ -71,22 +67,24 @@ final case class ConstantInstruction(constant: Any) extends Instruction {
             index += 1
           }
           constantPool.insert(index, new StringInfo(string, ConstantPoolKind.STRING))
-        case int: Int =>
+        case int: Integer =>
           constantPool.insert(index, IntegerInfo(int))
-        case float: Float =>
+        case float: java.lang.Float =>
           constantPool.insert(index, FloatInfo(float))
-        case double: Double =>
+        case double: java.lang.Double =>
           constantPool.insert(index, DoubleInfo(double))
-        case long: Long =>
+        case long: java.lang.Long =>
           constantPool.insert(index, LongInfo(long))
       }
     }
 
 
-
-
     constant match {
-      case _: Double | Long =>
+      case _: java.lang.Long =>
+        code += BytecodeOpcode.LDC2_W.id.toByte
+        code += ((index >> 8) & 0xFF).toByte
+        code += (index & 0xFF).toByte
+      case _: java.lang.Double =>
         code += BytecodeOpcode.LDC2_W.id.toByte
         code += ((index >> 8) & 0xFF).toByte
         code += (index & 0xFF).toByte

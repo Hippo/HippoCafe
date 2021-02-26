@@ -60,7 +60,6 @@ final case class SourceFileAttribute(sourceFile: String) extends AttributeInfo {
       val max = constantPool.info.keys.max
       index = max + (if (constantPool.info(max).wide) 2 else 1)
       constantPool.insert(index, UTF8Info(sourceFile))
-      println(index + " " + constantPool.info(index))
     }
   }
 }
