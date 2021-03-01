@@ -26,7 +26,7 @@ package rip.hippo.hippocafe.disassembler.instruction.impl
 
 import rip.hippo.hippocafe.constantpool.ConstantPool
 import rip.hippo.hippocafe.disassembler.context.AssemblerContext
-import rip.hippo.hippocafe.disassembler.instruction.Instruction
+import rip.hippo.hippocafe.disassembler.instruction.{BytecodeOpcode, Instruction}
 
 import scala.collection.mutable.ListBuffer
 
@@ -37,6 +37,19 @@ import scala.collection.mutable.ListBuffer
  */
 final case class IncrementInstruction(localIndex: Int, value: Int) extends Instruction {
   override def assemble(assemblerContext: AssemblerContext, constantPool: ConstantPool): Unit = {
-
+    val wide = localIndex > 255 || value > 255
+    if (wide) {
+      assemblerContext.code += BytecodeOpcode.WIDE.id.toByte
+    }
+    assemblerContext.code += BytecodeOpcode.IINC.id.toByte
+    if (wide) {
+      assemblerContext.code += ((localIndex >>> 8) & 0xFF).toByte
+      assemblerContext.code += (localIndex & 0xFF).toByte
+      assemblerContext.code += ((value >>> 8) & 0xFF).toByte
+      assemblerContext.code += (value & 0xFF).toByte
+    } else {
+      assemblerContext.code += localIndex.toByte
+      assemblerContext.code += value.toByte
+    }
   }
 }

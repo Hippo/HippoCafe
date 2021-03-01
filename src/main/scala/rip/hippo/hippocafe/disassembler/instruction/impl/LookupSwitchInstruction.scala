@@ -40,6 +40,5 @@ final case class LookupSwitchInstruction(default: LabelInstruction) extends Inst
   val pairs: mutable.Map[Int, LabelInstruction] = mutable.Map[Int, LabelInstruction]()
 
   override def assemble(assemblerContext: AssemblerContext, constantPool: ConstantPool): Unit = {
-
   }
 }

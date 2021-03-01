@@ -73,9 +73,7 @@ sealed case class Block() {
     var depth = 0
 
     instructions.foreach(instruction => {
-      print(instruction + " " + depth + " -> ")
       depth += getInstructionDepth(instruction)
-      println(depth)
       maxDepth = Math.max(maxDepth, depth)
     })
 

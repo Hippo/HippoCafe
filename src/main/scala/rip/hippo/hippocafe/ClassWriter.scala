@@ -82,7 +82,6 @@ final class ClassWriter(classFile: ClassFile) extends AutoCloseable {
         if (assemblerContext.calculateMaxes) {
           val defaultSize = Type.getMethodParameterTypes(method.descriptor).map(_.getSize).sum + (if (method.accessFlags.contains(AccessFlag.ACC_STATIC)) 0 else 1)
           val maxStack = stackDepthCalculator.calculateMaxStack(method)
-          println(s"${method.name} $maxStack")
           assemblerContext.setMaxLocals(defaultSize)
           assemblerContext.setMaxStack(maxStack)
         } else {
@@ -91,6 +90,7 @@ final class ClassWriter(classFile: ClassFile) extends AutoCloseable {
         }
 
         method.instructions.foreach(_.assemble(assemblerContext, constantPool))
+        assemblerContext.processJumpOffsets()
         val methodBytecode = assemblerContext.code
         removedCodeAttribute += method
         // todo: compute exceptions and sub-attributes

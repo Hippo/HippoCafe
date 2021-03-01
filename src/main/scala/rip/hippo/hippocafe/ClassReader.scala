@@ -124,7 +124,6 @@ final class ClassReader(parentInputStream: InputStream, lowLevel: Boolean = fals
   constantPool.info.values.foreach(info => info.readCallback(constantPool))
 
 
-
   private val accessMask = u2
   private val className = constantPool.readString(u2)
   private val superName = constantPool.readString(u2)

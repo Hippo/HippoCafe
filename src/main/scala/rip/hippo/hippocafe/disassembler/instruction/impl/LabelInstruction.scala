@@ -40,36 +40,7 @@ final class LabelInstruction(var debugId: Int = -1) extends Instruction {
   override def toString: String = "Label(" + (if (debugId == -1) "" else debugId) + ")"
 
   override def assemble(assemblerContext: AssemblerContext, constantPool: ConstantPool): Unit = {
-    val indexes = assemblerContext.postProcessBranchIndexes
-    val code = assemblerContext.code
-    assemblerContext.labelToByteOffset += (this -> code.length)
-
-    if (indexes.contains(this)) {
-      val jumpOffsets = indexes(this)
-      val offset = code.length
-      jumpOffsets.foreach(i => {
-        val bytecodeOpcode = BytecodeOpcode.fromOpcode(code(i)).get
-        val wide = offset > Short.MaxValue
-        def shift(bits: Int): Byte = ((offset >>> bits) & 0xFF).toByte
-        val opcode = bytecodeOpcode match {
-          case JSR if wide => JSR_W
-          case JSR_W if !wide => JSR
-          case GOTO if wide => GOTO_W
-          case GOTO_W if !wide => GOTO
-          case _ => bytecodeOpcode
-        }
-        code.updated(i, opcode.id.toByte)
-        if (wide && (opcode == JSR_W || opcode == GOTO_W)) {
-          code.insert(i + 1, shift(24))
-          code.insert(i + 2, shift(16))
-          code.insert(i + 3, shift(8))
-          code.insert(i + 4, shift(0))
-        } else {
-          code.insert(i + 1, shift(8))
-          code.insert(i + 2, shift(0))
-        }
-      })
-    }
+    assemblerContext.labelToByteOffset += (this -> assemblerContext.code.length)
   }
 }
 
