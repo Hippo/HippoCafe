@@ -61,7 +61,7 @@ object CodeDisassembler {
 
         codeAttribute.attributes.find(_.kind == Attribute.LINE_NUMBER_TABLE) match {
           case Some(lineNumberTableAttribute: LineNumberTableAttribute) =>
-            //lineNumberTableAttribute.lineNumberTable.foreach(data => labels += (data.startPc -> LineNumberInstruction(data.lineNumber)))
+            lineNumberTableAttribute.lineNumberTable.foreach(data => labels += (data.startPc -> LineNumberInstruction(data.lineNumber)))
           case _ =>
         }
 
