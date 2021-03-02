@@ -61,7 +61,7 @@ object CodeDisassembler {
 
         codeAttribute.attributes.find(_.kind == Attribute.LINE_NUMBER_TABLE) match {
           case Some(lineNumberTableAttribute: LineNumberTableAttribute) =>
-            lineNumberTableAttribute.lineNumberTable.foreach(data => labels += (data.startPc -> LineNumberInstruction(data.lineNumber)))
+            //lineNumberTableAttribute.lineNumberTable.foreach(data => labels += (data.startPc -> LineNumberInstruction(data.lineNumber)))
           case _ =>
         }
 
@@ -376,16 +376,19 @@ object CodeDisassembler {
           tryCatchBlocks += TryCatchBlock(start, end, handler, constantPool.readString(exception.catchType))
         })
 
+        var push = 0
         labels.foreach(entry => {
-          val offset = entry._1
+          val offset = entry._1 + push
           val label = entry._2
           if (instructions.contains(offset)) {
-            var copy = 0
             val newInstructions = mutable.SortedMap[Int, Instruction]()
+            var copy = 0
             instructions.foreach(entry => {
               if (entry._1 == offset) {
                 copy += 1
+                push += 1
                 newInstructions += (entry._1 -> label)
+
               }
               newInstructions += (entry._1 + copy -> entry._2)
             })

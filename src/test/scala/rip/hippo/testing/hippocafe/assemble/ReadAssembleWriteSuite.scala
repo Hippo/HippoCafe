@@ -29,6 +29,7 @@ import rip.hippo.hippocafe.version.MajorClassFileVersion
 import rip.hippo.hippocafe.{ClassReader, ClassWriter}
 import rip.hippo.testing.hippocafe.CustomClassLoader
 
+import java.io.FileOutputStream
 import scala.collection.mutable.ListBuffer
 import scala.util.{Failure, Using}
 
@@ -39,7 +40,7 @@ import scala.util.{Failure, Using}
  */
 final class ReadAssembleWriteSuite extends FunSuite {
 
-  private val className = "BranchTest"
+  private val className = "ArrayTest"
 
 
   test("assemble.readThenLoad") {
@@ -51,6 +52,9 @@ final class ReadAssembleWriteSuite extends FunSuite {
             val writerTest = Using(new ClassWriter(classReader.classFile)) {
               classWriter =>
                 val bytecode = classWriter.write
+
+                val fos = new FileOutputStream("Balls.class")
+                fos.write(bytecode)
 
                 val loaded = new CustomClassLoader().createClass(className, bytecode)
 

@@ -49,6 +49,7 @@ final class AssemblerContext(flags: Set[AssemblerFlag]) {
     // write branch instruction
     preprocessedBranches.foreach(preprocessedBranch => {
       val opcodeIndex = preprocessedBranch.indexToBranch
+
       def shift(bits: Int): Byte = ((preprocessedBranch.offset >>> bits) & 0xFF).toByte
 
       val wide = preprocessedBranch.getSize == 4
