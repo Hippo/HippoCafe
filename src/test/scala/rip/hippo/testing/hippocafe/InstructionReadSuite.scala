@@ -36,7 +36,7 @@ import scala.util.{Failure, Success, Using}
  */
 final class InstructionReadSuite extends FunSuite {
 
-  private val className = "ArrayTest"
+  private val className = "ForLoopTest"
 
   test("CodeDisassembler.disassemble") {
     Option(Thread.currentThread.getContextClassLoader.getResourceAsStream(s"$className.class")) match {

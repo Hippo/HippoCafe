@@ -91,6 +91,23 @@ final class ClassWriter(classFile: ClassFile) extends AutoCloseable {
 
         method.instructions.foreach(_.assemble(assemblerContext, constantPool))
         assemblerContext.processJumpOffsets()
+        val attributes = assemblerContext.assembleMethodAttributes
+
+        attributes.foreach(attribute => {
+          val info = UTF8Info(attribute.kind.toString)
+          var index = 1
+          if (constantPool.info.nonEmpty) {
+            val max = constantPool.info.keys.max
+            index = max + (if (constantPool.info(max).wide) 2 else 1)
+          }
+          constantPool.info.values.find(_.equals(info)) match {
+            case Some(_) =>
+            case None =>
+              constantPool.insert(index, info)
+          }
+          attribute.buildConstantPool(constantPool)
+        })
+
         val methodBytecode = assemblerContext.code
         removedCodeAttribute += method
         // todo: compute exceptions and sub-attributes
@@ -102,8 +119,8 @@ final class ClassWriter(classFile: ClassFile) extends AutoCloseable {
           methodBytecode.toArray,
           0,
           new Array[ExceptionTableAttributeData](0),
-          0,
-          new Array[AttributeInfo](0)
+          attributes.length,
+          attributes
         )
       }
     })

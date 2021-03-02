@@ -1,11 +1,14 @@
 package rip.hippo.hippocafe.disassembler.context
 
+import rip.hippo.hippocafe.attribute.AttributeInfo
+import rip.hippo.hippocafe.attribute.impl.LineNumberTableAttribute
+import rip.hippo.hippocafe.attribute.impl.data.LineNumberTableAttributeData
 import rip.hippo.hippocafe.disassembler.instruction.BytecodeOpcode
 import rip.hippo.hippocafe.disassembler.instruction.BytecodeOpcode._
 import rip.hippo.hippocafe.disassembler.instruction.impl.LabelInstruction
 
 import scala.collection.mutable
-import scala.collection.mutable.ListBuffer
+import scala.collection.mutable.{ArrayBuffer, ListBuffer}
 
 /**
  * @author Hippo
@@ -16,6 +19,7 @@ final class AssemblerContext(flags: Set[AssemblerFlag]) {
   val code: ListBuffer[Byte] = ListBuffer[Byte]()
   val labelToByteOffset: mutable.Map[LabelInstruction, Int] = mutable.Map[LabelInstruction, Int]()
   val preprocessedBranches: ListBuffer[PreprocessedBranch] = ListBuffer[PreprocessedBranch]()
+  val lineNumberOffsets: mutable.Map[Int, Int] = mutable.Map[Int, Int]()
   var maxStack = 0
   var maxLocals = 0
 
@@ -72,6 +76,21 @@ final class AssemblerContext(flags: Set[AssemblerFlag]) {
         code.insert(opcodeIndex + 2, shift(0))
       }
     })
+  }
+
+  def assembleMethodAttributes: Array[AttributeInfo] = {
+    val attributes = ArrayBuffer[AttributeInfo]()
+
+    val lineNumberAttributeDataInfo = ArrayBuffer[LineNumberTableAttributeData]()
+    lineNumberOffsets.foreach(entry => {
+      val lineNumber = entry._1
+      val startPc = entry._2
+      lineNumberAttributeDataInfo += LineNumberTableAttributeData(startPc, lineNumber)
+    })
+
+    attributes += LineNumberTableAttribute(lineNumberAttributeDataInfo.length, lineNumberAttributeDataInfo.toArray)
+
+    attributes.toArray
   }
 
   def setMaxStack(size: Int): Unit = maxStack = Math.max(maxStack, size)

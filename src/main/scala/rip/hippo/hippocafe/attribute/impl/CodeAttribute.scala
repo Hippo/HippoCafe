@@ -80,6 +80,5 @@ final case class CodeAttribute(oak: Boolean,
   }
 
   override def buildConstantPool(constantPool: ConstantPool): Unit = {
-
   }
 }
