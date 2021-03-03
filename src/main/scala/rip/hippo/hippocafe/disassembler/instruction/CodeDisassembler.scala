@@ -72,27 +72,40 @@ object CodeDisassembler {
             lineNumberTableAttribute.lineNumberTable.foreach(data => addLabel(data.startPc, LineNumberInstruction(data.lineNumber)))
           case stackMapTableAttribute: StackMapTableAttribute =>
             var offsetDelta = 0
+            var deltaChanges = 0
             stackMapTableAttribute.entries.foreach {
               case SameStackMapFrame(frameType) =>
                 offsetDelta += frameType
+                deltaChanges += 1
                 addLabel(offsetDelta, SameFrameInstruction())
               case SameLocalsStackMapFrame(frameType, stack) =>
                 offsetDelta += frameType - 64
+                deltaChanges += 1
                 addLabel(offsetDelta, SameLocalsFrameInstruction(stack(0)))
               case SameLocalsExtendedStackMapFrame(delta, stack) =>
                 offsetDelta += delta
+                deltaChanges += 1
+                if (deltaChanges > 1) offsetDelta += 1
                 addLabel(offsetDelta, SameLocalsFrameInstruction(stack(0)))
               case ChopStackMapFrame(frameType, delta) =>
                 offsetDelta += delta
+                deltaChanges += 1
+                if (deltaChanges > 1) offsetDelta += 1
                 addLabel(offsetDelta, ChopFrameInstruction(251 - frameType))
               case SameExtendedStackMapFrame(delta) =>
                 offsetDelta += delta
+                deltaChanges += 1
+                if (deltaChanges > 1) offsetDelta += 1
                 addLabel(offsetDelta, SameFrameInstruction())
               case AppendStackMapFrame(_, delta, locals) =>
                 offsetDelta += delta
+                deltaChanges += 1
+                if (deltaChanges > 1) offsetDelta += 1
                 addLabel(offsetDelta, AppendFrameInstruction(locals))
               case FullStackMapFrame(delta, _, locals, _, stack) =>
                 offsetDelta += delta
+                deltaChanges += 1
+                if (deltaChanges > 1) offsetDelta += 1
                 addLabel(offsetDelta, FullFrameInstruction(locals, stack))
               case x => throw new HippoCafeException(s"Unknown stack map frame $x")
             }
