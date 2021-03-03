@@ -24,6 +24,8 @@
 
 package rip.hippo.hippocafe.stackmap.verification.impl
 
+import rip.hippo.hippocafe.constantpool.ConstantPool
+
 import java.io.DataOutputStream
 import rip.hippo.hippocafe.stackmap.verification.VerificationTypeInfo
 
@@ -35,8 +37,8 @@ import rip.hippo.hippocafe.stackmap.verification.VerificationTypeInfo
 final class UninitializedVerificationTypeInfo(val offset: Int) extends VerificationTypeInfo {
   override val tag: Int = 8
 
-  override def write(out: DataOutputStream): Unit = {
-    super.write(out)
+  override def write(out: DataOutputStream, constantPool: ConstantPool): Unit = {
+    super.write(out, constantPool)
     out.writeShort(offset)
   }
 }

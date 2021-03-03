@@ -24,6 +24,7 @@
 
 package rip.hippo.hippocafe.stackmap.impl
 
+import rip.hippo.hippocafe.constantpool.ConstantPool
 import rip.hippo.hippocafe.stackmap.StackMapFrame
 
 import java.io.DataOutputStream
@@ -34,7 +35,7 @@ import java.io.DataOutputStream
  * @since 1.0.0
  */
 final case class SameExtendedStackMapFrame(offsetDelta: Int) extends StackMapFrame {
-  override def write(out: DataOutputStream): Unit = {
+  override def write(out: DataOutputStream, constantPool: ConstantPool): Unit = {
     out.writeByte(251)
     out.writeShort(offsetDelta)
   }

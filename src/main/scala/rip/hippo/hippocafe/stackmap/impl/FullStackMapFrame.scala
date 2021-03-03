@@ -24,6 +24,7 @@
 
 package rip.hippo.hippocafe.stackmap.impl
 
+import rip.hippo.hippocafe.constantpool.ConstantPool
 import rip.hippo.hippocafe.stackmap.StackMapFrame
 
 import java.io.DataOutputStream
@@ -39,12 +40,12 @@ final case class FullStackMapFrame(offsetDelta: Int,
                               locals: Array[VerificationTypeInfo],
                               numberOfStackItems: Int,
                               stack: Array[VerificationTypeInfo]) extends StackMapFrame {
-  override def write(out: DataOutputStream): Unit = {
+  override def write(out: DataOutputStream, constantPool: ConstantPool): Unit = {
     out.writeByte(255)
     out.writeShort(offsetDelta)
     out.writeShort(numberOfLocals)
-    locals.foreach(local => local.write(out))
+    locals.foreach(local => local.write(out, constantPool))
     out.writeShort(numberOfStackItems)
-    stack.foreach(item => item.write(out))
+    stack.foreach(item => item.write(out, constantPool))
   }
 }

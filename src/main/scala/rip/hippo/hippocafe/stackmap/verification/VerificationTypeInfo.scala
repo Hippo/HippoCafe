@@ -24,6 +24,8 @@
 
 package rip.hippo.hippocafe.stackmap.verification
 
+import rip.hippo.hippocafe.constantpool.ConstantPool
+
 import java.io.DataOutputStream
 
 /**
@@ -34,6 +36,6 @@ import java.io.DataOutputStream
 trait VerificationTypeInfo {
   val tag: Int
 
-  def write(out: DataOutputStream): Unit = out.writeByte(tag)
+  def write(out: DataOutputStream, constantPool: ConstantPool): Unit = out.writeByte(tag)
 
 }

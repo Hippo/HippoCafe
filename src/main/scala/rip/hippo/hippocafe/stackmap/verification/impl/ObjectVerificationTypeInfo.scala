@@ -24,6 +24,8 @@
 
 package rip.hippo.hippocafe.stackmap.verification.impl
 
+import rip.hippo.hippocafe.constantpool.info.impl.{StringInfo, UTF8Info}
+import rip.hippo.hippocafe.constantpool.{ConstantPool, ConstantPoolKind}
 import rip.hippo.hippocafe.stackmap.verification.VerificationTypeInfo
 
 import java.io.DataOutputStream
@@ -33,11 +35,27 @@ import java.io.DataOutputStream
  * @version 1.0.0, 8/2/20
  * @since 1.0.0
  */
-final class ObjectVerificationTypeInfo(val index: Int) extends VerificationTypeInfo {
+final class ObjectVerificationTypeInfo(val name: String) extends VerificationTypeInfo {
   override val tag: Int = 7
 
-  override def write(out: DataOutputStream): Unit = {
-    super.write(out)
+  override def write(out: DataOutputStream, constantPool: ConstantPool): Unit = {
+    var index = -1
+    constantPool.info
+      .filter(_._2.isInstanceOf[StringInfo])
+      .filter(_._2.kind == ConstantPoolKind.CLASS)
+      .filter(_._2.asInstanceOf[StringInfo].value.equals(name))
+      .keys
+      .foreach(index = _)
+    if (index == -1) {
+      val max = constantPool.info.keys.max
+      index = max + (if (constantPool.info(max).wide) 2 else 1)
+      if (!constantPool.info.values.exists(info => info.isInstanceOf[UTF8Info] && info.asInstanceOf[UTF8Info].value.equals(name))) {
+        constantPool.insert(index, UTF8Info(name))
+        index += 1
+      }
+      constantPool.insert(index, new StringInfo(name, ConstantPoolKind.CLASS))
+    }
+    super.write(out, constantPool)
     out.writeShort(index)
   }
 }

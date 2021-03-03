@@ -190,7 +190,7 @@ final class ClassReader(parentInputStream: InputStream, lowLevel: Boolean = fals
           case 4 => new LongVerificationTypeInfo
           case 5 => new NullVerificationTypeInfo
           case 6 => new UninitializedThisVerificationTypeInfo
-          case 7 => new ObjectVerificationTypeInfo(u2)
+          case 7 => new ObjectVerificationTypeInfo(constantPool.readString(u2))
           case 8 => new UninitializedVerificationTypeInfo(u2)
           case x => throw new HippoCafeException(s"Unable to find type info for tag $x")
         }

@@ -24,6 +24,8 @@
 
 package rip.hippo.hippocafe.stackmap
 
+import rip.hippo.hippocafe.constantpool.ConstantPool
+
 import java.io.DataOutputStream
 
 /**
@@ -32,5 +34,5 @@ import java.io.DataOutputStream
  * @since 1.0.0
  */
 trait StackMapFrame {
-  def write(out: DataOutputStream): Unit
+  def write(out: DataOutputStream, constantPool: ConstantPool): Unit
 }

@@ -24,6 +24,7 @@
 
 package rip.hippo.hippocafe.stackmap.impl
 
+import rip.hippo.hippocafe.constantpool.ConstantPool
 import rip.hippo.hippocafe.stackmap.StackMapFrame
 
 import java.io.DataOutputStream
@@ -35,8 +36,8 @@ import rip.hippo.hippocafe.stackmap.verification.VerificationTypeInfo
  * @since 1.0.0
  */
 final case class SameLocalsStackMapFrame(frameType: Int, stack: Array[VerificationTypeInfo]) extends StackMapFrame {
-  override def write(out: DataOutputStream): Unit = {
+  override def write(out: DataOutputStream, constantPool: ConstantPool): Unit = {
     out.writeByte(frameType)
-    stack.foreach(item => item.write(out))
+    stack.foreach(item => item.write(out, constantPool))
   }
 }
