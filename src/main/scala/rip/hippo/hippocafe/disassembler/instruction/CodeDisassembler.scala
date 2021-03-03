@@ -25,7 +25,7 @@
 package rip.hippo.hippocafe.disassembler.instruction
 
 import rip.hippo.hippocafe.constantpool.info.impl.ReferenceInfo
-import rip.hippo.hippocafe.disassembler.instruction.impl.{ANewArrayInstruction, BranchInstruction, ConstantInstruction, IncrementInstruction, LabelInstruction, LineNumberInstruction, LookupSwitchInstruction, MultiANewArrayInstruction, NewArrayInstruction, PushInstruction, ReferenceInstruction, SimpleInstruction, TableSwitchInstruction, TypeInstruction, VariableInstruction}
+import rip.hippo.hippocafe.disassembler.instruction.impl.{ANewArrayInstruction, AppendFrameInstruction, BranchInstruction, ChopFrameInstruction, ConstantInstruction, FullFrameInstruction, IncrementInstruction, LabelInstruction, LineNumberInstruction, LookupSwitchInstruction, MultiANewArrayInstruction, NewArrayInstruction, PushInstruction, ReferenceInstruction, SameFrameInstruction, SameLocalsFrameInstruction, SimpleInstruction, TableSwitchInstruction, TypeInstruction, VariableInstruction}
 import rip.hippo.hippocafe.MethodInfo
 import rip.hippo.hippocafe.attribute.Attribute
 import rip.hippo.hippocafe.attribute.impl.{CodeAttribute, LineNumberTableAttribute, StackMapTableAttribute}
@@ -35,7 +35,7 @@ import rip.hippo.hippocafe.constantpool.info.impl.{ReferenceInfo, StringInfo}
 import rip.hippo.hippocafe.disassembler.instruction.array.ArrayType
 import rip.hippo.hippocafe.disassembler.tcb.TryCatchBlock
 import rip.hippo.hippocafe.exception.HippoCafeException
-import rip.hippo.hippocafe.stackmap.impl.FullStackMapFrame
+import rip.hippo.hippocafe.stackmap.impl.{AppendStackMapFrame, ChopStackMapFrame, FullStackMapFrame, SameExtendedStackMapFrame, SameLocalsExtendedStackMapFrame, SameLocalsStackMapFrame, SameStackMapFrame}
 
 import scala.collection.mutable
 import scala.collection.mutable.ListBuffer
@@ -57,14 +57,45 @@ object CodeDisassembler {
         val code = codeAttribute.code
         val exceptions = codeAttribute.exceptionTable
         val codeLength = code.length
-        val labels = mutable.SortedMap[Int, Instruction]()
+        val labels = mutable.SortedMap[Int, ListBuffer[Instruction]]()
         var labelDebugId = 0
+        
+        def addLabel(offset: Int, instruction: Instruction): Unit = {
+          if (!labels.contains(offset)) {
+            labels += (offset -> ListBuffer[Instruction]())
+          }
+          labels(offset) += instruction
+        }
 
         codeAttribute.attributes.foreach {
           case lineNumberTableAttribute: LineNumberTableAttribute =>
-            lineNumberTableAttribute.lineNumberTable.foreach(data => labels += (data.startPc -> LineNumberInstruction(data.lineNumber)))
+            lineNumberTableAttribute.lineNumberTable.foreach(data => addLabel(data.startPc, LineNumberInstruction(data.lineNumber)))
           case stackMapTableAttribute: StackMapTableAttribute =>
-            stackMapTableAttribute.entries.foreach(println)
+            var offsetDelta = 0
+            stackMapTableAttribute.entries.foreach {
+              case SameStackMapFrame(frameType) =>
+                offsetDelta += frameType
+                addLabel(offsetDelta, SameFrameInstruction())
+              case SameLocalsStackMapFrame(frameType, stack) =>
+                offsetDelta += frameType - 64
+                addLabel(offsetDelta, SameLocalsFrameInstruction(stack(0)))
+              case SameLocalsExtendedStackMapFrame(delta, stack) =>
+                offsetDelta += delta
+                addLabel(offsetDelta, SameLocalsFrameInstruction(stack(0)))
+              case ChopStackMapFrame(frameType, delta) =>
+                offsetDelta += delta
+                addLabel(offsetDelta, ChopFrameInstruction(251 - frameType))
+              case SameExtendedStackMapFrame(delta) =>
+                offsetDelta += delta
+                addLabel(offsetDelta, SameFrameInstruction())
+              case AppendStackMapFrame(_, delta, locals) =>
+                offsetDelta += delta
+                addLabel(offsetDelta, AppendFrameInstruction(locals))
+              case FullStackMapFrame(delta, _, locals, _, stack) =>
+                offsetDelta += delta
+                addLabel(offsetDelta, FullFrameInstruction(locals, stack))
+              case x => throw new HippoCafeException(s"Unknown stack map frame $x")
+            }
           case _ =>
         }
 
@@ -303,7 +334,7 @@ object CodeDisassembler {
                   val branchOffset = if (opcode == GOTO_W || opcode == JSR_W) u4 else s2
                   val label = LabelInstruction(labelDebugId)
                   labelDebugId += 1
-                  labels += (instructionOffset + branchOffset -> label)
+                  addLabel(instructionOffset + branchOffset, label)
                   instructions += (instructionOffset -> BranchInstruction(opcode, label))
 
                 case LDC | LDC_W | LDC2_W =>
@@ -317,14 +348,14 @@ object CodeDisassembler {
                   offset += -offset & 3
                   val default = LabelInstruction(labelDebugId)
                   labelDebugId += 1
-                  labels += (instructionOffset + u4 -> default)
+                  addLabel(instructionOffset + u4, default)
                   val lookupSwitch = LookupSwitchInstruction(default)
                   val cases = u4
                   (0 until cases).foreach(_ => {
                     val key = u4
                     val branch = LabelInstruction(labelDebugId)
                     labelDebugId += 1
-                    labels += (instructionOffset + u4 -> branch)
+                    addLabel(instructionOffset + u4, branch)
                     lookupSwitch.pairs += (key -> branch)
                   })
                   instructions += (instructionOffset -> lookupSwitch)
@@ -333,7 +364,7 @@ object CodeDisassembler {
                   offset += -offset & 3
                   val default = LabelInstruction(labelDebugId)
                   labelDebugId += 1
-                  labels += (instructionOffset + u4 -> default)
+                  addLabel(instructionOffset + u4, default)
                   val low = u4
                   val high = u4
                   val cases = high - low + 1
@@ -341,7 +372,7 @@ object CodeDisassembler {
                   (0 until cases).foreach(_ => {
                     val branch = LabelInstruction(labelDebugId)
                     labelDebugId += 1
-                    labels += (instructionOffset + u4 -> branch)
+                    addLabel(instructionOffset + u4, branch)
                     tableSwitch.table += branch
                   })
                   instructions += (instructionOffset -> tableSwitch)
@@ -373,34 +404,36 @@ object CodeDisassembler {
           labelDebugId += 1
 
 
-          labels += (exception.startPc -> start)
-          labels += (exception.endPc -> end)
-          labels += (exception.handlerPc -> handler)
+          addLabel(exception.startPc, start)
+          addLabel(exception.endPc, end)
+          addLabel(exception.handlerPc, handler)
           tryCatchBlocks += TryCatchBlock(start, end, handler, constantPool.readString(exception.catchType))
         })
 
         var push = 0
         labels.foreach(entry => {
           val offset = entry._1 + push
-          val label = entry._2
-          if (instructions.contains(offset)) {
-            val newInstructions = mutable.SortedMap[Int, Instruction]()
-            var copy = 0
-            instructions.foreach(entry => {
-              if (entry._1 == offset) {
-                copy += 1
-                push += 1
-                newInstructions += (entry._1 -> label)
-
-              }
-              newInstructions += (entry._1 + copy -> entry._2)
-            })
-            instructions.clear()
-            instructions ++= newInstructions
-          } else {
-            instructions += (offset -> label)
-          }
+          val labels = entry._2
+          labels.foreach(label => {
+            if (instructions.contains(offset)) {
+              val newInstructions = mutable.SortedMap[Int, Instruction]()
+              var copy = 0
+              instructions.foreach(entry => {
+                if (entry._1 == offset) {
+                  copy += 1
+                  push += 1
+                  newInstructions += (entry._1 -> label)
+                }
+                newInstructions += (entry._1 + copy -> entry._2)
+              })
+              instructions.clear()
+              instructions ++= newInstructions
+            } else {
+              instructions += (offset -> label)
+            }
+          })
         })
+
         methodInfo.instructions ++= instructions.values.toList
         methodInfo.tryCatchBlocks ++= tryCatchBlocks.result()
         methodInfo.maxLocals = codeAttribute.maxLocals
