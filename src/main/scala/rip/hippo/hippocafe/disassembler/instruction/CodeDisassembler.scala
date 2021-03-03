@@ -36,6 +36,8 @@ import rip.hippo.hippocafe.disassembler.instruction.array.ArrayType
 import rip.hippo.hippocafe.disassembler.tcb.TryCatchBlock
 import rip.hippo.hippocafe.exception.HippoCafeException
 import rip.hippo.hippocafe.stackmap.impl.{AppendStackMapFrame, ChopStackMapFrame, FullStackMapFrame, SameExtendedStackMapFrame, SameLocalsExtendedStackMapFrame, SameLocalsStackMapFrame, SameStackMapFrame}
+import rip.hippo.hippocafe.stackmap.verification.VerificationTypeInfo
+import rip.hippo.hippocafe.stackmap.verification.impl.UninitializedVerificationTypeInfo
 
 import scala.collection.mutable
 import scala.collection.mutable.ListBuffer
@@ -421,6 +423,25 @@ object CodeDisassembler {
           addLabel(exception.endPc, end)
           addLabel(exception.handlerPc, handler)
           tryCatchBlocks += TryCatchBlock(start, end, handler, constantPool.readString(exception.catchType))
+        })
+
+        def updateUninitializedVerificationInfo(verificationTypeInfo: VerificationTypeInfo): Unit = {
+          verificationTypeInfo match {
+            case uninitializedVerificationTypeInfo: UninitializedVerificationTypeInfo =>
+              uninitializedVerificationTypeInfo.typeInstruction = Option(instructions(uninitializedVerificationTypeInfo.offset).asInstanceOf[TypeInstruction])
+            case _ =>
+          }
+        }
+
+        labels.foreach(_._2.foreach {
+          case SameLocalsFrameInstruction(verificationTypeInfo) =>
+            updateUninitializedVerificationInfo(verificationTypeInfo)
+          case AppendFrameInstruction(locals) =>
+            locals.foreach(updateUninitializedVerificationInfo)
+          case FullFrameInstruction(locals, stack) =>
+            locals.foreach(updateUninitializedVerificationInfo)
+            stack.foreach(updateUninitializedVerificationInfo)
+          case _ =>
         })
 
         var push = 0

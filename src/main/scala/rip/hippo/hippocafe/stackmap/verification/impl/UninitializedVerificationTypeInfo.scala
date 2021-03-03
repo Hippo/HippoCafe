@@ -25,6 +25,7 @@
 package rip.hippo.hippocafe.stackmap.verification.impl
 
 import rip.hippo.hippocafe.constantpool.ConstantPool
+import rip.hippo.hippocafe.disassembler.instruction.impl.TypeInstruction
 
 import java.io.DataOutputStream
 import rip.hippo.hippocafe.stackmap.verification.VerificationTypeInfo
@@ -34,8 +35,15 @@ import rip.hippo.hippocafe.stackmap.verification.VerificationTypeInfo
  * @version 1.0.0, 8/2/20
  * @since 1.0.0
  */
-final class UninitializedVerificationTypeInfo(val offset: Int) extends VerificationTypeInfo {
+final class UninitializedVerificationTypeInfo(var offset: Int) extends VerificationTypeInfo {
   override val tag: Int = 8
+
+  var typeInstruction: Option[TypeInstruction] = Option.empty
+
+  def this(typeInstruction: TypeInstruction) = {
+    this(-1)
+    this.typeInstruction = Option(typeInstruction)
+  }
 
   override def write(out: DataOutputStream, constantPool: ConstantPool): Unit = {
     super.write(out, constantPool)
