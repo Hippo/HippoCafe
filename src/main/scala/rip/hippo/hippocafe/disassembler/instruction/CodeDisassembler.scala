@@ -28,13 +28,14 @@ import rip.hippo.hippocafe.constantpool.info.impl.ReferenceInfo
 import rip.hippo.hippocafe.disassembler.instruction.impl.{ANewArrayInstruction, BranchInstruction, ConstantInstruction, IncrementInstruction, LabelInstruction, LineNumberInstruction, LookupSwitchInstruction, MultiANewArrayInstruction, NewArrayInstruction, PushInstruction, ReferenceInstruction, SimpleInstruction, TableSwitchInstruction, TypeInstruction, VariableInstruction}
 import rip.hippo.hippocafe.MethodInfo
 import rip.hippo.hippocafe.attribute.Attribute
-import rip.hippo.hippocafe.attribute.impl.{CodeAttribute, LineNumberTableAttribute}
+import rip.hippo.hippocafe.attribute.impl.{CodeAttribute, LineNumberTableAttribute, StackMapTableAttribute}
 import rip.hippo.hippocafe.constantpool.ConstantPool
 import rip.hippo.hippocafe.constantpool.info.ValueAwareness
 import rip.hippo.hippocafe.constantpool.info.impl.{ReferenceInfo, StringInfo}
 import rip.hippo.hippocafe.disassembler.instruction.array.ArrayType
 import rip.hippo.hippocafe.disassembler.tcb.TryCatchBlock
 import rip.hippo.hippocafe.exception.HippoCafeException
+import rip.hippo.hippocafe.stackmap.impl.FullStackMapFrame
 
 import scala.collection.mutable
 import scala.collection.mutable.ListBuffer
@@ -59,9 +60,11 @@ object CodeDisassembler {
         val labels = mutable.SortedMap[Int, Instruction]()
         var labelDebugId = 0
 
-        codeAttribute.attributes.find(_.kind == Attribute.LINE_NUMBER_TABLE) match {
-          case Some(lineNumberTableAttribute: LineNumberTableAttribute) =>
+        codeAttribute.attributes.foreach {
+          case lineNumberTableAttribute: LineNumberTableAttribute =>
             lineNumberTableAttribute.lineNumberTable.foreach(data => labels += (data.startPc -> LineNumberInstruction(data.lineNumber)))
+          case stackMapTableAttribute: StackMapTableAttribute =>
+            stackMapTableAttribute.entries.foreach(println)
           case _ =>
         }
 

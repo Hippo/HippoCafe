@@ -53,9 +53,6 @@ final class ReadAssembleWriteSuite extends FunSuite {
               classWriter =>
                 val bytecode = classWriter.write
 
-                val fos = new FileOutputStream("Balls.class")
-                fos.write(bytecode)
-
                 val loaded = new CustomClassLoader().createClass(className, bytecode)
 
                 loaded.getDeclaredMethod("main", classOf[Array[String]]).invoke(null, null)
