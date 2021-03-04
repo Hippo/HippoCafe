@@ -36,7 +36,7 @@ import scala.collection.mutable.ListBuffer
  * @version 1.0.0, 8/4/20
  * @since 1.0.0
  */
-final case class NewArrayInstruction(arrayType: ArrayType) extends Instruction {
+final case class NewArrayInstruction(var arrayType: ArrayType) extends Instruction {
   override def assemble(assemblerContext: AssemblerContext, constantPool: ConstantPool): Unit = {
     assemblerContext.code += BytecodeOpcode.NEWARRAY.id.toByte
     assemblerContext.code += arrayType.id.toByte

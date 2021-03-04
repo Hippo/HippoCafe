@@ -36,7 +36,7 @@ import rip.hippo.hippocafe.disassembler.instruction.{BytecodeOpcode, Instruction
  * @version 1.0.0, 8/4/20
  * @since 1.0.0
  */
-final case class ConstantInstruction(constant: Any) extends Instruction {
+final case class ConstantInstruction(var constant: Any) extends Instruction {
   override def assemble(assemblerContext: AssemblerContext, constantPool: ConstantPool): Unit = {
     val code = assemblerContext.code
     var index = -1

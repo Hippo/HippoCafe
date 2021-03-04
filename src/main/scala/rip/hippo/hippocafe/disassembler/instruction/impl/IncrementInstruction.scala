@@ -35,7 +35,7 @@ import scala.collection.mutable.ListBuffer
  * @version 1.0.0, 8/4/20
  * @since 1.0.0
  */
-final case class IncrementInstruction(localIndex: Int, value: Int) extends Instruction {
+final case class IncrementInstruction(var localIndex: Int, var value: Int) extends Instruction {
   override def assemble(assemblerContext: AssemblerContext, constantPool: ConstantPool): Unit = {
     val wide = localIndex > 255 || value > 255
     if (wide) {

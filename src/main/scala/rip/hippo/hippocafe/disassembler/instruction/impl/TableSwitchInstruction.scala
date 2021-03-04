@@ -35,7 +35,7 @@ import scala.collection.mutable.ListBuffer
  * @version 1.0.0, 8/4/20
  * @since 1.0.0
  */
-final case class TableSwitchInstruction(default: LabelInstruction, low: Int, high: Int) extends Instruction {
+final case class TableSwitchInstruction(var default: LabelInstruction, var low: Int, var high: Int) extends Instruction {
   val table: ListBuffer[LabelInstruction] = ListBuffer[LabelInstruction]()
 
   override def assemble(assemblerContext: AssemblerContext, constantPool: ConstantPool): Unit = {

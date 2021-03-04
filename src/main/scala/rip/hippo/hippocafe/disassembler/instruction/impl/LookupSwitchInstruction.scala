@@ -36,7 +36,7 @@ import scala.collection.mutable.ListBuffer
  * @version 1.0.0, 8/4/20
  * @since 1.0.0
  */
-final case class LookupSwitchInstruction(default: LabelInstruction) extends Instruction {
+final case class LookupSwitchInstruction(var default: LabelInstruction) extends Instruction {
   val pairs: mutable.Map[Int, LabelInstruction] = mutable.Map[Int, LabelInstruction]()
 
   override def assemble(assemblerContext: AssemblerContext, constantPool: ConstantPool): Unit = {

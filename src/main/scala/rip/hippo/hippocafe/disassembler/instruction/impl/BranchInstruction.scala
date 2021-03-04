@@ -36,7 +36,7 @@ import scala.collection.mutable.ListBuffer
  * @version 1.0.0, 8/4/20
  * @since 1.0.0
  */
-final case class BranchInstruction(bytecodeOpcode: BytecodeOpcode, label: LabelInstruction) extends Instruction {
+final case class BranchInstruction(var bytecodeOpcode: BytecodeOpcode, var label: LabelInstruction) extends Instruction {
   override def assemble(assemblerContext: AssemblerContext, constantPool: ConstantPool): Unit = {
     assemblerContext.preprocessedBranches += PreprocessedBranch(assemblerContext.code.length, label)
     assemblerContext.code += bytecodeOpcode.id.toByte

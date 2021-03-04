@@ -35,7 +35,7 @@ import rip.hippo.hippocafe.disassembler.instruction.{BytecodeOpcode, Instruction
  * @version 1.0.0, 8/5/20
  * @since 1.0.0
  */
-final case class VariableInstruction(bytecodeOpcode: BytecodeOpcode, index: Int) extends Instruction {
+final case class VariableInstruction(var bytecodeOpcode: BytecodeOpcode, var index: Int) extends Instruction {
 
   def isLoad: Boolean = bytecodeOpcode match {
     case ILOAD | FLOAD | DLOAD | LLOAD => true

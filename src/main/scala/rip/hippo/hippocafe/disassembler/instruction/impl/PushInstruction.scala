@@ -35,7 +35,7 @@ import scala.collection.mutable.ListBuffer
  * @version 1.0.0, 8/5/20
  * @since 1.0.0
  */
-final case class PushInstruction(value: Int) extends Instruction {
+final case class PushInstruction(var value: Int) extends Instruction {
   override def assemble(assemblerContext: AssemblerContext, constantPool: ConstantPool): Unit = {
     val code = assemblerContext.code
     value match {

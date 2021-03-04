@@ -39,7 +39,7 @@ import scala.collection.mutable.ListBuffer
  * @version 1.0.0, 8/4/20
  * @since 1.0.0
  */
-final case class ReferenceInstruction(bytecodeOpcode: BytecodeOpcode, owner: String, name: String, descriptor: String) extends Instruction {
+final case class ReferenceInstruction(var bytecodeOpcode: BytecodeOpcode, var owner: String, var name: String, var descriptor: String) extends Instruction {
   def isMethod: Boolean = bytecodeOpcode match {
     case INVOKEVIRTUAL | INVOKESTATIC | INVOKEINTERFACE | INVOKESPECIAL => true
     case _ => false
