@@ -38,7 +38,18 @@ import java.io.DataOutputStream
 final class ObjectVerificationTypeInfo(val name: String) extends VerificationTypeInfo {
   override val tag: Int = 7
 
+
   override def write(out: DataOutputStream, constantPool: ConstantPool): Unit = {
+    super.write(out, constantPool)
+    out.writeShort(constantPool.info
+      .filter(_._2.isInstanceOf[StringInfo])
+      .filter(_._2.kind == ConstantPoolKind.CLASS)
+      .filter(_._2.asInstanceOf[StringInfo].value.equals(name))
+      .keys
+      .head)
+  }
+
+  override def buildConstantPool(constantPool: ConstantPool): Unit = {
     var index = -1
     constantPool.info
       .filter(_._2.isInstanceOf[StringInfo])
@@ -55,7 +66,5 @@ final class ObjectVerificationTypeInfo(val name: String) extends VerificationTyp
       }
       constantPool.insert(index, new StringInfo(name, ConstantPoolKind.CLASS))
     }
-    super.write(out, constantPool)
-    out.writeShort(index)
   }
 }

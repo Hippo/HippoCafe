@@ -30,6 +30,7 @@ import rip.hippo.hippocafe.attribute.AttributeInfo
 import rip.hippo.hippocafe.attribute.{Attribute, AttributeInfo}
 import rip.hippo.hippocafe.constantpool.ConstantPool
 import rip.hippo.hippocafe.stackmap.StackMapFrame
+import rip.hippo.hippocafe.stackmap.impl.{AppendStackMapFrame, FullStackMapFrame, SameLocalsExtendedStackMapFrame, SameLocalsStackMapFrame}
 
 /**
  * @author Hippo
@@ -45,6 +46,17 @@ final case class StackMapTableAttribute(numberOfEntries: Int, entries: Array[Sta
     entries.foreach(frame => frame.write(out, constantPool))
   }
   override def buildConstantPool(constantPool: ConstantPool): Unit = {
-
+    entries.foreach {
+      case SameLocalsStackMapFrame(_, stack) =>
+        stack.foreach(_.buildConstantPool(constantPool))
+      case SameLocalsExtendedStackMapFrame(_, stack) =>
+        stack.foreach(_.buildConstantPool(constantPool))
+      case AppendStackMapFrame(_, _, locals) =>
+        locals.foreach(_.buildConstantPool(constantPool))
+      case FullStackMapFrame(_, _, locals, _, stack) =>
+        locals.foreach(_.buildConstantPool(constantPool))
+        stack.foreach(_.buildConstantPool(constantPool))
+      case _ =>
+    }
   }
 }

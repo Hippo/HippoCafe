@@ -1,12 +1,14 @@
 package rip.hippo.hippocafe.disassembler.context
 
 import rip.hippo.hippocafe.attribute.AttributeInfo
-import rip.hippo.hippocafe.attribute.impl.LineNumberTableAttribute
+import rip.hippo.hippocafe.attribute.impl.{LineNumberTableAttribute, StackMapTableAttribute}
 import rip.hippo.hippocafe.attribute.impl.data.LineNumberTableAttributeData
-import rip.hippo.hippocafe.disassembler.instruction.BytecodeOpcode
+import rip.hippo.hippocafe.disassembler.instruction.{BytecodeOpcode, FrameInstruction}
 import rip.hippo.hippocafe.disassembler.instruction.BytecodeOpcode._
 import rip.hippo.hippocafe.disassembler.instruction.impl.LabelInstruction
+import rip.hippo.hippocafe.stackmap.StackMapFrame
 
+import java.util.UUID
 import scala.collection.mutable
 import scala.collection.mutable.{ArrayBuffer, ListBuffer}
 
@@ -20,11 +22,16 @@ final class AssemblerContext(flags: Set[AssemblerFlag]) {
   val labelToByteOffset: mutable.Map[LabelInstruction, Int] = mutable.Map[LabelInstruction, Int]()
   val preprocessedBranches: ListBuffer[PreprocessedBranch] = ListBuffer[PreprocessedBranch]()
   val lineNumberOffsets: mutable.Map[Int, Int] = mutable.Map[Int, Int]()
+  val preprocessedFrames: mutable.Map[FrameInstruction, Int] = mutable.Map[FrameInstruction, Int]()
+  var sortedFrames: Map[FrameInstruction, Int] = _
+  val stackMapFrames: ListBuffer[StackMapFrame] = ListBuffer[StackMapFrame]()
   var maxStack = 0
   var maxLocals = 0
+  var offsetDelta = 0
+  var deltaChanges = 0
 
 
-  def processJumpOffsets(): Unit = {
+  def processBranchOffsets(): Unit = {
     // Insert first time calculated offsets
     preprocessedBranches.foreach(preprocessedBranch => {
       val label = preprocessedBranch.label
@@ -34,6 +41,7 @@ final class AssemblerContext(flags: Set[AssemblerFlag]) {
 
       labelToByteOffset.filter(_._2 > opcodeIndex).foreach(pair => labelToByteOffset += (pair._1 -> (pair._2 + preprocessedBranch.getSize)))
       preprocessedBranches.filter(_.indexToBranch > opcodeIndex).foreach(_.indexToBranch += preprocessedBranch.getSize)
+      preprocessedFrames.filter(_._2 > opcodeIndex).foreach(pair => preprocessedFrames += (pair._1 -> (pair._2 + preprocessedBranch.getSize)))
     })
 
     // re-align offsets
@@ -88,7 +96,11 @@ final class AssemblerContext(flags: Set[AssemblerFlag]) {
       lineNumberAttributeDataInfo += LineNumberTableAttributeData(startPc, lineNumber)
     })
 
+    sortedFrames = preprocessedFrames.toSeq.sortWith(_._2 < _._2).toMap
+    sortedFrames.foreach(_._1.assemble(this))
+
     attributes += LineNumberTableAttribute(lineNumberAttributeDataInfo.length, lineNumberAttributeDataInfo.toArray)
+    attributes += StackMapTableAttribute(stackMapFrames.length, stackMapFrames.toArray)
 
     attributes.toArray
   }
@@ -98,4 +110,13 @@ final class AssemblerContext(flags: Set[AssemblerFlag]) {
 
   def calculateMaxes: Boolean = flags.contains(AssemblerFlag.CALCULATE_MAXES)
   def generateFrames: Boolean = flags.contains(AssemblerFlag.GENERATE_FRAMES)
+
+
+  def nextDelta(frameInstruction: FrameInstruction): Int = {
+    deltaChanges += 1
+    val length = sortedFrames(frameInstruction)
+    val next = length - offsetDelta - (if (deltaChanges > 1) 1 else 0)
+    offsetDelta = length
+    next
+  }
 }

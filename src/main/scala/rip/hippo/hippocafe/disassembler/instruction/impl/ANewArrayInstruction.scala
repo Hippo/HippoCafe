@@ -36,7 +36,7 @@ import scala.collection.mutable.ListBuffer
  * @version 1.0.0, 8/4/20
  * @since 1.0.0
  */
-final case class ANewArrayInstruction(descriptor: String) extends Instruction {
+final case class ANewArrayInstruction(var descriptor: String) extends Instruction {
   override def assemble(assemblerContext: AssemblerContext, constantPool: ConstantPool): Unit = {
     var index = -1
     constantPool.info

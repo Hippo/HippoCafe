@@ -38,4 +38,6 @@ trait VerificationTypeInfo {
 
   def write(out: DataOutputStream, constantPool: ConstantPool): Unit = out.writeByte(tag)
 
+  def buildConstantPool(constantPool: ConstantPool): Unit = {}
+
 }

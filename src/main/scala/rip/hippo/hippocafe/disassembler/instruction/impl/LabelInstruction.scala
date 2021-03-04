@@ -48,4 +48,9 @@ final class LabelInstruction(var debugId: Int = -1) extends Instruction {
 object LabelInstruction {
   def apply(): LabelInstruction = new LabelInstruction
   def apply(debugId: Int) = new LabelInstruction(debugId)
+  def unapply[T <: Instruction](instruction: T): Option[Int] =
+    instruction match {
+      case labelInstruction: LabelInstruction => Some(labelInstruction.debugId)
+      case _ => None
+    }
 }

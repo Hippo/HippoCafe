@@ -66,6 +66,9 @@ final class ConstantPool {
   }
 
   def readString(index: Int): String = {
+    if (index == 76) {
+      println(info)
+    }
     info(info(index).asInstanceOf[StringInfo].index).asInstanceOf[UTF8Info].value
   }
 

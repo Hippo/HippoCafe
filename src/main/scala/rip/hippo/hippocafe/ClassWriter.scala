@@ -90,7 +90,7 @@ final class ClassWriter(classFile: ClassFile) extends AutoCloseable {
         }
 
         method.instructions.foreach(_.assemble(assemblerContext, constantPool))
-        assemblerContext.processJumpOffsets()
+        assemblerContext.processBranchOffsets()
         val attributes = assemblerContext.assembleMethodAttributes
 
         attributes.foreach(attribute => {
