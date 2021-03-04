@@ -8,13 +8,12 @@ import rip.hippo.hippocafe.disassembler.instruction.BytecodeOpcode._
 import rip.hippo.hippocafe.disassembler.instruction.impl.LabelInstruction
 import rip.hippo.hippocafe.stackmap.StackMapFrame
 
-import java.util.UUID
 import scala.collection.mutable
 import scala.collection.mutable.{ArrayBuffer, ListBuffer}
 
 /**
  * @author Hippo
- * @version 1.0.0, 2/19/21
+ * @version 1.0.1, 2/19/21
  * @since 1.0.0
  */
 final class AssemblerContext(flags: Set[AssemblerFlag]) {
@@ -42,6 +41,7 @@ final class AssemblerContext(flags: Set[AssemblerFlag]) {
       labelToByteOffset.filter(_._2 > opcodeIndex).foreach(pair => labelToByteOffset += (pair._1 -> (pair._2 + preprocessedBranch.getSize)))
       preprocessedBranches.filter(_.indexToBranch > opcodeIndex).foreach(_.indexToBranch += preprocessedBranch.getSize)
       preprocessedFrames.filter(_._2 > opcodeIndex).foreach(pair => preprocessedFrames += (pair._1 -> (pair._2 + preprocessedBranch.getSize)))
+      lineNumberOffsets.filter(_._2 > opcodeIndex).foreach(pair => lineNumberOffsets += (pair._1 -> (pair._2 + preprocessedBranch.getSize)))
     })
 
     // re-align offsets
