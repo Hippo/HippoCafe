@@ -6,8 +6,9 @@ This library will attempt to counteract malicious bytecode which will crash othe
 # Road Map
 - Reading ✅
 - Writing ✅
-- Manipulation 
-- Documentation
+- Manipulation (85%)
+- Documentation (0%)
+- Stack map frame generation (0%)
 
 # Discord
 Feel free to join my discord and ask questions or just hang out.
