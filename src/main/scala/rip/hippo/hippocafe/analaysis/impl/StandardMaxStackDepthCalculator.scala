@@ -12,7 +12,7 @@ import scala.collection.mutable.ListBuffer
 
 /**
  * @author Hippo
- * @version 1.0.0, 2/22/21
+ * @version 1.1.0, 2/22/21
  * @since 1.0.0
  */
 final class StandardMaxStackDepthCalculator extends MaxStackDepthCalculator {
@@ -111,8 +111,7 @@ sealed case class Block() {
           case _ => 1
         }
       case LookupSwitchInstruction(_) => -1
-      case MultiANewArrayInstruction(descriptor, dimensions) => 0
-      case NewArrayInstruction(arrayType) => 0
+      case MultiANewArrayInstruction(_, dimensions) => -dimensions + 1
       case PushInstruction(_) => 1
       case ReferenceInstruction(bytecodeOpcode, _, _, descriptor) =>
         bytecodeOpcode match {
@@ -134,6 +133,11 @@ sealed case class Block() {
                FCONST_0 | FCONST_1 | FCONST_2 |
                I2L | I2D | F2L | F2D => 1
 
+          case LCONST_0 | LCONST_1 | DCONST_0 | DCONST_1 |
+               LLOAD_0 | LLOAD_1 | LLOAD_2 | LLOAD_3 |
+               DLOAD_0 | DLOAD_1 | DLOAD_2 | DLOAD_3 |
+               DUP2 | DUP2_X1 | DUP2_X2 => 2
+
           case ASTORE_0 | ASTORE_1 | ASTORE_2 | ASTORE_3 |
                ISTORE_0 | ISTORE_1 | ISTORE_2 | ISTORE_3 |
                FSTORE_0 | FSTORE_1 | FSTORE_2 | FSTORE_3 |
@@ -152,12 +156,25 @@ sealed case class Block() {
                ATHROW |
                MONITORENTER | MONITOREXIT => -1
 
+          case LSTORE_0 | LSTORE_1 | LSTORE_2 | LSTORE_3 |
+               DSTORE_0 | DSTORE_1 | DSTORE_2 | DSTORE_3 |
+               POP2 |
+               LADD | LSUB | LMUL | LDIV | LREM | LAND | LOR | LXOR |
+               DADD | DSUB | DMUL | DDIV | DREM |
+               LRETURN | DRETURN => -2
+
+          case LCMP | DCMPL | DCMPG |
+               IASTORE | FASTORE | AASTORE | BASTORE | CASTORE | SASTORE => -3
+
+          case DASTORE | LASTORE => -4
+
           case _ => 0
         }
       case TableSwitchInstruction(_, _, _) => -1
       case TypeInstruction(bytecodeOpcode, _) if bytecodeOpcode == NEW => 1
       case variable: VariableInstruction =>
-        if (variable.isLoad) {
+        if (variable.bytecodeOpcode == RET) 0
+        else if (variable.isLoad) {
           if (variable.bytecodeOpcode == DLOAD || variable.bytecodeOpcode == LLOAD) 2 else 1
         } else {
           if (variable.bytecodeOpcode == DSTORE || variable.bytecodeOpcode == LSTORE) -2 else -1
