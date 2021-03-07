@@ -33,6 +33,7 @@ import rip.hippo.hippocafe.constantpool.ConstantPool
 import rip.hippo.hippocafe.constantpool.info.ValueAwareness
 import rip.hippo.hippocafe.constantpool.info.impl.{ReferenceInfo, StringInfo}
 import rip.hippo.hippocafe.disassembler.instruction.array.ArrayType
+import rip.hippo.hippocafe.disassembler.instruction.constant.impl._
 import rip.hippo.hippocafe.disassembler.tcb.TryCatchBlock
 import rip.hippo.hippocafe.exception.HippoCafeException
 import rip.hippo.hippocafe.stackmap.impl.{AppendStackMapFrame, ChopStackMapFrame, FullStackMapFrame, SameExtendedStackMapFrame, SameLocalsExtendedStackMapFrame, SameLocalsStackMapFrame, SameStackMapFrame}
@@ -354,8 +355,17 @@ object CodeDisassembler {
 
                 case LDC | LDC_W | LDC2_W =>
                   constantPool.info(if (opcode == LDC) u1 else u2) match {
-                    case aware: ValueAwareness[_] => instructions += (instructionOffset -> ConstantInstruction(aware.value))
-                    case stringInfo: StringInfo => instructions += (instructionOffset -> ConstantInstruction(stringInfo.value))
+                    case aware: ValueAwareness[_] => instructions += (instructionOffset -> ConstantInstruction(aware.value match {
+                      case int: Int => IntegerConstant(int)
+                      case float: Float => FloatConstant(float)
+                      case long: Long => LongConstant(long)
+                      case double: Double => DoubleConstant(double)
+                      case double: java.lang.Double => DoubleConstant(double)
+                      case long: java.lang.Long => LongConstant(long)
+                        // TODO: finish
+                      case _ => throw new HippoCafeException(s"Invalid constant instruction at $offset")
+                    }))
+                    case stringInfo: StringInfo => instructions += (instructionOffset -> ConstantInstruction(StringConstant(stringInfo.value)))
                     case _ => throw new HippoCafeException(s"Invalid constant instruction at $offset")
                   }
 
@@ -376,7 +386,13 @@ object CodeDisassembler {
                   instructions += (instructionOffset -> lookupSwitch)
 
                 case TABLESWITCH =>
+                  println(code.map(_ & 0xFF).map(Integer.toHexString).map("0x" + _).mkString(" "))
+                  val a = offset
                   offset += -offset & 3
+                  val b = offset
+                  println("PRE OFF READ INSN " + a)
+                  println("POST OFF READ INSN " + b)
+                  println("READ OFF " + (b - a))
                   val default = LabelInstruction(labelDebugId)
                   labelDebugId += 1
                   addLabel(instructionOffset + u4, default)

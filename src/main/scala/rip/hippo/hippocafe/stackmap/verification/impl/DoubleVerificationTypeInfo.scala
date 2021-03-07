@@ -33,4 +33,6 @@ import rip.hippo.hippocafe.stackmap.verification.VerificationTypeInfo
  */
 final class DoubleVerificationTypeInfo extends VerificationTypeInfo {
   override val tag: Int = 3
+
+  override def toString: String = "DoubleVerificationTypeInfo()"
 }

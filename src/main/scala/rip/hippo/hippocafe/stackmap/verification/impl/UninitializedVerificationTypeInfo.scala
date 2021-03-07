@@ -49,4 +49,6 @@ final class UninitializedVerificationTypeInfo(var offset: Int) extends Verificat
     super.write(out, constantPool)
     out.writeShort(offset)
   }
+
+  override def toString: String = s"UninitializedVerificationTypeInfo($typeInstruction)"
 }

@@ -26,6 +26,7 @@ package rip.hippo.hippocafe.disassembler.instruction.impl
 
 import rip.hippo.hippocafe.constantpool.ConstantPool
 import rip.hippo.hippocafe.disassembler.context.AssemblerContext
+import rip.hippo.hippocafe.disassembler.instruction.constant.impl.IntegerConstant
 import rip.hippo.hippocafe.disassembler.instruction.{BytecodeOpcode, Instruction}
 
 import scala.collection.mutable.ListBuffer
@@ -48,7 +49,7 @@ final case class PushInstruction(var value: Int) extends Instruction {
         code += BytecodeOpcode.SIPUSH.id.toByte
         code += (x << 8).toByte
         code += (x & 0xFF).toByte
-      case _ => ConstantInstruction(value).assemble(assemblerContext, constantPool)
+      case _ => ConstantInstruction(IntegerConstant(value)).assemble(assemblerContext, constantPool)
     }
   }
 }

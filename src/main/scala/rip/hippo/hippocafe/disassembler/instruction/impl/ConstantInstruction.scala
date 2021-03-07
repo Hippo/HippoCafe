@@ -28,6 +28,8 @@ import rip.hippo.hippocafe.constantpool.{ConstantPool, ConstantPoolKind}
 import rip.hippo.hippocafe.constantpool.info.ValueAwareness
 import rip.hippo.hippocafe.constantpool.info.impl.{DoubleInfo, FloatInfo, IntegerInfo, LongInfo, StringInfo, UTF8Info}
 import rip.hippo.hippocafe.disassembler.context.AssemblerContext
+import rip.hippo.hippocafe.disassembler.instruction.constant.Constant
+import rip.hippo.hippocafe.disassembler.instruction.constant.impl._
 import rip.hippo.hippocafe.disassembler.instruction.{BytecodeOpcode, Instruction}
 
 
@@ -36,24 +38,24 @@ import rip.hippo.hippocafe.disassembler.instruction.{BytecodeOpcode, Instruction
  * @version 1.0.0, 8/4/20
  * @since 1.0.0
  */
-final case class ConstantInstruction(var constant: Any) extends Instruction {
+final case class ConstantInstruction(var constant: Constant[_]) extends Instruction {
   override def assemble(assemblerContext: AssemblerContext, constantPool: ConstantPool): Unit = {
     val code = assemblerContext.code
     var index = -1
 
 
     constant match {
-      case _: String =>
+      case StringConstant(value) =>
         constantPool.info
           .filter(_._2.isInstanceOf[StringInfo])
           .filter(_._2.kind == ConstantPoolKind.STRING)
-          .filter(_._2.asInstanceOf[StringInfo].value.equals(constant))
+          .filter(_._2.asInstanceOf[StringInfo].value.equals(value))
           .keys
           .foreach(index = _)
       case _ =>
         constantPool.info
-          .filter(_._2.isInstanceOf[ValueAwareness[_]])
-          .filter(_._2.asInstanceOf[ValueAwareness[_]].value.equals(constant))
+          .filter(_._2.getClass.equals(constant.constantPoolInfoAssociate))
+          .filter(_._2.asInstanceOf[ValueAwareness[_]].value.equals(constant.value))
           .keys
           .foreach(index = _)
     }
@@ -62,29 +64,33 @@ final case class ConstantInstruction(var constant: Any) extends Instruction {
       val max = constantPool.info.keys.max
       index = max + (if (constantPool.info(max).wide) 2 else 1)
       constant match { // TODO: finish
-        case string: String =>
-          if (!constantPool.info.values.exists(info => info.isInstanceOf[UTF8Info] && info.asInstanceOf[UTF8Info].value.equals(string))) {
-            constantPool.insert(index, UTF8Info(string))
+        case StringConstant(value) =>
+          if (!constantPool.info.values.exists(info => info.isInstanceOf[UTF8Info] && info.asInstanceOf[UTF8Info].value.equals(value))) {
+            constantPool.insert(index, UTF8Info(value))
             index += 1
           }
-          constantPool.insert(index, new StringInfo(string, ConstantPoolKind.STRING))
-        case int: Integer =>
-          constantPool.insert(index, IntegerInfo(int))
-        case float: Float =>
-          constantPool.insert(index, FloatInfo(float))
-        case double: Double =>
-          constantPool.insert(index, DoubleInfo(double))
-        case long: Long =>
-          constantPool.insert(index, LongInfo(long))
+          constantPool.insert(index, new StringInfo(value, ConstantPoolKind.STRING))
+        case IntegerConstant(value) =>
+          constantPool.insert(index, IntegerInfo(value))
+        case FloatConstant(value) =>
+          constantPool.insert(index, FloatInfo(value))
+        case DoubleConstant(value) =>
+          constantPool.insert(index, DoubleInfo(value))
+        case LongConstant(value) =>
+          constantPool.insert(index, LongInfo(value))
+        case _ =>
       }
     }
 
 
+    def writeWide(): Unit = {
+    }
+
     constant match {
-      case _: Long | Double =>
-        code += BytecodeOpcode.LDC2_W.id.toByte
-        code += ((index >>> 8) & 0xFF).toByte
-        code += (index & 0xFF).toByte
+      case _: LongConstant =>
+        writeWide()
+      case _: DoubleConstant =>
+        writeWide()
       case _ =>
         if (index > 255) {
           code += BytecodeOpcode.LDC_W.id.toByte

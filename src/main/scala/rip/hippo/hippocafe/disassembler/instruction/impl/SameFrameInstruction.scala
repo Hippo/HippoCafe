@@ -24,6 +24,8 @@ final class SameFrameInstruction extends Instruction with FrameInstruction {
       assemblerContext.stackMapFrames += SameExtendedStackMapFrame(nextDelta)
     }
   }
+
+  override def toString: String = "SameFrameInstruction()"
 }
 
 object SameFrameInstruction {

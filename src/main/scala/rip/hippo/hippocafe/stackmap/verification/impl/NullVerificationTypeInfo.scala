@@ -33,4 +33,6 @@ import rip.hippo.hippocafe.stackmap.verification.VerificationTypeInfo
  */
 final class NullVerificationTypeInfo extends VerificationTypeInfo {
   override val tag: Int = 5
+
+  override def toString: String = "NullVerificationTypeInfo()"
 }

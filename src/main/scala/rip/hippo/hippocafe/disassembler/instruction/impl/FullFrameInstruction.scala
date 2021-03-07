@@ -21,6 +21,8 @@ final class FullFrameInstruction(var locals: Array[VerificationTypeInfo], var st
 
     assemblerContext.stackMapFrames += FullStackMapFrame(nextDelta, locals.length, locals, stack.length, stack)
   }
+
+  override def toString = "FullFrameInstruction([" + locals.mkString(", ") + "], [" + stack.mkString(", ") + "])"
 }
 
 object FullFrameInstruction {

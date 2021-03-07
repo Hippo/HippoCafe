@@ -5,6 +5,7 @@ import rip.hippo.hippocafe.analaysis.MaxStackDepthCalculator
 import rip.hippo.hippocafe.disassembler.instruction.Instruction
 import rip.hippo.hippocafe.disassembler.instruction.impl.{ANewArrayInstruction, BranchInstruction, ConstantInstruction, IncrementInstruction, LabelInstruction, LookupSwitchInstruction, MultiANewArrayInstruction, NewArrayInstruction, PushInstruction, ReferenceInstruction, SimpleInstruction, TableSwitchInstruction, TypeInstruction, VariableInstruction}
 import rip.hippo.hippocafe.disassembler.instruction.BytecodeOpcode._
+import rip.hippo.hippocafe.disassembler.instruction.constant.impl.{DoubleConstant, LongConstant}
 import rip.hippo.hippocafe.util.Type
 
 import scala.collection.mutable
@@ -107,7 +108,8 @@ sealed case class Block() {
         }
       case ConstantInstruction(constant) =>
         constant match {
-          case _: Long | Double => 2
+          case _: LongConstant => 2
+          case _: DoubleConstant => 2
           case _ => 1
         }
       case LookupSwitchInstruction(_) => -1

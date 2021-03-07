@@ -67,4 +67,6 @@ final class ObjectVerificationTypeInfo(val name: String) extends VerificationTyp
       constantPool.insert(index, new StringInfo(name, ConstantPoolKind.CLASS))
     }
   }
+
+  override def toString: String = s"ObjectVerificationTypeInfo($name)"
 }

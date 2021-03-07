@@ -33,4 +33,6 @@ import rip.hippo.hippocafe.stackmap.verification.VerificationTypeInfo
  */
 final class FloatVerificationTypeInfo extends VerificationTypeInfo {
   override val tag: Int = 2
+
+  override def toString: String = "FloatVerificationTypeInfo()"
 }

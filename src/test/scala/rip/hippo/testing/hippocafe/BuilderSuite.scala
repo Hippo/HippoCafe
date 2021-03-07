@@ -30,6 +30,7 @@ import rip.hippo.hippocafe.ClassWriter
 import rip.hippo.hippocafe.access.AccessFlag._
 import rip.hippo.hippocafe.builder.ClassBuilder
 import rip.hippo.hippocafe.disassembler.instruction.BytecodeOpcode._
+import rip.hippo.hippocafe.disassembler.instruction.constant.impl.StringConstant
 import rip.hippo.hippocafe.disassembler.instruction.impl._
 import rip.hippo.hippocafe.version.MajorClassFileVersion._
 
@@ -63,7 +64,7 @@ final class BuilderSuite extends FunSuite {
       ACC_PUBLIC, ACC_STATIC
     ).apply(instructions => {
       instructions += ReferenceInstruction(GETSTATIC, "java/lang/System", "out", "Ljava/io/PrintStream;")
-      instructions += ConstantInstruction("Hello World")
+      instructions += ConstantInstruction(StringConstant("Hello World"))
       instructions += ReferenceInstruction(INVOKEVIRTUAL, "java/io/PrintStream", "println", "(Ljava/lang/String;)V")
       instructions += SimpleInstruction(RETURN)
     }).result

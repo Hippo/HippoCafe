@@ -20,6 +20,8 @@ final class ChopFrameInstruction(var numberOfAbsentLocals: Int) extends Instruct
 
     assemblerContext.stackMapFrames += ChopStackMapFrame(251 - numberOfAbsentLocals, nextDelta)
   }
+
+  override def toString: String = s"ChopFrameInstruction($numberOfAbsentLocals)"
 }
 
 object ChopFrameInstruction {

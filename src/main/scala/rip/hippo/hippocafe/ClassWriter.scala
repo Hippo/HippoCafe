@@ -34,6 +34,7 @@ import rip.hippo.hippocafe.constantpool.info.impl._
 import rip.hippo.hippocafe.constantpool.info.{ConstantPoolInfo, impl}
 import rip.hippo.hippocafe.constantpool.{ConstantPool, ConstantPoolKind}
 import rip.hippo.hippocafe.disassembler.context.{AssemblerContext, AssemblerFlag}
+import rip.hippo.hippocafe.disassembler.instruction.constant.impl._
 import rip.hippo.hippocafe.disassembler.instruction.impl.{ConstantInstruction, ReferenceInstruction}
 import rip.hippo.hippocafe.util.Type
 
@@ -92,6 +93,9 @@ final class ClassWriter(classFile: ClassFile) extends AutoCloseable {
         method.instructions.foreach(_.assemble(assemblerContext, constantPool))
         assemblerContext.processBranchOffsets()
         val attributes = assemblerContext.assembleMethodAttributes
+        if (method.name.equals("main")) {
+          println(assemblerContext.code.map(_ & 0xFF).map(Integer.toHexString).map("0x" + _).mkString(" "))
+        }
 
         attributes.foreach(attribute => {
           val info = UTF8Info(attribute.kind.toString)
@@ -243,17 +247,17 @@ final class ClassWriter(classFile: ClassFile) extends AutoCloseable {
             if (instruction.isMethod) ConstantPoolKind.METHOD_REF else ConstantPoolKind.FIELD_REF))
         case instruction: ConstantInstruction =>
           instruction.constant match { // TODO: finish
-            case string: String =>
-              add(UTF8Info(string))
-              add(new StringInfo(string, ConstantPoolKind.STRING))
-            case int: Integer =>
-              add(IntegerInfo(int))
-            case float: Float =>
-              add(FloatInfo(float))
-            case double: Double =>
-              add(DoubleInfo(double), 2)
-            case long: Long =>
-              add(LongInfo(long), 2)
+            case StringConstant(value) =>
+              add(UTF8Info(value))
+              add(new StringInfo(value, ConstantPoolKind.STRING))
+            case IntegerConstant(value) =>
+              add(IntegerInfo(value))
+            case FloatConstant(value) =>
+              add(FloatInfo(value))
+            case DoubleConstant(value) =>
+              add(DoubleInfo(value), 2)
+            case LongConstant(value) =>
+              add(LongInfo(value), 2)
           }
         case _ =>
       }

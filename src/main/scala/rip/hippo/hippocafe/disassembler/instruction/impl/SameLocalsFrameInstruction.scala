@@ -25,6 +25,8 @@ final class SameLocalsFrameInstruction(var verificationTypeInfo: VerificationTyp
       assemblerContext.stackMapFrames += SameLocalsExtendedStackMapFrame(nextDelta, Array[VerificationTypeInfo](verificationTypeInfo))
     }
   }
+
+  override def toString: String = s"SameLocalsFrameInstruction($verificationTypeInfo)"
 }
 
 object SameLocalsFrameInstruction {

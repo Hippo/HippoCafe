@@ -39,7 +39,7 @@ import scala.collection.mutable.ListBuffer
 final case class SimpleInstruction(var bytecodeOpcode: BytecodeOpcode) extends Instruction {
   override def assemble(assemblerContext: AssemblerContext, constantPool: ConstantPool): Unit = {
     assemblerContext.code += bytecodeOpcode.id.toByte
-    
+
     if (assemblerContext.calculateMaxes) {
       bytecodeOpcode match {
         case ALOAD_0 | ILOAD_0 | FLOAD_0 => assemblerContext.setMaxLocals(1)

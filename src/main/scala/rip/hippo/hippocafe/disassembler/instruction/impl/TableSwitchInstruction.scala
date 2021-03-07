@@ -25,8 +25,8 @@
 package rip.hippo.hippocafe.disassembler.instruction.impl
 
 import rip.hippo.hippocafe.constantpool.ConstantPool
-import rip.hippo.hippocafe.disassembler.context.AssemblerContext
-import rip.hippo.hippocafe.disassembler.instruction.Instruction
+import rip.hippo.hippocafe.disassembler.context.{AssemblerContext, PreprocessedBranch}
+import rip.hippo.hippocafe.disassembler.instruction.{BytecodeOpcode, Instruction}
 
 import scala.collection.mutable.ListBuffer
 
@@ -39,6 +39,24 @@ final case class TableSwitchInstruction(var default: LabelInstruction, var low: 
   val table: ListBuffer[LabelInstruction] = ListBuffer[LabelInstruction]()
 
   override def assemble(assemblerContext: AssemblerContext, constantPool: ConstantPool): Unit = {
+    def shift(value: Int, bits: Int): Byte = ((value >>> bits) & 0xFF).toByte
 
+    val code = assemblerContext.code
+    assemblerContext.preprocessedTableSwitch += (this -> code.length)
+    println("pre off calc tableswitch index " + code.length)
+    code += BytecodeOpcode.TABLESWITCH.id.toByte
+    assemblerContext.switchPadding += (code.length -> (-code.length & 3))
+    (0 until 4).foreach(code += 0)
+    code += shift(low, 24)
+    code += shift(low, 16)
+    code += shift(low, 8)
+    code += shift(low, 0)
+    code += shift(high, 24)
+    code += shift(high, 16)
+    code += shift(high, 8)
+    code += shift(high, 0)
+    table.foreach(_ => (0 until 4).foreach(code += 0))
   }
+
+  override def toString: String = s"TableSwitchInstruction($default, $low, $high, $table)"
 }

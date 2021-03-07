@@ -41,4 +41,6 @@ final case class LookupSwitchInstruction(var default: LabelInstruction) extends 
 
   override def assemble(assemblerContext: AssemblerContext, constantPool: ConstantPool): Unit = {
   }
+
+  override def toString: String = s"LookupSwitchInstruction($default, $pairs)"
 }

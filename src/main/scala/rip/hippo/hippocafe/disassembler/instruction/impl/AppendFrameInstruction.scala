@@ -21,6 +21,8 @@ final class AppendFrameInstruction(var locals: Array[VerificationTypeInfo]) exte
 
     assemblerContext.stackMapFrames += AppendStackMapFrame(locals.length + 251, nextDelta, locals)
   }
+
+  override def toString: String = "AppendFrameInstruction([" + locals.mkString(", ") + "])"
 }
 
 object AppendFrameInstruction {
