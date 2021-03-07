@@ -84,6 +84,9 @@ final case class ConstantInstruction(var constant: Constant[_]) extends Instruct
 
 
     def writeWide(): Unit = {
+      code += BytecodeOpcode.LDC2_W.id.toByte
+      code += ((index >>> 8) & 0xFF).toByte
+      code += (index & 0xFF).toByte
     }
 
     constant match {

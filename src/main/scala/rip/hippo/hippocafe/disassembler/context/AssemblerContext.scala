@@ -24,7 +24,7 @@ final class AssemblerContext(flags: Set[AssemblerFlag]) {
   val preprocessedFrames: mutable.Map[FrameInstruction, Int] = mutable.Map[FrameInstruction, Int]()
   val preprocessedTableSwitch: mutable.Map[TableSwitchInstruction, Int] = mutable.Map[TableSwitchInstruction, Int]()
   val switchPadding: mutable.Map[Int, Int] = mutable.Map[Int, Int]()
-  var sortedFrames: Map[FrameInstruction, Int] = _
+  var sortedFrames: mutable.LinkedHashMap[FrameInstruction, Int] = mutable.LinkedHashMap[FrameInstruction, Int]()
   val stackMapFrames: ListBuffer[StackMapFrame] = ListBuffer[StackMapFrame]()
   var maxStack = 0
   var maxLocals = 0
@@ -49,7 +49,6 @@ final class AssemblerContext(flags: Set[AssemblerFlag]) {
       preprocessedTableSwitch.filter(_._2 > opcodeIndex).foreach(pair => preprocessedTableSwitch += (pair._1 -> (pair._2 + preprocessedBranch.getSize)))
       switchPadding.filter(_._1 > opcodeIndex).foreach(pair => {
         switchPadding -= pair._1
-        println(pair._1 + " -> " + (pair._1 + preprocessedBranch.getSize))
         switchPadding += (pair._1 + preprocessedBranch.getSize -> pair._2)
       })
     })
@@ -60,9 +59,7 @@ final class AssemblerContext(flags: Set[AssemblerFlag]) {
       shouldRealign = false
       switchPadding.foreach(pair => {
         val index = pair._1 + preprocessedBranches.filter(_.indexToBranch < pair._1).map(_.getSize).sum
-        println(index + " " + pair._1)
         val pad = -index & 3
-        println("brown? " + pad)
         switchPadding += (pair._1 -> pad)
       })
       preprocessedBranches.foreach(preprocessedBranch => {
@@ -75,6 +72,7 @@ final class AssemblerContext(flags: Set[AssemblerFlag]) {
 
           pair._1 < upperBound && pair._1 > lowerBound
         }).values.sum
+
 
         if (startingSize != preprocessedBranch.getSize) {
           shouldRealign = true
@@ -124,11 +122,22 @@ final class AssemblerContext(flags: Set[AssemblerFlag]) {
       val indexToInstruction = pair._2
       var indexToPad = indexToInstruction + 1
       val padCount = switchPadding(indexToPad)
-      println("WRITE " + padCount)
-      (0 until padCount).foreach(_ => {
-        code.insert(indexToPad, 0)
-        indexToPad += 1
-      })
+      if (padCount > 0) {
+        (0 until padCount).foreach(_ => {
+          code.insert(indexToPad, 0)
+          indexToPad += 1
+        })
+
+        labelToByteOffset.filter(_._2 > indexToPad).foreach(pair => labelToByteOffset += (pair._1 -> (pair._2 + padCount)))
+        preprocessedFrames.filter(_._2 > indexToPad).foreach(pair => preprocessedFrames += (pair._1 -> (pair._2 + padCount)))
+        lineNumberOffsets.filter(_._2 > indexToPad).foreach(pair => lineNumberOffsets += (pair._1 -> (pair._2 + padCount)))
+        preprocessedBranches.filter(_.indexToBranch > indexToPad).foreach(_.indexToBranch += padCount)
+        preprocessedTableSwitch.filter(_._2 > indexToPad).foreach(pair => preprocessedTableSwitch += (pair._1 -> (pair._2 + padCount)))
+        switchPadding.filter(_._1 > indexToPad).foreach(pair => {
+          switchPadding -= pair._1
+          switchPadding += (pair._1 + padCount -> pair._2)
+        })
+      }
 
       var indexToPairs = indexToPad + 12
       val defaultBranch = labelToByteOffset(instruction.default)
@@ -148,7 +157,6 @@ final class AssemblerContext(flags: Set[AssemblerFlag]) {
       })
     })
 
-    println("TABLE SWITCH INSN INDEX -> " + code.indexOf(BytecodeOpcode.TABLESWITCH.id.toByte))
   }
 
   def assembleMethodAttributes: Array[AttributeInfo] = {
@@ -161,7 +169,7 @@ final class AssemblerContext(flags: Set[AssemblerFlag]) {
       lineNumberAttributeDataInfo += LineNumberTableAttributeData(startPc, lineNumber)
     })
 
-    sortedFrames = preprocessedFrames.toSeq.sortWith(_._2 < _._2).toMap
+    preprocessedFrames.toSeq.sortWith(_._2 < _._2).foreach(pair => sortedFrames += (pair._1 -> pair._2))
     sortedFrames.foreach(_._1.assemble(this))
 
     attributes += LineNumberTableAttribute(lineNumberAttributeDataInfo.length, lineNumberAttributeDataInfo.toArray)

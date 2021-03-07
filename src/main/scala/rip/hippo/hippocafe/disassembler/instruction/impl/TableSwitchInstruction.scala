@@ -43,10 +43,10 @@ final case class TableSwitchInstruction(var default: LabelInstruction, var low: 
 
     val code = assemblerContext.code
     assemblerContext.preprocessedTableSwitch += (this -> code.length)
-    println("pre off calc tableswitch index " + code.length)
     code += BytecodeOpcode.TABLESWITCH.id.toByte
     assemblerContext.switchPadding += (code.length -> (-code.length & 3))
-    (0 until 4).foreach(code += 0)
+    (0 until 4).foreach(_ => code += 0)
+
     code += shift(low, 24)
     code += shift(low, 16)
     code += shift(low, 8)
@@ -55,7 +55,7 @@ final case class TableSwitchInstruction(var default: LabelInstruction, var low: 
     code += shift(high, 16)
     code += shift(high, 8)
     code += shift(high, 0)
-    table.foreach(_ => (0 until 4).foreach(code += 0))
+    table.foreach(_ => (0 until 4).foreach(_ => code += 0))
   }
 
   override def toString: String = s"TableSwitchInstruction($default, $low, $high, $table)"

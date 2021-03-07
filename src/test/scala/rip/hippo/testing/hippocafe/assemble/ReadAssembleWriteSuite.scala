@@ -40,7 +40,7 @@ import scala.util.{Failure, Using}
  */
 final class ReadAssembleWriteSuite extends FunSuite {
 
-  private val className = "TableSwitchTest"
+  private val className = "BranchTest"
 
 
   test("assemble.readThenLoad") {

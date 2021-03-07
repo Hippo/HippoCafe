@@ -386,13 +386,7 @@ object CodeDisassembler {
                   instructions += (instructionOffset -> lookupSwitch)
 
                 case TABLESWITCH =>
-                  println(code.map(_ & 0xFF).map(Integer.toHexString).map("0x" + _).mkString(" "))
-                  val a = offset
                   offset += -offset & 3
-                  val b = offset
-                  println("PRE OFF READ INSN " + a)
-                  println("POST OFF READ INSN " + b)
-                  println("READ OFF " + (b - a))
                   val default = LabelInstruction(labelDebugId)
                   labelDebugId += 1
                   addLabel(instructionOffset + u4, default)

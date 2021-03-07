@@ -93,9 +93,6 @@ final class ClassWriter(classFile: ClassFile) extends AutoCloseable {
         method.instructions.foreach(_.assemble(assemblerContext, constantPool))
         assemblerContext.processBranchOffsets()
         val attributes = assemblerContext.assembleMethodAttributes
-        if (method.name.equals("main")) {
-          println(assemblerContext.code.map(_ & 0xFF).map(Integer.toHexString).map("0x" + _).mkString(" "))
-        }
 
         attributes.foreach(attribute => {
           val info = UTF8Info(attribute.kind.toString)
@@ -262,7 +259,7 @@ final class ClassWriter(classFile: ClassFile) extends AutoCloseable {
         case _ =>
       }
       methodInfo.tryCatchBlocks.map(_.catchType).foreach(catchType => {
-        add(impl.UTF8Info(catchType))
+        add(UTF8Info(catchType))
         add(new StringInfo(catchType, ConstantPoolKind.CLASS))
       })
       methodInfo.attributes.foreach(attribute => {
