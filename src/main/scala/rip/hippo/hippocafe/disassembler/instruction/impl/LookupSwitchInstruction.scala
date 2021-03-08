@@ -25,8 +25,8 @@
 package rip.hippo.hippocafe.disassembler.instruction.impl
 
 import rip.hippo.hippocafe.constantpool.ConstantPool
-import rip.hippo.hippocafe.disassembler.context.AssemblerContext
-import rip.hippo.hippocafe.disassembler.instruction.Instruction
+import rip.hippo.hippocafe.disassembler.context.{AssemblerContext, UniqueByte}
+import rip.hippo.hippocafe.disassembler.instruction.{BytecodeOpcode, Instruction}
 
 import scala.collection.mutable
 import scala.collection.mutable.ListBuffer
@@ -40,6 +40,27 @@ final case class LookupSwitchInstruction(var default: LabelInstruction) extends 
   val pairs: mutable.Map[Int, LabelInstruction] = mutable.Map[Int, LabelInstruction]()
 
   override def assemble(assemblerContext: AssemblerContext, constantPool: ConstantPool): Unit = {
+    val code = assemblerContext.code
+    val uniqueByte = UniqueByte(BytecodeOpcode.LOOKUPSWITCH.id.toByte)
+    assemblerContext.labelQueue.foreach(label => assemblerContext.labelToByte += (label -> uniqueByte))
+    assemblerContext.labelQueue.clear()
+
+    assemblerContext.preprocessedLookupSwitch += (this -> uniqueByte)
+    code += uniqueByte
+    (0 until 4).foreach(_ => code += UniqueByte(0))
+    assemblerContext.switchPadding += (code(code.indexOf(uniqueByte) + 1) -> (-code.length & 3))
+    val pairCount = pairs.size
+    code += UniqueByte(((pairCount >>> 24) & 0xFF).toByte)
+    code += UniqueByte(((pairCount >>> 16) & 0xFF).toByte)
+    code += UniqueByte(((pairCount >>> 8) & 0xFF).toByte)
+    code += UniqueByte((pairCount & 0xFF).toByte)
+    pairs.keys.foreach(key => {
+      code += UniqueByte(((key >>> 24) & 0xFF).toByte)
+      code += UniqueByte(((key >>> 16) & 0xFF).toByte)
+      code += UniqueByte(((key >>> 8) & 0xFF).toByte)
+      code += UniqueByte((key & 0xFF).toByte)
+      (0 until 4).foreach(_ => code += UniqueByte(0))
+    })
   }
 
   override def toString: String = s"LookupSwitchInstruction($default, $pairs)"

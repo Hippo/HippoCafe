@@ -47,7 +47,7 @@ final case class TableSwitchInstruction(var default: LabelInstruction, var low: 
     assemblerContext.labelQueue.clear()
 
     assemblerContext.preprocessedTableSwitch += (this -> uniqueByte)
-    assemblerContext.code += uniqueByte
+    code += uniqueByte
     (0 until 4).foreach(_ => code += UniqueByte(0))
     assemblerContext.switchPadding += (code(code.indexOf(uniqueByte) + 1) -> (-code.length & 3))
 

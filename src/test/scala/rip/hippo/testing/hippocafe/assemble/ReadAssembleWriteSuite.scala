@@ -40,7 +40,7 @@ import scala.util.{Failure, Using}
  */
 final class ReadAssembleWriteSuite extends FunSuite {
 
-  private val className = "TableSwitchTest"
+  private val className = "LookupSwitchTest"
 
 
   test("assemble.readThenLoad") {
@@ -48,9 +48,11 @@ final class ReadAssembleWriteSuite extends FunSuite {
       case Some(value) =>
         val test = Using(new ClassReader(value)) {
           classReader =>
+
             val writerTest = Using(new ClassWriter(classReader.classFile)) {
               classWriter =>
                 val bytecode = classWriter.write
+
 
                 val loaded = new CustomClassLoader().createClass(className, bytecode)
 
