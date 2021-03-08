@@ -20,7 +20,6 @@ final class AssemblerContext(flags: Set[AssemblerFlag]) {
   val code: ListBuffer[UniqueByte] = ListBuffer[UniqueByte]()
   val labelToByte: mutable.Map[Instruction, UniqueByte] = mutable.Map[Instruction, UniqueByte]()
   val labelQueue: ListBuffer[Instruction] = ListBuffer[Instruction]()
-  val preprocessedFrames: mutable.Map[FrameInstruction, UniqueByte] = mutable.Map[FrameInstruction, UniqueByte]()
   val preprocessedBranches: ListBuffer[PreprocessedBranch] = ListBuffer[PreprocessedBranch]()
   val preprocessedTableSwitch: mutable.Map[TableSwitchInstruction, Int] = mutable.Map[TableSwitchInstruction, Int]()
   val switchPadding: mutable.Map[Int, Int] = mutable.Map[Int, Int]()
@@ -53,12 +52,7 @@ final class AssemblerContext(flags: Set[AssemblerFlag]) {
         code.insert(opcodeIndex + 2, preprocessedBranch.shift(0))
       }
 
-      //labelToByteOffset.filter(_._2 > opcodeIndex).foreach(pair => labelToByteOffset += (pair._1 -> (pair._2 + preprocessedBranch.getSize)))
-      //preprocessedBranches.filter(_.indexToBranch > opcodeIndex).foreach(_.indexToBranch += preprocessedBranch.getSize)
-      /*preprocessedFrames.filter(_._2 > opcodeIndex).foreach(pair => preprocessedFrames += (pair._1 -> (pair._2 + preprocessedBranch.getSize)))
-      lineNumberOffsets.filter(_._2 > opcodeIndex).foreach(pair => lineNumberOffsets += (pair._1 -> (pair._2 + preprocessedBranch.getSize)))
-      preprocessedTableSwitch.filter(_._2 > opcodeIndex).foreach(pair => preprocessedTableSwitch += (pair._1 -> (pair._2 + preprocessedBranch.getSize)))
-      switchPadding.filter(_._1 > opcodeIndex).foreach(pair => {
+      /*switchPadding.filter(_._1 > opcodeIndex).foreach(pair => {
         switchPadding -= pair._1
         switchPadding += (pair._1 + preprocessedBranch.getSize -> pair._2)
       })*/
@@ -88,10 +82,6 @@ final class AssemblerContext(flags: Set[AssemblerFlag]) {
         if (startingSize != preprocessedBranch.getSize) {
           shouldRealign = true
           val difference = preprocessedBranch.getSize - startingSize
-          //labelToByteOffset.filter(_._2 > preprocessedBranch.indexToBranch).foreach(pair => labelToByteOffset += (pair._1 -> (pair._2 + difference)))
-          //preprocessedFrames.filter(_._2 > preprocessedBranch.indexToBranch).foreach(pair => preprocessedFrames += (pair._1 -> (pair._2 + difference)))
-          //lineNumberOffsets.filter(_._2 > preprocessedBranch.indexToBranch).foreach(pair => lineNumberOffsets += (pair._1 -> (pair._2 + difference)))
-         // preprocessedBranches.filter(_.indexToBranch > preprocessedBranch.indexToBranch).foreach(_.indexToBranch += difference)
           //preprocessedTableSwitch.filter(_._2 > preprocessedBranch.indexToBranch).foreach(pair => preprocessedTableSwitch += (pair._1 -> (pair._2 + difference)))
           /*switchPadding.filter(_._1 > preprocessedBranch.indexToBranch).foreach(pair => {
             switchPadding -= pair._1
@@ -144,10 +134,6 @@ final class AssemblerContext(flags: Set[AssemblerFlag]) {
           indexToPad += 1
         })
 
-        //labelToByteOffset.filter(_._2 > indexToPad).foreach(pair => labelToByteOffset += (pair._1 -> (pair._2 + padCount)))
-       // preprocessedFrames.filter(_._2 > indexToPad).foreach(pair => preprocessedFrames += (pair._1 -> (pair._2 + padCount)))
-        //lineNumberOffsets.filter(_._2 > indexToPad).foreach(pair => lineNumberOffsets += (pair._1 -> (pair._2 + padCount)))
-       // preprocessedBranches.filter(_.indexToBranch > indexToPad).foreach(_.indexToBranch += padCount)
         preprocessedTableSwitch.filter(_._2 > indexToPad).foreach(pair => preprocessedTableSwitch += (pair._1 -> (pair._2 + padCount)))
         switchPadding.filter(_._1 > indexToPad).foreach(pair => {
           switchPadding -= pair._1
