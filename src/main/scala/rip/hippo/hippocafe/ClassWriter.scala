@@ -117,7 +117,7 @@ final class ClassWriter(classFile: ClassFile) extends AutoCloseable {
           assemblerContext.maxStack,
           assemblerContext.maxLocals,
           methodBytecode.length,
-          methodBytecode.toArray,
+          methodBytecode.map(_.byte).toArray,
           0,
           new Array[ExceptionTableAttributeData](0),
           attributes.length,

@@ -25,7 +25,7 @@
 package rip.hippo.hippocafe.disassembler.instruction.impl
 
 import rip.hippo.hippocafe.constantpool.ConstantPool
-import rip.hippo.hippocafe.disassembler.context.AssemblerContext
+import rip.hippo.hippocafe.disassembler.context.{AssemblerContext, UniqueByte}
 import rip.hippo.hippocafe.disassembler.instruction.constant.impl.IntegerConstant
 import rip.hippo.hippocafe.disassembler.instruction.{BytecodeOpcode, Instruction}
 
@@ -41,14 +41,26 @@ final case class PushInstruction(var value: Int) extends Instruction {
     val code = assemblerContext.code
     value match {
       case x if x >= -1 && x < 5 =>
-        code += (x + 3).toByte
+        val uniqueByte = UniqueByte((x + 3).toByte)
+        assemblerContext.labelQueue.foreach(label => assemblerContext.labelToByte += (label -> uniqueByte))
+        assemblerContext.labelQueue.clear()
+
+        assemblerContext.code += uniqueByte
       case x if x >= Byte.MinValue && x <= Byte.MaxValue =>
-        code += BytecodeOpcode.BIPUSH.id.toByte
-        code += x.toByte
+        val uniqueByte = UniqueByte(BytecodeOpcode.BIPUSH.id.toByte)
+        assemblerContext.labelQueue.foreach(label => assemblerContext.labelToByte += (label -> uniqueByte))
+        assemblerContext.labelQueue.clear()
+
+        assemblerContext.code += uniqueByte
+        code += UniqueByte(x.toByte)
       case x if x >= Short.MinValue && x <= Short.MaxValue =>
-        code += BytecodeOpcode.SIPUSH.id.toByte
-        code += (x << 8).toByte
-        code += (x & 0xFF).toByte
+        val uniqueByte = UniqueByte(BytecodeOpcode.SIPUSH.id.toByte)
+        assemblerContext.labelQueue.foreach(label => assemblerContext.labelToByte += (label -> uniqueByte))
+        assemblerContext.labelQueue.clear()
+
+        assemblerContext.code += uniqueByte
+        code += UniqueByte((x << 8).toByte)
+        code += UniqueByte((x & 0xFF).toByte)
       case _ => ConstantInstruction(IntegerConstant(value)).assemble(assemblerContext, constantPool)
     }
   }

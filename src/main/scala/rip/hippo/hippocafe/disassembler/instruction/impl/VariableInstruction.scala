@@ -26,7 +26,7 @@ package rip.hippo.hippocafe.disassembler.instruction.impl
 
 import rip.hippo.hippocafe.disassembler.instruction.BytecodeOpcode.{BytecodeOpcode, DLOAD, DSTORE, FLOAD, ILOAD, LLOAD, LSTORE}
 import rip.hippo.hippocafe.constantpool.ConstantPool
-import rip.hippo.hippocafe.disassembler.context.AssemblerContext
+import rip.hippo.hippocafe.disassembler.context.{AssemblerContext, UniqueByte}
 import rip.hippo.hippocafe.disassembler.instruction.{BytecodeOpcode, Instruction}
 
 
@@ -47,16 +47,25 @@ final case class VariableInstruction(var bytecodeOpcode: BytecodeOpcode, var ind
   override def assemble(assemblerContext: AssemblerContext, constantPool: ConstantPool): Unit = {
     val code = assemblerContext.code
     val wide = index > 255
+
     if (wide) {
-      code += BytecodeOpcode.WIDE.id.toByte
+      val uniqueByte = UniqueByte(BytecodeOpcode.WIDE.id.toByte)
+      assemblerContext.labelQueue.foreach(label => assemblerContext.labelToByte += (label -> uniqueByte))
+      assemblerContext.labelQueue.clear()
+
+      assemblerContext.code += uniqueByte
     }
 
-    code += bytecodeOpcode.id.toByte
+    val uniqueByte = UniqueByte(bytecodeOpcode.id.toByte)
+    assemblerContext.labelQueue.foreach(label => assemblerContext.labelToByte += (label -> uniqueByte))
+    assemblerContext.labelQueue.clear()
+
+    assemblerContext.code += uniqueByte
     if (wide) {
-      code += ((index >>> 8) & 0xFF).toByte
-      code += (index & 0xFF).toByte
+      code += UniqueByte(((index >>> 8) & 0xFF).toByte)
+      code += UniqueByte((index & 0xFF).toByte)
     } else {
-      code += index.toByte
+      code += UniqueByte(index.toByte)
     }
 
     if (assemblerContext.calculateMaxes) {

@@ -28,8 +28,8 @@ import rip.hippo.hippocafe.disassembler.instruction.BytecodeOpcode.{BytecodeOpco
 import rip.hippo.hippocafe.constantpool.{ConstantPool, ConstantPoolKind}
 import rip.hippo.hippocafe.constantpool.info.ConstantPoolInfo
 import rip.hippo.hippocafe.constantpool.info.impl.{NameAndTypeInfo, ReferenceInfo, StringInfo, UTF8Info}
-import rip.hippo.hippocafe.disassembler.context.AssemblerContext
-import rip.hippo.hippocafe.disassembler.instruction.Instruction
+import rip.hippo.hippocafe.disassembler.context.{AssemblerContext, UniqueByte}
+import rip.hippo.hippocafe.disassembler.instruction.{BytecodeOpcode, Instruction}
 import rip.hippo.hippocafe.util.Type
 
 import scala.collection.mutable.ListBuffer
@@ -90,13 +90,17 @@ final case class ReferenceInstruction(var bytecodeOpcode: BytecodeOpcode, var ow
         if (isMethod) ConstantPoolKind.METHOD_REF else ConstantPoolKind.FIELD_REF))
       
     } else refIndex = index
-    code += bytecodeOpcode.id.toByte
-    code += (refIndex >>> 8).toByte
-    code += (refIndex & 0xFF).toByte
+    val uniqueByte = UniqueByte(bytecodeOpcode.id.toByte)
+    assemblerContext.labelQueue.foreach(label => assemblerContext.labelToByte += (label -> uniqueByte))
+    assemblerContext.labelQueue.clear()
+
+    code += uniqueByte
+    code += UniqueByte((refIndex >>> 8).toByte)
+    code += UniqueByte((refIndex & 0xFF).toByte)
 
     if (bytecodeOpcode == INVOKEINTERFACE) {
-      code += Type.getMethodParameterTypes(descriptor).map(_.getSize).sum.toByte
-      code += 0
+      code += UniqueByte(Type.getMethodParameterTypes(descriptor).map(_.getSize).sum.toByte)
+      code += UniqueByte(0)
     }
   }
 }

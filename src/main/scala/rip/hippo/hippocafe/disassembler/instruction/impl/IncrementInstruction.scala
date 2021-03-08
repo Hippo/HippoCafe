@@ -25,7 +25,7 @@
 package rip.hippo.hippocafe.disassembler.instruction.impl
 
 import rip.hippo.hippocafe.constantpool.ConstantPool
-import rip.hippo.hippocafe.disassembler.context.AssemblerContext
+import rip.hippo.hippocafe.disassembler.context.{AssemblerContext, UniqueByte}
 import rip.hippo.hippocafe.disassembler.instruction.{BytecodeOpcode, Instruction}
 
 import scala.collection.mutable.ListBuffer
@@ -39,17 +39,25 @@ final case class IncrementInstruction(var localIndex: Int, var value: Int) exten
   override def assemble(assemblerContext: AssemblerContext, constantPool: ConstantPool): Unit = {
     val wide = localIndex > 255 || value > 255
     if (wide) {
-      assemblerContext.code += BytecodeOpcode.WIDE.id.toByte
+      val uniqueByte = UniqueByte(BytecodeOpcode.WIDE.id.toByte)
+      assemblerContext.labelQueue.foreach(label => assemblerContext.labelToByte += (label -> uniqueByte))
+      assemblerContext.labelQueue.clear()
+
+      assemblerContext.code += uniqueByte
     }
-    assemblerContext.code += BytecodeOpcode.IINC.id.toByte
+    val uniqueByte = UniqueByte(BytecodeOpcode.IINC.id.toByte)
+    assemblerContext.labelQueue.foreach(label => assemblerContext.labelToByte += (label -> uniqueByte))
+    assemblerContext.labelQueue.clear()
+
+    assemblerContext.code += uniqueByte
     if (wide) {
-      assemblerContext.code += ((localIndex >>> 8) & 0xFF).toByte
-      assemblerContext.code += (localIndex & 0xFF).toByte
-      assemblerContext.code += ((value >>> 8) & 0xFF).toByte
-      assemblerContext.code += (value & 0xFF).toByte
+      assemblerContext.code += UniqueByte(((localIndex >>> 8) & 0xFF).toByte)
+      assemblerContext.code += UniqueByte((localIndex & 0xFF).toByte)
+      assemblerContext.code += UniqueByte(((value >>> 8) & 0xFF).toByte)
+      assemblerContext.code += UniqueByte((value & 0xFF).toByte)
     } else {
-      assemblerContext.code += localIndex.toByte
-      assemblerContext.code += value.toByte
+      assemblerContext.code += UniqueByte(localIndex.toByte)
+      assemblerContext.code += UniqueByte(value.toByte)
     }
   }
 }

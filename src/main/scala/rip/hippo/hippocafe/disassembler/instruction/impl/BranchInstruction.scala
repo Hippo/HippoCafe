@@ -26,8 +26,8 @@ package rip.hippo.hippocafe.disassembler.instruction.impl
 
 import rip.hippo.hippocafe.disassembler.instruction.BytecodeOpcode._
 import rip.hippo.hippocafe.constantpool.ConstantPool
-import rip.hippo.hippocafe.disassembler.context.{AssemblerContext, PreprocessedBranch}
-import rip.hippo.hippocafe.disassembler.instruction.Instruction
+import rip.hippo.hippocafe.disassembler.context.{AssemblerContext, PreprocessedBranch, UniqueByte}
+import rip.hippo.hippocafe.disassembler.instruction.{BytecodeOpcode, Instruction}
 
 import scala.collection.mutable.ListBuffer
 
@@ -38,7 +38,12 @@ import scala.collection.mutable.ListBuffer
  */
 final case class BranchInstruction(var bytecodeOpcode: BytecodeOpcode, var label: LabelInstruction) extends Instruction {
   override def assemble(assemblerContext: AssemblerContext, constantPool: ConstantPool): Unit = {
-    assemblerContext.preprocessedBranches += PreprocessedBranch(assemblerContext.code.length, label)
-    assemblerContext.code += bytecodeOpcode.id.toByte
+    val uniqueByte = UniqueByte(bytecodeOpcode.id.toByte)
+    assemblerContext.labelQueue.foreach(label => assemblerContext.labelToByte += (label -> uniqueByte))
+    assemblerContext.labelQueue.clear()
+
+    assemblerContext.preprocessedBranches += PreprocessedBranch(uniqueByte, label)
+    assemblerContext.code += uniqueByte
+
   }
 }

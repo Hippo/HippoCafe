@@ -40,7 +40,7 @@ import scala.util.{Failure, Using}
  */
 final class ReadAssembleWriteSuite extends FunSuite {
 
-  private val className = "BranchTest"
+  private val className = "NestedForLoopTest"
 
 
   test("assemble.readThenLoad") {
@@ -48,9 +48,13 @@ final class ReadAssembleWriteSuite extends FunSuite {
       case Some(value) =>
         val test = Using(new ClassReader(value)) {
           classReader =>
+            classReader.classFile.majorClassFileVersion = MajorClassFileVersion.SE5_0
             val writerTest = Using(new ClassWriter(classReader.classFile)) {
               classWriter =>
                 val bytecode = classWriter.write
+
+                val fos = new FileOutputStream("test.class")
+                fos.write(bytecode)
 
                 val loaded = new CustomClassLoader().createClass(className, bytecode)
 

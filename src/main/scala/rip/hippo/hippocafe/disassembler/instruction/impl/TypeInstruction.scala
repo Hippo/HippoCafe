@@ -27,7 +27,7 @@ package rip.hippo.hippocafe.disassembler.instruction.impl
 import rip.hippo.hippocafe.constantpool.info.impl.{StringInfo, UTF8Info}
 import rip.hippo.hippocafe.disassembler.instruction.BytecodeOpcode.BytecodeOpcode
 import rip.hippo.hippocafe.constantpool.{ConstantPool, ConstantPoolKind}
-import rip.hippo.hippocafe.disassembler.context.AssemblerContext
+import rip.hippo.hippocafe.disassembler.context.{AssemblerContext, UniqueByte}
 import rip.hippo.hippocafe.disassembler.instruction.Instruction
 
 import scala.collection.mutable.ListBuffer
@@ -56,8 +56,12 @@ final case class TypeInstruction(var bytecodeOpcode: BytecodeOpcode, var typeNam
       constantPool.insert(index, new StringInfo(typeName, ConstantPoolKind.CLASS))
     }
 
-    assemblerContext.code += bytecodeOpcode.id.toByte
-    assemblerContext.code += ((index >>> 8) & 0xFF).toByte
-    assemblerContext.code += (index & 0xFF).toByte
+    val uniqueByte = UniqueByte(bytecodeOpcode.id.toByte)
+    assemblerContext.labelQueue.foreach(label => assemblerContext.labelToByte += (label -> uniqueByte))
+    assemblerContext.labelQueue.clear()
+
+    assemblerContext.code += uniqueByte
+    assemblerContext.code += UniqueByte(((index >>> 8) & 0xFF).toByte)
+    assemblerContext.code += UniqueByte((index & 0xFF).toByte)
   }
 }

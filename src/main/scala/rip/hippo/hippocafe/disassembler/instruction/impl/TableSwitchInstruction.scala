@@ -25,7 +25,7 @@
 package rip.hippo.hippocafe.disassembler.instruction.impl
 
 import rip.hippo.hippocafe.constantpool.ConstantPool
-import rip.hippo.hippocafe.disassembler.context.{AssemblerContext, PreprocessedBranch}
+import rip.hippo.hippocafe.disassembler.context.{AssemblerContext, PreprocessedBranch, UniqueByte}
 import rip.hippo.hippocafe.disassembler.instruction.{BytecodeOpcode, Instruction}
 
 import scala.collection.mutable.ListBuffer
@@ -39,13 +39,17 @@ final case class TableSwitchInstruction(var default: LabelInstruction, var low: 
   val table: ListBuffer[LabelInstruction] = ListBuffer[LabelInstruction]()
 
   override def assemble(assemblerContext: AssemblerContext, constantPool: ConstantPool): Unit = {
-    def shift(value: Int, bits: Int): Byte = ((value >>> bits) & 0xFF).toByte
+    def shift(value: Int, bits: Int): UniqueByte = UniqueByte(((value >>> bits) & 0xFF).toByte)
 
     val code = assemblerContext.code
     assemblerContext.preprocessedTableSwitch += (this -> code.length)
-    code += BytecodeOpcode.TABLESWITCH.id.toByte
+    val uniqueByte = UniqueByte(BytecodeOpcode.TABLESWITCH.id.toByte)
+    assemblerContext.labelQueue.foreach(label => assemblerContext.labelToByte += (label -> uniqueByte))
+    assemblerContext.labelQueue.clear()
+
+    assemblerContext.code += uniqueByte
     assemblerContext.switchPadding += (code.length -> (-code.length & 3))
-    (0 until 4).foreach(_ => code += 0)
+    (0 until 4).foreach(_ => code += UniqueByte(0))
 
     code += shift(low, 24)
     code += shift(low, 16)
@@ -55,7 +59,7 @@ final case class TableSwitchInstruction(var default: LabelInstruction, var low: 
     code += shift(high, 16)
     code += shift(high, 8)
     code += shift(high, 0)
-    table.foreach(_ => (0 until 4).foreach(_ => code += 0))
+    table.foreach(_ => (0 until 4).foreach(_ => code += UniqueByte(0)))
   }
 
   override def toString: String = s"TableSwitchInstruction($default, $low, $high, $table)"

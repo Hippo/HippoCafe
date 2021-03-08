@@ -27,7 +27,7 @@ package rip.hippo.hippocafe.disassembler.instruction.impl
 import rip.hippo.hippocafe.constantpool.{ConstantPool, ConstantPoolKind}
 import rip.hippo.hippocafe.constantpool.info.ValueAwareness
 import rip.hippo.hippocafe.constantpool.info.impl.{DoubleInfo, FloatInfo, IntegerInfo, LongInfo, StringInfo, UTF8Info}
-import rip.hippo.hippocafe.disassembler.context.AssemblerContext
+import rip.hippo.hippocafe.disassembler.context.{AssemblerContext, UniqueByte}
 import rip.hippo.hippocafe.disassembler.instruction.constant.Constant
 import rip.hippo.hippocafe.disassembler.instruction.constant.impl._
 import rip.hippo.hippocafe.disassembler.instruction.{BytecodeOpcode, Instruction}
@@ -84,9 +84,13 @@ final case class ConstantInstruction(var constant: Constant[_]) extends Instruct
 
 
     def writeWide(): Unit = {
-      code += BytecodeOpcode.LDC2_W.id.toByte
-      code += ((index >>> 8) & 0xFF).toByte
-      code += (index & 0xFF).toByte
+      val uniqueByte = UniqueByte(BytecodeOpcode.LDC2_W.id.toByte)
+      assemblerContext.labelQueue.foreach(label => assemblerContext.labelToByte += (label -> uniqueByte))
+      assemblerContext.labelQueue.clear()
+
+      assemblerContext.code += uniqueByte
+      code += UniqueByte(((index >>> 8) & 0xFF).toByte)
+      code += UniqueByte((index & 0xFF).toByte)
     }
 
     constant match {
@@ -96,12 +100,20 @@ final case class ConstantInstruction(var constant: Constant[_]) extends Instruct
         writeWide()
       case _ =>
         if (index > 255) {
-          code += BytecodeOpcode.LDC_W.id.toByte
-          code += ((index >>> 8) & 0xFF).toByte
-          code += (index & 0xFF).toByte
+          val uniqueByte = UniqueByte(BytecodeOpcode.LDC_W.id.toByte)
+          assemblerContext.labelQueue.foreach(label => assemblerContext.labelToByte += (label -> uniqueByte))
+          assemblerContext.labelQueue.clear()
+
+          assemblerContext.code += uniqueByte
+          code += UniqueByte(((index >>> 8) & 0xFF).toByte)
+          code += UniqueByte((index & 0xFF).toByte)
         } else {
-          code += BytecodeOpcode.LDC.id.toByte
-          code += index.toByte
+          val uniqueByte = UniqueByte(BytecodeOpcode.LDC.id.toByte)
+          assemblerContext.labelQueue.foreach(label => assemblerContext.labelToByte += (label -> uniqueByte))
+          assemblerContext.labelQueue.clear()
+
+          assemblerContext.code += uniqueByte
+          code += UniqueByte(index.toByte)
         }
     }
   }
