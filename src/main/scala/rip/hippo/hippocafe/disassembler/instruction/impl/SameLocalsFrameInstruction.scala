@@ -13,7 +13,7 @@ import rip.hippo.hippocafe.stackmap.verification.VerificationTypeInfo
  */
 final class SameLocalsFrameInstruction(var verificationTypeInfo: VerificationTypeInfo) extends Instruction with FrameInstruction {
   override def assemble(assemblerContext: AssemblerContext, constantPool: ConstantPool): Unit = {
-    assemblerContext.preprocessedFrames += (this -> assemblerContext.code.length)
+    assemblerContext.labelQueue += this
   }
 
   override def assemble(assemblerContext: AssemblerContext): Unit = {

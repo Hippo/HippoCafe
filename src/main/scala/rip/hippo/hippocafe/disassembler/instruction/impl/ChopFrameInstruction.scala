@@ -12,7 +12,7 @@ import rip.hippo.hippocafe.stackmap.impl.ChopStackMapFrame
  */
 final class ChopFrameInstruction(var numberOfAbsentLocals: Int) extends Instruction with FrameInstruction {
   override def assemble(assemblerContext: AssemblerContext, constantPool: ConstantPool): Unit = {
-    assemblerContext.preprocessedFrames += (this -> assemblerContext.code.length)
+    assemblerContext.labelQueue += this
   }
 
   override def assemble(assemblerContext: AssemblerContext): Unit = {

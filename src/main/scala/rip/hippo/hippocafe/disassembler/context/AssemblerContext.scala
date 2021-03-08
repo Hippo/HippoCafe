@@ -18,14 +18,14 @@ import scala.collection.mutable.{ArrayBuffer, ListBuffer}
  */
 final class AssemblerContext(flags: Set[AssemblerFlag]) {
   val code: ListBuffer[UniqueByte] = ListBuffer[UniqueByte]()
-  val labelToByte: mutable.Map[LabelInstruction, UniqueByte] = mutable.Map[LabelInstruction, UniqueByte]()
-  val labelQueue: ListBuffer[LabelInstruction] = ListBuffer[LabelInstruction]()
+  val labelToByte: mutable.Map[Instruction, UniqueByte] = mutable.Map[Instruction, UniqueByte]()
+  val labelQueue: ListBuffer[Instruction] = ListBuffer[Instruction]()
+  val preprocessedFrames: mutable.Map[FrameInstruction, UniqueByte] = mutable.Map[FrameInstruction, UniqueByte]()
 
 
   val labelToByteOffset: mutable.Map[LabelInstruction, Int] = mutable.Map[LabelInstruction, Int]()
   val preprocessedBranches: ListBuffer[PreprocessedBranch] = ListBuffer[PreprocessedBranch]()
   val lineNumberOffsets: mutable.Map[Int, Int] = mutable.Map[Int, Int]()
-  val preprocessedFrames: mutable.Map[FrameInstruction, Int] = mutable.Map[FrameInstruction, Int]()
   val preprocessedTableSwitch: mutable.Map[TableSwitchInstruction, Int] = mutable.Map[TableSwitchInstruction, Int]()
   val switchPadding: mutable.Map[Int, Int] = mutable.Map[Int, Int]()
   var sortedFrames: mutable.LinkedHashMap[FrameInstruction, Int] = mutable.LinkedHashMap[FrameInstruction, Int]()
@@ -149,7 +149,7 @@ final class AssemblerContext(flags: Set[AssemblerFlag]) {
         })
 
         labelToByteOffset.filter(_._2 > indexToPad).foreach(pair => labelToByteOffset += (pair._1 -> (pair._2 + padCount)))
-        preprocessedFrames.filter(_._2 > indexToPad).foreach(pair => preprocessedFrames += (pair._1 -> (pair._2 + padCount)))
+       // preprocessedFrames.filter(_._2 > indexToPad).foreach(pair => preprocessedFrames += (pair._1 -> (pair._2 + padCount)))
         lineNumberOffsets.filter(_._2 > indexToPad).foreach(pair => lineNumberOffsets += (pair._1 -> (pair._2 + padCount)))
        // preprocessedBranches.filter(_.indexToBranch > indexToPad).foreach(_.indexToBranch += padCount)
         preprocessedTableSwitch.filter(_._2 > indexToPad).foreach(pair => preprocessedTableSwitch += (pair._1 -> (pair._2 + padCount)))
@@ -189,7 +189,7 @@ final class AssemblerContext(flags: Set[AssemblerFlag]) {
       lineNumberAttributeDataInfo += LineNumberTableAttributeData(startPc, lineNumber)
     })
 
-    preprocessedFrames.toSeq.sortWith(_._2 < _._2).foreach(pair => sortedFrames += (pair._1 -> pair._2))
+    labelToByte.filter(_._1.isInstanceOf[FrameInstruction]).toSeq.sortWith((a, b) => code.indexOf(a._2) < code.indexOf(b._2)).foreach(pair => sortedFrames += (pair._1.asInstanceOf[FrameInstruction] -> code.indexOf(pair._2)))
     sortedFrames.foreach(_._1.assemble(this))
 
     attributes += LineNumberTableAttribute(lineNumberAttributeDataInfo.length, lineNumberAttributeDataInfo.toArray)

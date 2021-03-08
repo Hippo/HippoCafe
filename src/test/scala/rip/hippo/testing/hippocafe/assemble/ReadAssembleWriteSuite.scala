@@ -48,7 +48,7 @@ final class ReadAssembleWriteSuite extends FunSuite {
       case Some(value) =>
         val test = Using(new ClassReader(value)) {
           classReader =>
-            classReader.classFile.majorClassFileVersion = MajorClassFileVersion.SE5_0
+           // classReader.classFile.majorClassFileVersion = MajorClassFileVersion.SE5_0
             val writerTest = Using(new ClassWriter(classReader.classFile)) {
               classWriter =>
                 val bytecode = classWriter.write
