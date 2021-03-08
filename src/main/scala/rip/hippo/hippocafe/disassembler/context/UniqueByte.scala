@@ -5,7 +5,7 @@ package rip.hippo.hippocafe.disassembler.context
  * @version 1.0.0, 3/7/21
  * @since 1.0.1
  */
-final class UniqueByte(val byte: Byte) {
+final class UniqueByte(var byte: Byte) {
   override def toString: String = s"UniqueByte($byte)"
 }
 

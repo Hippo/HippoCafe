@@ -42,14 +42,14 @@ final case class TableSwitchInstruction(var default: LabelInstruction, var low: 
     def shift(value: Int, bits: Int): UniqueByte = UniqueByte(((value >>> bits) & 0xFF).toByte)
 
     val code = assemblerContext.code
-    assemblerContext.preprocessedTableSwitch += (this -> code.length)
     val uniqueByte = UniqueByte(BytecodeOpcode.TABLESWITCH.id.toByte)
     assemblerContext.labelQueue.foreach(label => assemblerContext.labelToByte += (label -> uniqueByte))
     assemblerContext.labelQueue.clear()
 
+    assemblerContext.preprocessedTableSwitch += (this -> uniqueByte)
     assemblerContext.code += uniqueByte
-    assemblerContext.switchPadding += (code.length -> (-code.length & 3))
     (0 until 4).foreach(_ => code += UniqueByte(0))
+    assemblerContext.switchPadding += (code(code.indexOf(uniqueByte) + 1) -> (-code.length & 3))
 
     code += shift(low, 24)
     code += shift(low, 16)

@@ -13,7 +13,7 @@ import scala.collection.mutable.{ArrayBuffer, ListBuffer}
 
 /**
  * @author Hippo
- * @version 1.0.1, 2/19/21
+ * @version 1.1.0, 2/19/21
  * @since 1.0.0
  */
 final class AssemblerContext(flags: Set[AssemblerFlag]) {
@@ -21,8 +21,8 @@ final class AssemblerContext(flags: Set[AssemblerFlag]) {
   val labelToByte: mutable.Map[Instruction, UniqueByte] = mutable.Map[Instruction, UniqueByte]()
   val labelQueue: ListBuffer[Instruction] = ListBuffer[Instruction]()
   val preprocessedBranches: ListBuffer[PreprocessedBranch] = ListBuffer[PreprocessedBranch]()
-  val preprocessedTableSwitch: mutable.Map[TableSwitchInstruction, Int] = mutable.Map[TableSwitchInstruction, Int]()
-  val switchPadding: mutable.Map[Int, Int] = mutable.Map[Int, Int]()
+  val preprocessedTableSwitch: mutable.Map[TableSwitchInstruction, UniqueByte] = mutable.Map[TableSwitchInstruction, UniqueByte]()
+  val switchPadding: mutable.Map[UniqueByte, Int] = mutable.Map[UniqueByte, Int]()
   var sortedFrames: mutable.LinkedHashMap[FrameInstruction, Int] = mutable.LinkedHashMap[FrameInstruction, Int]()
   val stackMapFrames: ListBuffer[StackMapFrame] = ListBuffer[StackMapFrame]()
   var maxStack = 0
@@ -32,13 +32,12 @@ final class AssemblerContext(flags: Set[AssemblerFlag]) {
 
   def processBranchOffsets(): Unit = {
 
-    def shift(value: Int, bits: Int): UniqueByte = UniqueByte(((value >>> bits) & 0xFF).toByte)
+    def shift(value: Int, bits: Int): Byte = ((value >>> bits) & 0xFF).toByte
 
     // Insert first time calculated offsets
     preprocessedBranches.foreach(preprocessedBranch => {
       val label = preprocessedBranch.label
       val opcodeIndex = code.indexOf(preprocessedBranch.indexToBranch)
-      //val labelOffset = labelToByteOffset(label)
       val labelOffset = code.indexOf(labelToByte(label))
       preprocessedBranch.offset = labelOffset - opcodeIndex
 
@@ -51,42 +50,33 @@ final class AssemblerContext(flags: Set[AssemblerFlag]) {
         code.insert(opcodeIndex + 1, preprocessedBranch.shift(8))
         code.insert(opcodeIndex + 2, preprocessedBranch.shift(0))
       }
-
-      /*switchPadding.filter(_._1 > opcodeIndex).foreach(pair => {
-        switchPadding -= pair._1
-        switchPadding += (pair._1 + preprocessedBranch.getSize -> pair._2)
-      })*/
     })
 
     // re-align offsets
     var shouldRealign = false
     do {
       shouldRealign = false
-     /* switchPadding.foreach(pair => {
-        val index = pair._1 + preprocessedBranches.filter(_.indexToBranch < pair._1).map(_.getSize).sum
+      switchPadding.foreach(pair => {
+        val index = code.indexOf(pair._1)
         val pad = -index & 3
         switchPadding += (pair._1 -> pad)
-      })*/
+      })
       preprocessedBranches.foreach(preprocessedBranch => {
         val startingSize = preprocessedBranch.getSize
         val labelOffset = code.indexOf(labelToByte(preprocessedBranch.label))
-        preprocessedBranch.offset = labelOffset - code.indexOf(preprocessedBranch.indexToBranch)
-        /*preprocessedBranch.offset += switchPadding.filter(pair => {
-          val upperBound = Math.max(labelOffset, preprocessedBranch.indexToBranch)
-          val lowerBound = Math.min(labelOffset, preprocessedBranch.indexToBranch)
+        val branchIndex = code.indexOf(preprocessedBranch.indexToBranch)
+        preprocessedBranch.offset = labelOffset - branchIndex
+        preprocessedBranch.offset += switchPadding.filter(pair => {
+          val pairIndex = code.indexOf(pair._1)
+          val upperBound = Math.max(labelOffset, branchIndex)
+          val lowerBound = Math.min(labelOffset, branchIndex)
 
-          pair._1 < upperBound && pair._1 > lowerBound
-        }).values.sum*/
+          pairIndex < upperBound && pairIndex > lowerBound
+        }).values.sum
 
 
         if (startingSize != preprocessedBranch.getSize) {
           shouldRealign = true
-          val difference = preprocessedBranch.getSize - startingSize
-          //preprocessedTableSwitch.filter(_._2 > preprocessedBranch.indexToBranch).foreach(pair => preprocessedTableSwitch += (pair._1 -> (pair._2 + difference)))
-          /*switchPadding.filter(_._1 > preprocessedBranch.indexToBranch).foreach(pair => {
-            switchPadding -= pair._1
-            switchPadding += (pair._1 + difference -> pair._2)
-          })*/
         }
       })
     } while(shouldRealign)
@@ -111,7 +101,7 @@ final class AssemblerContext(flags: Set[AssemblerFlag]) {
         case JSR_W if !wide => JSR
         case x => x
       }
-      code.update(opcodeIndex, UniqueByte(opcode.id.toByte))
+      code(opcodeIndex).byte = opcode.id.toByte
       if (wide) {
         code.insert(opcodeIndex + 1, shift(24))
         code.insert(opcodeIndex + 2, shift(16))
@@ -125,36 +115,30 @@ final class AssemblerContext(flags: Set[AssemblerFlag]) {
 
     preprocessedTableSwitch.foreach(pair => { //TODO: rehaul for new big update
       val instruction = pair._1
-      val indexToInstruction = pair._2
+      val indexToInstruction = code.indexOf(pair._2)
       var indexToPad = indexToInstruction + 1
-      val padCount = switchPadding(indexToPad)
+      val padCount = switchPadding(code(indexToPad))
       if (padCount > 0) {
         (0 until padCount).foreach(_ => {
           code.insert(indexToPad, UniqueByte(0))
           indexToPad += 1
         })
-
-        preprocessedTableSwitch.filter(_._2 > indexToPad).foreach(pair => preprocessedTableSwitch += (pair._1 -> (pair._2 + padCount)))
-        switchPadding.filter(_._1 > indexToPad).foreach(pair => {
-          switchPadding -= pair._1
-          switchPadding += (pair._1 + padCount -> pair._2)
-        })
       }
 
       var indexToPairs = indexToPad + 12
-      val defaultBranch = 0//labelToByteOffset(instruction.default)
+      val defaultBranch = code.indexOf(labelToByte(instruction.default))
       val defaultOffset = defaultBranch - indexToInstruction
-      code.update(indexToPad, shift(defaultOffset, 24))
-      code.update(indexToPad + 1, shift(defaultOffset, 16))
-      code.update(indexToPad + 2, shift(defaultOffset, 8))
-      code.update(indexToPad + 3, shift(defaultOffset, 0))
+      code(indexToPad).byte = shift(defaultOffset, 24)
+      code(indexToPad + 1).byte = shift(defaultOffset, 16)
+      code(indexToPad + 2).byte = shift(defaultOffset, 8)
+      code(indexToPad + 3).byte = shift(defaultOffset, 0)
       instruction.table.foreach(label => {
-        val labelOffset = 0//labelToByteOffset(label)
+        val labelOffset = code.indexOf(labelToByte(label))
         val offset = labelOffset - indexToInstruction
-        code.update(indexToPairs, shift(offset, 24))
-        code.update(indexToPairs + 1, shift(offset, 16))
-        code.update(indexToPairs + 2, shift(offset, 8))
-        code.update(indexToPairs + 3, shift(offset, 0))
+        code(indexToPairs).byte =  shift(offset, 24)
+        code(indexToPairs + 1).byte = shift(offset, 16)
+        code(indexToPairs + 2).byte = shift(offset, 8)
+        code(indexToPairs + 3).byte = shift(offset, 0)
         indexToPairs += 4
       })
     })

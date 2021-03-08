@@ -80,10 +80,12 @@ object CodeDisassembler {
               case SameStackMapFrame(frameType) =>
                 offsetDelta += frameType
                 deltaChanges += 1
+                if (deltaChanges > 1) offsetDelta += 1
                 addLabel(offsetDelta, SameFrameInstruction())
               case SameLocalsStackMapFrame(frameType, stack) =>
                 offsetDelta += frameType - 64
                 deltaChanges += 1
+                if (deltaChanges > 1) offsetDelta += 1
                 addLabel(offsetDelta, SameLocalsFrameInstruction(stack(0)))
               case SameLocalsExtendedStackMapFrame(delta, stack) =>
                 offsetDelta += delta
