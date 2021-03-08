@@ -11,6 +11,6 @@ import rip.hippo.hippocafe.disassembler.instruction.Instruction
  */
 final case class LineNumberInstruction(var number: Int) extends Instruction {
   override def assemble(assemblerContext: AssemblerContext, constantPool: ConstantPool): Unit = {
-    assemblerContext.lineNumberOffsets += (number -> assemblerContext.code.length)
+    assemblerContext.labelQueue += this
   }
 }

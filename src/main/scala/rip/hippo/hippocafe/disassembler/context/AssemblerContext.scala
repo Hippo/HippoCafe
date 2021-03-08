@@ -5,7 +5,7 @@ import rip.hippo.hippocafe.attribute.impl.{LineNumberTableAttribute, StackMapTab
 import rip.hippo.hippocafe.attribute.impl.data.LineNumberTableAttributeData
 import rip.hippo.hippocafe.disassembler.instruction.{BytecodeOpcode, FrameInstruction, Instruction}
 import rip.hippo.hippocafe.disassembler.instruction.BytecodeOpcode._
-import rip.hippo.hippocafe.disassembler.instruction.impl.{LabelInstruction, TableSwitchInstruction}
+import rip.hippo.hippocafe.disassembler.instruction.impl.{LabelInstruction, LineNumberInstruction, TableSwitchInstruction}
 import rip.hippo.hippocafe.stackmap.StackMapFrame
 
 import scala.collection.mutable
@@ -21,11 +21,7 @@ final class AssemblerContext(flags: Set[AssemblerFlag]) {
   val labelToByte: mutable.Map[Instruction, UniqueByte] = mutable.Map[Instruction, UniqueByte]()
   val labelQueue: ListBuffer[Instruction] = ListBuffer[Instruction]()
   val preprocessedFrames: mutable.Map[FrameInstruction, UniqueByte] = mutable.Map[FrameInstruction, UniqueByte]()
-
-
-  val labelToByteOffset: mutable.Map[LabelInstruction, Int] = mutable.Map[LabelInstruction, Int]()
   val preprocessedBranches: ListBuffer[PreprocessedBranch] = ListBuffer[PreprocessedBranch]()
-  val lineNumberOffsets: mutable.Map[Int, Int] = mutable.Map[Int, Int]()
   val preprocessedTableSwitch: mutable.Map[TableSwitchInstruction, Int] = mutable.Map[TableSwitchInstruction, Int]()
   val switchPadding: mutable.Map[Int, Int] = mutable.Map[Int, Int]()
   var sortedFrames: mutable.LinkedHashMap[FrameInstruction, Int] = mutable.LinkedHashMap[FrameInstruction, Int]()
@@ -137,7 +133,7 @@ final class AssemblerContext(flags: Set[AssemblerFlag]) {
       }
     })
 
-    preprocessedTableSwitch.foreach(pair => {
+    preprocessedTableSwitch.foreach(pair => { //TODO: rehaul for new big update
       val instruction = pair._1
       val indexToInstruction = pair._2
       var indexToPad = indexToInstruction + 1
@@ -148,9 +144,9 @@ final class AssemblerContext(flags: Set[AssemblerFlag]) {
           indexToPad += 1
         })
 
-        labelToByteOffset.filter(_._2 > indexToPad).foreach(pair => labelToByteOffset += (pair._1 -> (pair._2 + padCount)))
+        //labelToByteOffset.filter(_._2 > indexToPad).foreach(pair => labelToByteOffset += (pair._1 -> (pair._2 + padCount)))
        // preprocessedFrames.filter(_._2 > indexToPad).foreach(pair => preprocessedFrames += (pair._1 -> (pair._2 + padCount)))
-        lineNumberOffsets.filter(_._2 > indexToPad).foreach(pair => lineNumberOffsets += (pair._1 -> (pair._2 + padCount)))
+        //lineNumberOffsets.filter(_._2 > indexToPad).foreach(pair => lineNumberOffsets += (pair._1 -> (pair._2 + padCount)))
        // preprocessedBranches.filter(_.indexToBranch > indexToPad).foreach(_.indexToBranch += padCount)
         preprocessedTableSwitch.filter(_._2 > indexToPad).foreach(pair => preprocessedTableSwitch += (pair._1 -> (pair._2 + padCount)))
         switchPadding.filter(_._1 > indexToPad).foreach(pair => {
@@ -160,14 +156,14 @@ final class AssemblerContext(flags: Set[AssemblerFlag]) {
       }
 
       var indexToPairs = indexToPad + 12
-      val defaultBranch = labelToByteOffset(instruction.default)
+      val defaultBranch = 0//labelToByteOffset(instruction.default)
       val defaultOffset = defaultBranch - indexToInstruction
       code.update(indexToPad, shift(defaultOffset, 24))
       code.update(indexToPad + 1, shift(defaultOffset, 16))
       code.update(indexToPad + 2, shift(defaultOffset, 8))
       code.update(indexToPad + 3, shift(defaultOffset, 0))
       instruction.table.foreach(label => {
-        val labelOffset = labelToByteOffset(label)
+        val labelOffset = 0//labelToByteOffset(label)
         val offset = labelOffset - indexToInstruction
         code.update(indexToPairs, shift(offset, 24))
         code.update(indexToPairs + 1, shift(offset, 16))
@@ -183,9 +179,10 @@ final class AssemblerContext(flags: Set[AssemblerFlag]) {
     val attributes = ArrayBuffer[AttributeInfo]()
 
     val lineNumberAttributeDataInfo = ArrayBuffer[LineNumberTableAttributeData]()
-    lineNumberOffsets.foreach(entry => {
-      val lineNumber = entry._1
-      val startPc = entry._2
+
+    labelToByte.filter(_._1.isInstanceOf[LineNumberInstruction]).foreach(entry => {
+      val lineNumber = entry._1.asInstanceOf[LineNumberInstruction].number
+      val startPc = code.indexOf(entry._2)
       lineNumberAttributeDataInfo += LineNumberTableAttributeData(startPc, lineNumber)
     })
 

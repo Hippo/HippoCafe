@@ -40,7 +40,6 @@ final class LabelInstruction(var debugId: Int = -1) extends Instruction {
   override def toString: String = "Label(" + (if (debugId == -1) "" else debugId) + ")"
 
   override def assemble(assemblerContext: AssemblerContext, constantPool: ConstantPool): Unit = {
-   // assemblerContext.labelToByteOffset += (this -> assemblerContext.code.length)
     assemblerContext.labelQueue += this
   }
 }
