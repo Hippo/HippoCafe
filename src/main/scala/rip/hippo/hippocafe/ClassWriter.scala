@@ -93,6 +93,7 @@ final class ClassWriter(classFile: ClassFile) extends AutoCloseable {
         method.instructions.foreach(_.assemble(assemblerContext, constantPool))
         assemblerContext.processBranchOffsets()
         val attributes = assemblerContext.assembleMethodAttributes
+        val tryCatchBlocks = assemblerContext.assembleTryCatchBlocks(method)
 
         attributes.foreach(attribute => {
           val info = UTF8Info(attribute.kind.toString)
@@ -111,18 +112,20 @@ final class ClassWriter(classFile: ClassFile) extends AutoCloseable {
 
         val methodBytecode = assemblerContext.code
         removedCodeAttribute += method
-        // todo: compute exceptions and sub-attributes
-        method.attributes += CodeAttribute(
+
+        val codeAttribute = CodeAttribute(
           classFile.isOak,
           assemblerContext.maxStack,
           assemblerContext.maxLocals,
           methodBytecode.length,
           methodBytecode.map(_.byte).toArray,
-          0,
-          new Array[ExceptionTableAttributeData](0),
+          tryCatchBlocks.length,
+          tryCatchBlocks,
           attributes.length,
           attributes
         )
+        codeAttribute.buildConstantPool(constantPool)
+        method.attributes += codeAttribute
       }
     })
 

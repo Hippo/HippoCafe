@@ -284,7 +284,7 @@ final class ClassReader(parentInputStream: InputStream, lowLevel: Boolean = fals
               bufferStream.readFully(code)
               val exceptionTableLength = u2
               val exceptionTable = new Array[ExceptionTableAttributeData](exceptionTableLength)
-              (0 until exceptionTableLength).foreach(i => exceptionTable(i) = ExceptionTableAttributeData(u2, u2, u2, u2))
+              (0 until exceptionTableLength).foreach(i => exceptionTable(i) = ExceptionTableAttributeData(u2, u2, u2, constantPool.readString(u2)))
               val attributesCount = u2
               val attributes = new Array[AttributeInfo](attributesCount)
               (0 until attributesCount).foreach(i => attributes(i) = readAttribute(bufferStream))

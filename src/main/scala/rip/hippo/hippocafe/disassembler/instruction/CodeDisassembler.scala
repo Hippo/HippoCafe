@@ -434,7 +434,7 @@ object CodeDisassembler {
           addLabel(exception.startPc, start)
           addLabel(exception.endPc, end)
           addLabel(exception.handlerPc, handler)
-          tryCatchBlocks += TryCatchBlock(start, end, handler, constantPool.readString(exception.catchType))
+          tryCatchBlocks += TryCatchBlock(start, end, handler, exception.catchType)
         })
 
         def updateUninitializedVerificationInfo(verificationTypeInfo: VerificationTypeInfo): Unit = {
@@ -453,6 +453,14 @@ object CodeDisassembler {
           case FullFrameInstruction(locals, stack) =>
             locals.foreach(updateUninitializedVerificationInfo)
             stack.foreach(updateUninitializedVerificationInfo)
+          case _ =>
+        })
+
+        var sortedDebug = 0
+        labels.values.foreach(_.reverse.foreach {
+          case labelInstruction: LabelInstruction =>
+            labelInstruction.debugId = sortedDebug
+            sortedDebug += 1
           case _ =>
         })
 

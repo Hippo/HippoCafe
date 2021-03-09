@@ -1,8 +1,9 @@
 package rip.hippo.hippocafe.disassembler.context
 
+import rip.hippo.hippocafe.MethodInfo
 import rip.hippo.hippocafe.attribute.AttributeInfo
 import rip.hippo.hippocafe.attribute.impl.{LineNumberTableAttribute, StackMapTableAttribute}
-import rip.hippo.hippocafe.attribute.impl.data.LineNumberTableAttributeData
+import rip.hippo.hippocafe.attribute.impl.data.{ExceptionTableAttributeData, LineNumberTableAttributeData}
 import rip.hippo.hippocafe.disassembler.instruction.{BytecodeOpcode, FrameInstruction, Instruction}
 import rip.hippo.hippocafe.disassembler.instruction.BytecodeOpcode._
 import rip.hippo.hippocafe.disassembler.instruction.impl.{LabelInstruction, LineNumberInstruction, LookupSwitchInstruction, TableSwitchInstruction}
@@ -196,6 +197,14 @@ final class AssemblerContext(flags: Set[AssemblerFlag]) {
     attributes += StackMapTableAttribute(stackMapFrames.length, stackMapFrames.toArray)
 
     attributes.toArray
+  }
+
+  def assembleTryCatchBlocks(methodInfo: MethodInfo): Array[ExceptionTableAttributeData] = {
+    methodInfo.tryCatchBlocks.map(tcb => ExceptionTableAttributeData(
+      code.indexOf(labelToByte(tcb.start)),
+      code.indexOf(labelToByte(tcb.end)),
+      code.indexOf(labelToByte(tcb.handler)),
+      tcb.catchType)).toArray
   }
 
   def setMaxStack(size: Int): Unit = maxStack = Math.max(maxStack, size)

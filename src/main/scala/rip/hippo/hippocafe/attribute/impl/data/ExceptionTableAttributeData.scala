@@ -24,6 +24,9 @@
 
 package rip.hippo.hippocafe.attribute.impl.data
 
+import rip.hippo.hippocafe.constantpool.{ConstantPool, ConstantPoolKind}
+import rip.hippo.hippocafe.constantpool.info.impl.{StringInfo, UTF8Info}
+
 /**
  * @author Hippo
  * @version 1.0.0, 8/2/20
@@ -32,4 +35,24 @@ package rip.hippo.hippocafe.attribute.impl.data
 final case class ExceptionTableAttributeData(startPc: Int,
                                              endPc: Int,
                                              handlerPc: Int,
-                                             catchType: Int)
+                                             catchType: String) {
+
+  def buildConstantPool(constantPool: ConstantPool): Unit = {
+    var index = -1
+    constantPool.info
+      .filter(_._2.isInstanceOf[StringInfo])
+      .filter(_._2.kind == ConstantPoolKind.CLASS)
+      .filter(_._2.asInstanceOf[StringInfo].value.equals(catchType))
+      .keys
+      .foreach(index = _)
+    if (index == -1) {
+      val max = constantPool.info.keys.max
+      index = max + (if (constantPool.info(max).wide) 2 else 1)
+      if (!constantPool.info.values.exists(info => info.isInstanceOf[UTF8Info] && info.asInstanceOf[UTF8Info].value.equals(catchType))) {
+        constantPool.insert(index, UTF8Info(catchType))
+        index += 1
+      }
+      constantPool.insert(index, new StringInfo(catchType, ConstantPoolKind.CLASS))
+    }
+  }
+}

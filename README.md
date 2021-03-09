@@ -6,7 +6,7 @@ This library will attempt to counteract malicious bytecode which will crash othe
 # Road Map
 - Reading ✅
 - Writing ✅
-- Manipulation (85%)
+- Manipulation (90%)
 - Documentation (0%)
 - Stack map frame generation (0%)
 

@@ -29,7 +29,8 @@ import rip.hippo.hippocafe.attribute.Attribute.Attribute
 import rip.hippo.hippocafe.attribute.AttributeInfo
 import rip.hippo.hippocafe.attribute.{Attribute, AttributeInfo}
 import rip.hippo.hippocafe.attribute.impl.data.ExceptionTableAttributeData
-import rip.hippo.hippocafe.constantpool.ConstantPool
+import rip.hippo.hippocafe.constantpool.{ConstantPool, ConstantPoolKind}
+import rip.hippo.hippocafe.constantpool.info.impl.StringInfo
 
 /**
  * @author Hippo
@@ -65,7 +66,12 @@ final case class CodeAttribute(oak: Boolean,
       out.writeShort(table.startPc)
       out.writeShort(table.endPc)
       out.writeShort(table.handlerPc)
-      out.writeShort(table.catchType)
+      out.writeShort(
+        constantPool.info
+          .filter(_._2.isInstanceOf[StringInfo])
+          .filter(_._2.asInstanceOf[StringInfo].kind == ConstantPoolKind.CLASS)
+          .filter(_._2.asInstanceOf[StringInfo].value.equals(table.catchType))
+          .keys.head)
     })
     out.writeShort(attributesCount)
     attributes.foreach(attribute => {
@@ -80,5 +86,6 @@ final case class CodeAttribute(oak: Boolean,
   }
 
   override def buildConstantPool(constantPool: ConstantPool): Unit = {
+    exceptionTable.foreach(_.buildConstantPool(constantPool))
   }
 }
