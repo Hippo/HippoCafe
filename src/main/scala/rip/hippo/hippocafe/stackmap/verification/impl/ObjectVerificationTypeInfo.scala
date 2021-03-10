@@ -49,24 +49,8 @@ final class ObjectVerificationTypeInfo(val name: String) extends VerificationTyp
       .head)
   }
 
-  override def buildConstantPool(constantPool: ConstantPool): Unit = {
-    var index = -1
-    constantPool.info
-      .filter(_._2.isInstanceOf[StringInfo])
-      .filter(_._2.kind == ConstantPoolKind.CLASS)
-      .filter(_._2.asInstanceOf[StringInfo].value.equals(name))
-      .keys
-      .foreach(index = _)
-    if (index == -1) {
-      val max = constantPool.info.keys.max
-      index = max + (if (constantPool.info(max).wide) 2 else 1)
-      if (!constantPool.info.values.exists(info => info.isInstanceOf[UTF8Info] && info.asInstanceOf[UTF8Info].value.equals(name))) {
-        constantPool.insert(index, UTF8Info(name))
-        index += 1
-      }
-      constantPool.insert(index, new StringInfo(name, ConstantPoolKind.CLASS))
-    }
-  }
+  override def buildConstantPool(constantPool: ConstantPool): Unit =
+    constantPool.insertStringIfAbsent(name, ConstantPoolKind.CLASS)
 
   override def toString: String = s"ObjectVerificationTypeInfo($name)"
 }

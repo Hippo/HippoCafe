@@ -37,22 +37,6 @@ final case class ExceptionTableAttributeData(startPc: Int,
                                              handlerPc: Int,
                                              catchType: String) {
 
-  def buildConstantPool(constantPool: ConstantPool): Unit = {
-    var index = -1
-    constantPool.info
-      .filter(_._2.isInstanceOf[StringInfo])
-      .filter(_._2.kind == ConstantPoolKind.CLASS)
-      .filter(_._2.asInstanceOf[StringInfo].value.equals(catchType))
-      .keys
-      .foreach(index = _)
-    if (index == -1) {
-      val max = constantPool.info.keys.max
-      index = max + (if (constantPool.info(max).wide) 2 else 1)
-      if (!constantPool.info.values.exists(info => info.isInstanceOf[UTF8Info] && info.asInstanceOf[UTF8Info].value.equals(catchType))) {
-        constantPool.insert(index, UTF8Info(catchType))
-        index += 1
-      }
-      constantPool.insert(index, new StringInfo(catchType, ConstantPoolKind.CLASS))
-    }
-  }
+  def buildConstantPool(constantPool: ConstantPool): Unit =
+    constantPool.insertStringIfAbsent(catchType, ConstantPoolKind.CLASS)
 }

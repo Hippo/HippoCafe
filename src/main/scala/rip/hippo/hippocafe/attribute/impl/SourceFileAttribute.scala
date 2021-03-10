@@ -47,19 +47,6 @@ final case class SourceFileAttribute(sourceFile: String) extends AttributeInfo {
       .keys.head)
   }
 
-  override def buildConstantPool(constantPool: ConstantPool): Unit = {
-    var index = -1
-    constantPool.info
-      .filter(_._2.isInstanceOf[UTF8Info])
-      .filter(_._2.asInstanceOf[UTF8Info].value.equals(sourceFile))
-      .keys
-      .foreach(index = _)
-
-
-    if (index == -1) {
-      val max = constantPool.info.keys.max
-      index = max + (if (constantPool.info(max).wide) 2 else 1)
-      constantPool.insert(index, UTF8Info(sourceFile))
-    }
-  }
+  override def buildConstantPool(constantPool: ConstantPool): Unit =
+    constantPool.insertUTF8IfAbsent(sourceFile)
 }

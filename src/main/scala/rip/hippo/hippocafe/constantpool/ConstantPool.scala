@@ -24,6 +24,7 @@
 
 package rip.hippo.hippocafe.constantpool
 
+import rip.hippo.hippocafe.constantpool.ConstantPoolKind.ConstantPoolKind
 import rip.hippo.hippocafe.constantpool.info.impl.UTF8Info
 import rip.hippo.hippocafe.constantpool.info.ConstantPoolInfo
 import rip.hippo.hippocafe.constantpool.info.impl.{StringInfo, UTF8Info}
@@ -60,6 +61,43 @@ final class ConstantPool {
     }).keys.head
   }
 
+  def insertUTF8IfAbsent(value: String): Unit = {
+    var index = -1
+    info
+      .filter(_._2.isInstanceOf[UTF8Info])
+      .filter(_._2.asInstanceOf[UTF8Info].value.equals(value))
+      .keys
+      .foreach(index = _)
+    if (index == -1) {
+      val max = info.keys.max
+      index = max + (if (info(max).wide) 2 else 1)
+      insert(index, UTF8Info(value))
+    }
+  }
+
+  def insertStringIfAbsent(value: String, constantPoolKind: ConstantPoolKind): Unit = {
+    insertUTF8IfAbsent(value)
+    var index = -1
+    info
+      .filter(_._2.isInstanceOf[StringInfo])
+      .filter(_._2.kind == constantPoolKind)
+      .filter(_._2.asInstanceOf[StringInfo].value.equals(value))
+      .keys
+      .foreach(index = _)
+    if (index == -1) {
+      val max = info.keys.max
+      index = max + (if (info(max).wide) 2 else 1)
+      insert(index, new StringInfo(value, ConstantPoolKind.CLASS))
+    }
+  }
+
+  def findString(value: String, constantPoolKind: ConstantPoolKind): Int =
+   info
+    .filter(_._2.isInstanceOf[StringInfo])
+    .filter(_._2.kind == constantPoolKind)
+    .filter(_._2.asInstanceOf[StringInfo].value.equals(value))
+    .keys
+    .head
 
   def readUTF8(index: Int): String = {
     info(index).asInstanceOf[UTF8Info].value

@@ -29,7 +29,7 @@ import rip.hippo.hippocafe.attribute.Attribute.Attribute
 import rip.hippo.hippocafe.attribute.AttributeInfo
 import rip.hippo.hippocafe.attribute.{Attribute, AttributeInfo}
 import rip.hippo.hippocafe.attribute.impl.data.ClassesAttributeData
-import rip.hippo.hippocafe.constantpool.ConstantPool
+import rip.hippo.hippocafe.constantpool.{ConstantPool, ConstantPoolKind}
 
 /**
  * @author Hippo
@@ -43,14 +43,19 @@ final case class InnerClassesAttribute(numberOfClasses: Int, classes: Array[Clas
   override def write(out: DataOutputStream, constantPool: ConstantPool): Unit = {
     out.writeShort(numberOfClasses)
     classes.foreach(data => {
-      out.writeShort(data.innerClassInfoIndex)
-      out.writeShort(data.outerClassInfoIndex)
-      out.writeShort(data.innerNameIndex)
+      out.writeShort(constantPool.findString(data.innerClass, ConstantPoolKind.CLASS))
+      data.outerClass match {
+        case Some(value) => out.writeShort(constantPool.findString(value, ConstantPoolKind.CLASS))
+        case None => out.writeShort(0)
+      }
+      data.innerName match {
+        case Some(value) => out.writeShort(constantPool.findUTF8(value))
+        case None => out.writeShort(0)
+      }
       out.writeShort(data.innerClassAccessFlags)
     })
   }
 
-  override def buildConstantPool(constantPool: ConstantPool): Unit = {
-
-  }
+  override def buildConstantPool(constantPool: ConstantPool): Unit =
+    classes.foreach(_.buildConstantPool(constantPool))
 }

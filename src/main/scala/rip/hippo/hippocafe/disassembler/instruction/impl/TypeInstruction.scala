@@ -39,22 +39,8 @@ import scala.collection.mutable.ListBuffer
  */
 final case class TypeInstruction(var bytecodeOpcode: BytecodeOpcode, var typeName: String) extends Instruction {
   override def assemble(assemblerContext: AssemblerContext, constantPool: ConstantPool): Unit = {
-    var index = -1
-    constantPool.info
-      .filter(_._2.isInstanceOf[StringInfo])
-      .filter(_._2.kind == ConstantPoolKind.CLASS)
-      .filter(_._2.asInstanceOf[StringInfo].value.equals(typeName))
-      .keys
-      .foreach(index = _)
-    if (index == -1) {
-      val max = constantPool.info.keys.max
-      index = max + (if (constantPool.info(max).wide) 2 else 1)
-      if (!constantPool.info.values.exists(info => info.isInstanceOf[UTF8Info] && info.asInstanceOf[UTF8Info].value.equals(typeName))) {
-        constantPool.insert(index, UTF8Info(typeName))
-        index += 1
-      }
-      constantPool.insert(index, new StringInfo(typeName, ConstantPoolKind.CLASS))
-    }
+    constantPool.insertStringIfAbsent(typeName, ConstantPoolKind.CLASS)
+    val index = constantPool.findString(typeName, ConstantPoolKind.CLASS)
 
     val uniqueByte = UniqueByte(bytecodeOpcode.id.toByte)
     assemblerContext.labelQueue.foreach(label => assemblerContext.labelToByte += (label -> uniqueByte))

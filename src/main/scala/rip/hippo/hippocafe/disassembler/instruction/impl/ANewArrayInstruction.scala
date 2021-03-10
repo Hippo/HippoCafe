@@ -38,22 +38,8 @@ import scala.collection.mutable.ListBuffer
  */
 final case class ANewArrayInstruction(var descriptor: String) extends Instruction {
   override def assemble(assemblerContext: AssemblerContext, constantPool: ConstantPool): Unit = {
-    var index = -1
-    constantPool.info
-      .filter(_._2.isInstanceOf[StringInfo])
-      .filter(_._2.kind == ConstantPoolKind.CLASS)
-      .filter(_._2.asInstanceOf[StringInfo].value.equals(descriptor))
-      .keys
-      .foreach(index = _)
-    if (index == -1) {
-      val max = constantPool.info.keys.max
-      index = max + (if (constantPool.info(max).wide) 2 else 1)
-      if (!constantPool.info.values.exists(info => info.isInstanceOf[UTF8Info] && info.asInstanceOf[UTF8Info].value.equals(descriptor))) {
-        constantPool.insert(index, UTF8Info(descriptor))
-        index += 1
-      }
-      constantPool.insert(index, new StringInfo(descriptor, ConstantPoolKind.CLASS))
-    }
+    constantPool.insertStringIfAbsent(descriptor, ConstantPoolKind.CLASS)
+    val index = constantPool.findString(descriptor, ConstantPoolKind.CLASS)
 
     val uniqueByte = UniqueByte(BytecodeOpcode.ANEWARRAY.id.toByte)
     assemblerContext.labelQueue.foreach(label => assemblerContext.labelToByte += (label -> uniqueByte))

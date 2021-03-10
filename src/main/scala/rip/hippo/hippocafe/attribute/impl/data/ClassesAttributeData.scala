@@ -24,12 +24,27 @@
 
 package rip.hippo.hippocafe.attribute.impl.data
 
+import rip.hippo.hippocafe.constantpool.{ConstantPool, ConstantPoolKind}
+
 /**
  * @author Hippo
  * @version 1.0.0, 8/2/20
  * @since 1.0.0
  */
-final case class ClassesAttributeData(innerClassInfoIndex: Int,
-                                      outerClassInfoIndex: Int,
-                                      innerNameIndex: Int,
-                                      innerClassAccessFlags: Int)
+final case class ClassesAttributeData(innerClass: String,
+                                      outerClass: Option[String],
+                                      innerName: Option[String],
+                                      innerClassAccessFlags: Int) {
+
+  def buildConstantPool(constantPool: ConstantPool): Unit = {
+    constantPool.insertStringIfAbsent(innerClass, ConstantPoolKind.CLASS)
+    outerClass match {
+      case Some(value) => constantPool.insertStringIfAbsent(value, ConstantPoolKind.CLASS)
+      case None =>
+    }
+    innerName match {
+      case Some(value) => constantPool.insertUTF8IfAbsent(value)
+      case None =>
+    }
+  }
+}

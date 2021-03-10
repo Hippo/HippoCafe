@@ -66,12 +66,7 @@ final case class CodeAttribute(oak: Boolean,
       out.writeShort(table.startPc)
       out.writeShort(table.endPc)
       out.writeShort(table.handlerPc)
-      out.writeShort(
-        constantPool.info
-          .filter(_._2.isInstanceOf[StringInfo])
-          .filter(_._2.asInstanceOf[StringInfo].kind == ConstantPoolKind.CLASS)
-          .filter(_._2.asInstanceOf[StringInfo].value.equals(table.catchType))
-          .keys.head)
+      out.writeShort(constantPool.findString(table.catchType, ConstantPoolKind.CLASS))
     })
     out.writeShort(attributesCount)
     attributes.foreach(attribute => {

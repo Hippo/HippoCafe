@@ -325,7 +325,16 @@ final class ClassReader(parentInputStream: InputStream, lowLevel: Boolean = fals
             case INNER_CLASSES =>
               val numberOfClasses = u2
               val classes = new Array[ClassesAttributeData](numberOfClasses)
-              (0 until numberOfClasses).foreach(i => classes(i) = ClassesAttributeData(u2, u2, u2, u2))
+              (0 until numberOfClasses).foreach(i => {
+                val innerClassInfoIndex = u2
+                val outerClassInfoIndex = u2
+                val innerNameIndex = u2
+                classes(i) = ClassesAttributeData(
+                  constantPool.readString(innerClassInfoIndex),
+                  if (outerClassInfoIndex == 0) Option.empty else Option(constantPool.readString(outerClassInfoIndex)),
+                  if (innerNameIndex == 0) Option.empty else Option(constantPool.readUTF8(innerNameIndex)),
+                  u2)
+              })
               InnerClassesAttribute(numberOfClasses, classes)
             case ENCLOSING_METHOD => EnclosingMethodAttribute(u2, u2)
             case SYNTHETIC => SyntheticAttribute()
