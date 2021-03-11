@@ -26,14 +26,18 @@ package rip.hippo.hippocafe.attribute.impl.data.annotation.value.impl
 
 import java.io.DataOutputStream
 import rip.hippo.hippocafe.attribute.impl.data.annotation.value.AnnotationAttributeValue
+import rip.hippo.hippocafe.constantpool.ConstantPool
+import rip.hippo.hippocafe.disassembler.instruction.constant.Constant
 
 /**
  * @author Hippo
  * @version 1.0.0, 8/2/20
  * @since 1.0.0
  */
-final case class ConstantAnnotationValue(constantValueIndex: Int) extends AnnotationAttributeValue {
-  override def write(out: DataOutputStream): Unit = {
-    out.writeShort(constantValueIndex)
-  }
+final case class ConstantAnnotationValue(constant: Constant[_]) extends AnnotationAttributeValue {
+  override def write(out: DataOutputStream, constantPool: ConstantPool): Unit =
+    out.writeShort(constant.getConstantPoolIndex(constantPool))
+
+  override def buildConstantPool(constantPool: ConstantPool): Unit =
+    constant.insertIfAbsent(constantPool)
 }

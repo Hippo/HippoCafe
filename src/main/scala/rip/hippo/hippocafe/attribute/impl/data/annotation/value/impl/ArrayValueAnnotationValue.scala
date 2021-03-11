@@ -25,6 +25,7 @@
 package rip.hippo.hippocafe.attribute.impl.data.annotation.value.impl
 
 import rip.hippo.hippocafe.attribute.impl.data.annotation.value.AnnotationAttributeValue
+import rip.hippo.hippocafe.constantpool.ConstantPool
 
 import java.io.DataOutputStream
 
@@ -34,8 +35,11 @@ import java.io.DataOutputStream
  * @since 1.0.0
  */
 final case class ArrayValueAnnotationValue(numberOfValues: Int, values: Array[AnnotationAttributeValue]) extends AnnotationAttributeValue {
-  override def write(out: DataOutputStream): Unit = {
+  override def write(out: DataOutputStream, constantPool: ConstantPool): Unit = {
     out.writeShort(numberOfValues)
-    values.foreach(value => value.write(out))
+    values.foreach(value => value.write(out, constantPool))
   }
+
+  override def buildConstantPool(constantPool: ConstantPool): Unit =
+    values.foreach(_.buildConstantPool(constantPool))
 }

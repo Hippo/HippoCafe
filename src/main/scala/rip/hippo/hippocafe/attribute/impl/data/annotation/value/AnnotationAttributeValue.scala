@@ -24,6 +24,8 @@
 
 package rip.hippo.hippocafe.attribute.impl.data.annotation.value
 
+import rip.hippo.hippocafe.constantpool.ConstantPool
+
 import java.io.DataOutputStream
 
 /**
@@ -32,5 +34,6 @@ import java.io.DataOutputStream
  * @since 1.0.0
  */
 trait AnnotationAttributeValue {
-  def write(out: DataOutputStream): Unit
+  def write(out: DataOutputStream, constantPool: ConstantPool): Unit
+  def buildConstantPool(constantPool: ConstantPool): Unit
 }

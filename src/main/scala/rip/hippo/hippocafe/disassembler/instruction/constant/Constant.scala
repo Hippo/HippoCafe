@@ -1,6 +1,10 @@
 package rip.hippo.hippocafe.disassembler.instruction.constant
 
-import rip.hippo.hippocafe.constantpool.info.ConstantPoolInfo
+import rip.hippo.hippocafe.constantpool.ConstantPool
+import rip.hippo.hippocafe.constantpool.info.impl.StringInfo
+import rip.hippo.hippocafe.constantpool.info.{ConstantPoolInfo, ValueAwareness}
+import rip.hippo.hippocafe.disassembler.instruction.constant.impl.{DoubleConstant, FloatConstant, IntegerConstant, LongConstant, StringConstant, UTF8Constant}
+import rip.hippo.hippocafe.exception.HippoCafeException
 
 /**
  * @author Hippo
@@ -10,4 +14,30 @@ import rip.hippo.hippocafe.constantpool.info.ConstantPoolInfo
 trait Constant[T] {
   val constantPoolInfoAssociate: Class[_ <: ConstantPoolInfo]
   val value: T
+
+  def insertIfAbsent(constantPool: ConstantPool): Unit
+  def getConstantPoolIndex(constantPool: ConstantPool): Int
+}
+
+
+object Constant {
+  def fromInfo(constantPoolInfo: ConstantPoolInfo): Constant[_] =
+    constantPoolInfo match { // TODO: finish
+      case aware: ValueAwareness[_] =>
+        aware.value match {
+        case int: Int => IntegerConstant(int)
+        case float: Float => FloatConstant(float)
+        case long: Long => LongConstant(long)
+        case double: Double => DoubleConstant(double)
+        case double: java.lang.Double => DoubleConstant(double)
+        case long: java.lang.Long => LongConstant(long)
+        case int: java.lang.Integer => IntegerConstant(int)
+        case float: java.lang.Float => FloatConstant(float)
+        case utf8: String => UTF8Constant(utf8)
+        case x => throw new HippoCafeException(s"Invalid constant instruction $x")
+      }
+      case string: StringInfo =>
+        StringConstant(string.value)
+      case x => throw new HippoCafeException(s"Invalid constant instruction $x")
+    }
 }

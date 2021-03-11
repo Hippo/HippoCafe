@@ -36,7 +36,7 @@ import scala.util.{Failure, Success, Using}
  */
 final class InstructionReadSuite extends FunSuite {
 
-  private val className = "InnerClass"
+  private val className = "AnnotationTest"
 
   test("CodeDisassembler.disassemble") {
     Option(Thread.currentThread.getContextClassLoader.getResourceAsStream(s"$className.class")) match {
@@ -45,9 +45,10 @@ final class InstructionReadSuite extends FunSuite {
           classReader =>
             val classFile = classReader.classFile
             classFile.methods.foreach(info => {
-              println(info.name)
+              info.attributes.foreach(println)
               info.instructions.foreach(println(_))
               info.tryCatchBlocks.foreach(println(_))
+              info.attributes.foreach(println)
               println()
             })
         }

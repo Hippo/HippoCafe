@@ -25,8 +25,6 @@
 package rip.hippo.hippocafe.disassembler.instruction.impl
 
 import rip.hippo.hippocafe.constantpool.{ConstantPool, ConstantPoolKind}
-import rip.hippo.hippocafe.constantpool.info.ValueAwareness
-import rip.hippo.hippocafe.constantpool.info.impl.{DoubleInfo, FloatInfo, IntegerInfo, LongInfo, StringInfo, UTF8Info}
 import rip.hippo.hippocafe.disassembler.context.{AssemblerContext, UniqueByte}
 import rip.hippo.hippocafe.disassembler.instruction.constant.Constant
 import rip.hippo.hippocafe.disassembler.instruction.constant.impl._
@@ -40,48 +38,9 @@ import rip.hippo.hippocafe.disassembler.instruction.{BytecodeOpcode, Instruction
  */
 final case class ConstantInstruction(var constant: Constant[_]) extends Instruction {
   override def assemble(assemblerContext: AssemblerContext, constantPool: ConstantPool): Unit = {
+    constant.insertIfAbsent(constantPool)
     val code = assemblerContext.code
-    var index = -1
-
-
-    constant match {
-      case StringConstant(value) =>
-        constantPool.info
-          .filter(_._2.isInstanceOf[StringInfo])
-          .filter(_._2.kind == ConstantPoolKind.STRING)
-          .filter(_._2.asInstanceOf[StringInfo].value.equals(value))
-          .keys
-          .foreach(index = _)
-      case _ =>
-        constantPool.info
-          .filter(_._2.getClass.equals(constant.constantPoolInfoAssociate))
-          .filter(_._2.asInstanceOf[ValueAwareness[_]].value.equals(constant.value))
-          .keys
-          .foreach(index = _)
-    }
-
-    if (index == -1) {
-      val max = constantPool.info.keys.max
-      index = max + (if (constantPool.info(max).wide) 2 else 1)
-      constant match { // TODO: finish
-        case StringConstant(value) =>
-          if (!constantPool.info.values.exists(info => info.isInstanceOf[UTF8Info] && info.asInstanceOf[UTF8Info].value.equals(value))) {
-            constantPool.insert(index, UTF8Info(value))
-            index += 1
-          }
-          constantPool.insert(index, new StringInfo(value, ConstantPoolKind.STRING))
-        case IntegerConstant(value) =>
-          constantPool.insert(index, IntegerInfo(value))
-        case FloatConstant(value) =>
-          constantPool.insert(index, FloatInfo(value))
-        case DoubleConstant(value) =>
-          constantPool.insert(index, DoubleInfo(value))
-        case LongConstant(value) =>
-          constantPool.insert(index, LongInfo(value))
-        case _ =>
-      }
-    }
-
+    val index = constant.getConstantPoolIndex(constantPool)
 
     def writeWide(): Unit = {
       val uniqueByte = UniqueByte(BytecodeOpcode.LDC2_W.id.toByte)

@@ -29,7 +29,7 @@ package rip.hippo.hippocafe.attribute.impl.data.annotation.target
  * @version 1.0.0, 8/2/20
  * @since 1.0.0
  */
-object AnnotationTargetInfoKind extends Enumeration {
+object AnnotationTargetTypeKind extends Enumeration {
 
   private implicit def toValue(id: Int): Value = Value(id)
   
@@ -60,5 +60,5 @@ object AnnotationTargetInfoKind extends Enumeration {
   val GENERIC_METHOD_IDENTIFIER: AnnotationTargetInfoKind = 0x4B
 
   def fromId(id: Int): Option[AnnotationTargetInfoKind] =
-    AnnotationTargetInfoKind.values.find(_.id == id)
+    AnnotationTargetTypeKind.values.find(_.id == id)
 }

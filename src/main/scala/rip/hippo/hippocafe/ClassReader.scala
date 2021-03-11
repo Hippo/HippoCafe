@@ -33,7 +33,7 @@ import rip.hippo.hippocafe.attribute.impl.data.{BootstrapMethodsAttributeData, C
 import rip.hippo.hippocafe.attribute.{Attribute, AttributeInfo}
 import rip.hippo.hippocafe.attribute.impl.data.annotation.path.{AnnotationTypePath, AnnotationTypePathKind, data}
 import rip.hippo.hippocafe.attribute.impl.data.annotation.path.data.AnnotationTypePathData
-import rip.hippo.hippocafe.attribute.impl.data.annotation.target.AnnotationTargetInfoKind
+import rip.hippo.hippocafe.attribute.impl.data.annotation.target.AnnotationTargetTypeKind
 import rip.hippo.hippocafe.attribute.impl.data.annotation.target.impl.{CatchTarget, EmptyTarget, FormalParameterTarget, LocalVariableTarget, OffsetTarget, SuperTypeTarget, ThrowsTarget, TypeArgumentTarget, TypeParameterBoundTarget, TypeParameterTarget}
 import rip.hippo.hippocafe.attribute.impl.data.annotation.target.impl.data.LocalVariableTargetData
 import rip.hippo.hippocafe.attribute.impl.data.annotation.value.AnnotationAttributeValue
@@ -44,6 +44,7 @@ import rip.hippo.hippocafe.constantpool.{ConstantPool, ConstantPoolKind}
 import rip.hippo.hippocafe.constantpool.info.impl.{DoubleInfo, DynamicInfo, FloatInfo, IntegerInfo, LongInfo, MethodHandleInfo, NameAndTypeInfo, ReferenceInfo, StringInfo, UTF8Info}
 import rip.hippo.hippocafe.constantpool.info.impl.data.ReferenceKind
 import rip.hippo.hippocafe.disassembler.instruction.CodeDisassembler
+import rip.hippo.hippocafe.disassembler.instruction.constant.Constant
 import rip.hippo.hippocafe.exception.HippoCafeException
 import rip.hippo.hippocafe.stackmap.StackMapFrame
 import rip.hippo.hippocafe.stackmap.impl.{AppendStackMapFrame, ChopStackMapFrame, FullStackMapFrame, SameExtendedStackMapFrame, SameLocalsExtendedStackMapFrame, SameLocalsStackMapFrame, SameStackMapFrame}
@@ -200,8 +201,8 @@ final class ClassReader(parentInputStream: InputStream, lowLevel: Boolean = fals
         val typeIndex = u2
         val numberOfElementPairs = u2
         val elementValuePairs = new Array[ElementValuePairAnnotationData](numberOfElementPairs)
-        (0 until numberOfElementPairs).foreach(i => elementValuePairs(i) = ElementValuePairAnnotationData(u2, readAnnotationAttributeValue))
-        AnnotationAttributeData(typeIndex, numberOfElementPairs, elementValuePairs)
+        (0 until numberOfElementPairs).foreach(i => elementValuePairs(i) = ElementValuePairAnnotationData(constantPool.readUTF8(u2), readAnnotationAttributeValue))
+        AnnotationAttributeData(constantPool.readUTF8(typeIndex), numberOfElementPairs, elementValuePairs)
       }
 
       def readAnnotationAttributeValue: AnnotationAttributeValue = {
@@ -214,9 +215,9 @@ final class ClassReader(parentInputStream: InputStream, lowLevel: Boolean = fals
                'J' |
                'S' |
                'Z' |
-               's' => ConstantAnnotationValue(u2)
-          case 'e' => EnumConstantAnnotationValue(u2, u2)
-          case 'c' => ClassInfoIndexAnnotationValue(u2)
+               's' => ConstantAnnotationValue(Constant.fromInfo(constantPool.info(u2)))
+          case 'e' => EnumConstantAnnotationValue(constantPool.readUTF8(u2), constantPool.readUTF8(u2))
+          case 'c' => ClassInfoIndexAnnotationValue(constantPool.readUTF8(u2))
           case '@' => AnnotationAnnotationValue(readAnnotationData)
           case '[' =>
             val numberOfValues = u2
@@ -228,8 +229,8 @@ final class ClassReader(parentInputStream: InputStream, lowLevel: Boolean = fals
 
       def readTypeAnnotationData: TypeAnnotationData = {
         val targetType = u1
-        import rip.hippo.hippocafe.attribute.impl.data.annotation.target.AnnotationTargetInfoKind._
-        val targetInfo = AnnotationTargetInfoKind.fromId(targetType) match {
+        import rip.hippo.hippocafe.attribute.impl.data.annotation.target.AnnotationTargetTypeKind._
+        val targetInfo = AnnotationTargetTypeKind.fromId(targetType) match {
           case Some(kind) =>
             kind match {
               case PARAMETER_GENERIC_CLASS | PARAMETER_GENERIC_METHOD => TypeParameterTarget(kind, u1)
@@ -266,7 +267,7 @@ final class ClassReader(parentInputStream: InputStream, lowLevel: Boolean = fals
         val typeIndex = u2
         val numberOfElementValuePairs = u2
         val elementValuePairs = new Array[ElementValuePairAnnotationData](numberOfElementValuePairs)
-        (0 until numberOfElementValuePairs).foreach(i => elementValuePairs(i) = ElementValuePairAnnotationData(u2, readAnnotationAttributeValue))
+        (0 until numberOfElementValuePairs).foreach(i => elementValuePairs(i) = ElementValuePairAnnotationData(constantPool.readUTF8(u2), readAnnotationAttributeValue))
         annotation.TypeAnnotationData(targetType, targetInfo, typePath, typeIndex, numberOfElementValuePairs, elementValuePairs)
       }
 

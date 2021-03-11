@@ -1,5 +1,6 @@
 package rip.hippo.hippocafe.disassembler.instruction.constant.impl
 
+import rip.hippo.hippocafe.constantpool.ConstantPool
 import rip.hippo.hippocafe.constantpool.info.ConstantPoolInfo
 import rip.hippo.hippocafe.constantpool.info.impl.{DoubleInfo, StringInfo}
 import rip.hippo.hippocafe.disassembler.instruction.constant.Constant
@@ -11,4 +12,25 @@ import rip.hippo.hippocafe.disassembler.instruction.constant.Constant
  */
 final case class DoubleConstant(value: Double) extends Constant[Double] {
   override val constantPoolInfoAssociate: Class[_ <: ConstantPoolInfo] = classOf[DoubleInfo]
+
+  override def insertIfAbsent(constantPool: ConstantPool): Unit = {
+    var index = -1
+    constantPool.info
+      .filter(_._2.isInstanceOf[DoubleInfo])
+      .filter(_._2.asInstanceOf[DoubleInfo].value == value)
+      .keys
+      .foreach(index = _)
+    if (index == -1) {
+      val max = constantPool.info.keys.max
+      index = max + (if (constantPool.info(max).wide) 2 else 1)
+      constantPool.insert(index, DoubleInfo(value))
+    }
+  }
+
+  override def getConstantPoolIndex(constantPool: ConstantPool): Int =
+    constantPool.info
+      .filter(_._2.isInstanceOf[DoubleInfo])
+      .filter(_._2.asInstanceOf[DoubleInfo].value == value)
+      .keys
+      .head
 }

@@ -26,15 +26,23 @@ package rip.hippo.hippocafe.attribute.impl.data.annotation
 
 import java.io.DataOutputStream
 import rip.hippo.hippocafe.attribute.impl.data.annotation.value.AnnotationAttributeValue
+import rip.hippo.hippocafe.constantpool.ConstantPool
 
 /**
  * @author Hippo
  * @version 1.0.0, 8/2/20
  * @since 1.0.0
  */
-final case class ElementValuePairAnnotationData(elementNameIndex: Int, value: AnnotationAttributeValue) {
-  def write(out: DataOutputStream): Unit = {
-    out.writeShort(elementNameIndex)
-    value.write(out)
+final case class ElementValuePairAnnotationData(elementName: String, value: AnnotationAttributeValue) {
+
+
+  def write(out: DataOutputStream, constantPool: ConstantPool): Unit = {
+    out.writeShort(constantPool.findUTF8(elementName))
+    value.write(out, constantPool)
+  }
+
+  def buildConstantPool(constantPool: ConstantPool): Unit = {
+    constantPool.insertUTF8IfAbsent(elementName)
+    value.buildConstantPool(constantPool)
   }
 }

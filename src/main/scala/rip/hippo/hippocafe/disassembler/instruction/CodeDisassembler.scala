@@ -33,6 +33,7 @@ import rip.hippo.hippocafe.constantpool.ConstantPool
 import rip.hippo.hippocafe.constantpool.info.ValueAwareness
 import rip.hippo.hippocafe.constantpool.info.impl.{ReferenceInfo, StringInfo}
 import rip.hippo.hippocafe.disassembler.instruction.array.ArrayType
+import rip.hippo.hippocafe.disassembler.instruction.constant.Constant
 import rip.hippo.hippocafe.disassembler.instruction.constant.impl._
 import rip.hippo.hippocafe.disassembler.tcb.TryCatchBlock
 import rip.hippo.hippocafe.exception.HippoCafeException
@@ -356,20 +357,7 @@ object CodeDisassembler {
                   instructions += (instructionOffset -> BranchInstruction(opcode, label))
 
                 case LDC | LDC_W | LDC2_W =>
-                  constantPool.info(if (opcode == LDC) u1 else u2) match {
-                    case aware: ValueAwareness[_] => instructions += (instructionOffset -> ConstantInstruction(aware.value match {
-                      case int: Int => IntegerConstant(int)
-                      case float: Float => FloatConstant(float)
-                      case long: Long => LongConstant(long)
-                      case double: Double => DoubleConstant(double)
-                      case double: java.lang.Double => DoubleConstant(double)
-                      case long: java.lang.Long => LongConstant(long)
-                        // TODO: finish
-                      case _ => throw new HippoCafeException(s"Invalid constant instruction at $offset")
-                    }))
-                    case stringInfo: StringInfo => instructions += (instructionOffset -> ConstantInstruction(StringConstant(stringInfo.value)))
-                    case _ => throw new HippoCafeException(s"Invalid constant instruction at $offset")
-                  }
+                  instructions += (instructionOffset -> ConstantInstruction(Constant.fromInfo(constantPool.info(if (opcode == LDC) u1 else u2))))
 
                 case LOOKUPSWITCH =>
                   offset += -offset & 3

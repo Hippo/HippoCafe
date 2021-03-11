@@ -24,6 +24,8 @@
 
 package rip.hippo.hippocafe.attribute.impl.data.annotation
 
+import rip.hippo.hippocafe.constantpool.ConstantPool
+
 import java.io.DataOutputStream
 
 /**
@@ -31,12 +33,18 @@ import java.io.DataOutputStream
  * @version 1.0.0, 8/2/20
  * @since 1.0.0
  */
-final case class AnnotationAttributeData(typeIndex: Int,
+final case class AnnotationAttributeData(typeName: String,
                                    numberOfElementValuePairs: Int,
                                    elementValuePairs: Array[ElementValuePairAnnotationData]) {
-  def write(out: DataOutputStream): Unit = {
-    out.writeShort(typeIndex)
+
+  def write(out: DataOutputStream, constantPool: ConstantPool): Unit = {
+    out.writeShort(constantPool.findUTF8(typeName))
     out.writeShort(numberOfElementValuePairs)
-    elementValuePairs.foreach(pair => pair.write(out))
+    elementValuePairs.foreach(pair => pair.write(out, constantPool))
+  }
+
+  def buildConstantPool(constantPool: ConstantPool): Unit = {
+    constantPool.insertUTF8IfAbsent(typeName)
+    elementValuePairs.foreach(_.buildConstantPool(constantPool))
   }
 }

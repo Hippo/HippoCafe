@@ -25,6 +25,7 @@
 package rip.hippo.testing.hippocafe
 
 import org.scalatest.FunSuite
+import rip.hippo.hippocafe.attribute.impl.CodeAttribute
 import rip.hippo.hippocafe.{ClassReader, ClassWriter}
 
 import scala.util.{Failure, Success, Using}
@@ -36,7 +37,7 @@ import scala.util.{Failure, Success, Using}
  */
 final class LowWriteSuite extends FunSuite {
 
-  private val className = "SwitchTest"
+  private val className = "LocalAnnotation"
 
 
   test("ClassWriter.write") {
@@ -44,6 +45,14 @@ final class LowWriteSuite extends FunSuite {
       case Some(value) =>
         val test = Using(new ClassReader(value, true)) {
           classReader =>
+            classReader.classFile.methods.foreach(info => {
+              info.attributes.foreach(println)
+              info.attributes.foreach  {
+                case code: CodeAttribute =>
+                  code.attributes.foreach(println)
+                case _ =>
+              }
+            })
             val writerTest = Using(new ClassWriter(classReader.classFile)) {
               classWriter =>
                 val bytecode = classWriter.write

@@ -24,17 +24,17 @@
 
 package rip.hippo.hippocafe.attribute.impl.data.annotation.target.impl
 
-import rip.hippo.hippocafe.attribute.impl.data.annotation.target.AnnotationTargetInfo
+import rip.hippo.hippocafe.attribute.impl.data.annotation.target.AnnotationTargetType
 
 import java.io.DataOutputStream
-import rip.hippo.hippocafe.attribute.impl.data.annotation.target.AnnotationTargetInfoKind.AnnotationTargetInfoKind
+import rip.hippo.hippocafe.attribute.impl.data.annotation.target.AnnotationTargetTypeKind.AnnotationTargetInfoKind
 
 /**
  * @author Hippo
  * @version 1.0.0, 8/2/20
  * @since 1.0.0
  */
-final case class TypeParameterTarget(kind: AnnotationTargetInfoKind, typeParameterIndex: Int) extends AnnotationTargetInfo {
+final case class TypeParameterTarget(kind: AnnotationTargetInfoKind, typeParameterIndex: Int) extends AnnotationTargetType {
   override def write(out: DataOutputStream): Unit = out.writeByte(typeParameterIndex)
 
 }

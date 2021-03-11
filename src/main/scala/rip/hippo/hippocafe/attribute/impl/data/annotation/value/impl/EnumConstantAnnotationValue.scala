@@ -26,6 +26,7 @@ package rip.hippo.hippocafe.attribute.impl.data.annotation.value.impl
 
 import java.io.DataOutputStream
 import rip.hippo.hippocafe.attribute.impl.data.annotation.value.AnnotationAttributeValue
+import rip.hippo.hippocafe.constantpool.ConstantPool
 
 
 /**
@@ -33,9 +34,14 @@ import rip.hippo.hippocafe.attribute.impl.data.annotation.value.AnnotationAttrib
  * @version 1.0.0, 8/2/20
  * @since 1.0.0
  */
-final case class EnumConstantAnnotationValue(typeNameIndex: Int, constNameIndex: Int) extends AnnotationAttributeValue {
-  override def write(out: DataOutputStream): Unit = {
-    out.writeShort(typeNameIndex)
-    out.writeShort(constNameIndex)
+final case class EnumConstantAnnotationValue(typeName: String, constName: String) extends AnnotationAttributeValue {
+  override def write(out: DataOutputStream, constantPool: ConstantPool): Unit = {
+    out.writeShort(constantPool.findUTF8(typeName))
+    out.writeShort(constantPool.findUTF8(constName))
+  }
+
+  override def buildConstantPool(constantPool: ConstantPool): Unit = {
+    constantPool.insertUTF8IfAbsent(typeName)
+    constantPool.insertUTF8IfAbsent(constName)
   }
 }

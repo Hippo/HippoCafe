@@ -27,6 +27,7 @@ package rip.hippo.hippocafe.attribute.impl.data.annotation.value.impl
 import java.io.DataOutputStream
 import rip.hippo.hippocafe.attribute.impl.data.annotation.AnnotationAttributeData
 import rip.hippo.hippocafe.attribute.impl.data.annotation.value.AnnotationAttributeValue
+import rip.hippo.hippocafe.constantpool.ConstantPool
 
 /**
  * @author Hippo
@@ -34,7 +35,10 @@ import rip.hippo.hippocafe.attribute.impl.data.annotation.value.AnnotationAttrib
  * @since 1.0.0
  */
 final case class AnnotationAnnotationValue(annotationValue: AnnotationAttributeData) extends AnnotationAttributeValue {
-  override def write(out: DataOutputStream): Unit = {
-    annotationValue.write(out)
+  override def write(out: DataOutputStream, constantPool: ConstantPool): Unit = {
+    annotationValue.write(out, constantPool)
   }
+
+  override def buildConstantPool(constantPool: ConstantPool): Unit =
+    annotationValue.buildConstantPool(constantPool)
 }

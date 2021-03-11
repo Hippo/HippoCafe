@@ -40,7 +40,7 @@ final case class AnnotationDefaultAttribute(defaultValue: AnnotationAttributeVal
 
   override val kind: Attribute = Attribute.ANNOTATION_DEFAULT
 
-  override def write(out: DataOutputStream, constantPool: ConstantPool): Unit = defaultValue.write(out)
+  override def write(out: DataOutputStream, constantPool: ConstantPool): Unit = defaultValue.write(out, constantPool)
 
 
   override def buildConstantPool(constantPool: ConstantPool): Unit = {

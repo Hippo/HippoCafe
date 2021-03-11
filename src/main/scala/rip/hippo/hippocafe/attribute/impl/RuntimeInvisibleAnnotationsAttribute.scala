@@ -43,7 +43,7 @@ final case class RuntimeInvisibleAnnotationsAttribute(numberOfAnnotations: Int, 
 
   override def write(out: DataOutputStream, constantPool: ConstantPool): Unit = {
     out.writeShort(numberOfAnnotations)
-    annotations.foreach(annotation => annotation.write(out))
+    annotations.foreach(annotation => annotation.write(out, constantPool))
   }
 
   override def buildConstantPool(constantPool: ConstantPool): Unit = {

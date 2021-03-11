@@ -26,14 +26,14 @@ package rip.hippo.hippocafe.attribute.impl.data.annotation.target
 
 import java.io.DataOutputStream
 
-import AnnotationTargetInfoKind.AnnotationTargetInfoKind
+import AnnotationTargetTypeKind.AnnotationTargetInfoKind
 
 /**
  * @author Hippo
  * @version 1.0.0, 8/2/20
  * @since 1.0.0
  */
-trait AnnotationTargetInfo {
+trait AnnotationTargetType {
   val kind: AnnotationTargetInfoKind
   def write(out: DataOutputStream): Unit
 }

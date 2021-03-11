@@ -44,7 +44,7 @@ final case class RuntimeVisibleParameterAnnotationsAttribute(numberOfParameters:
     out.writeByte(numberOfParameters)
     parameterAnnotations.foreach(parameter => {
       out.write(parameter.numberOfAnnotations)
-      parameter.annotations.foreach(annotation => annotation.write(out))
+      parameter.annotations.foreach(annotation => annotation.write(out, constantPool))
     })
   }
 

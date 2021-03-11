@@ -26,7 +26,8 @@ package rip.hippo.hippocafe.attribute.impl.data.annotation
 
 import java.io.DataOutputStream
 import rip.hippo.hippocafe.attribute.impl.data.annotation.path.AnnotationTypePath
-import rip.hippo.hippocafe.attribute.impl.data.annotation.target.AnnotationTargetInfo
+import rip.hippo.hippocafe.attribute.impl.data.annotation.target.AnnotationTargetType
+import rip.hippo.hippocafe.constantpool.ConstantPool
 
 /**
  * @author Hippo
@@ -34,17 +35,20 @@ import rip.hippo.hippocafe.attribute.impl.data.annotation.target.AnnotationTarge
  * @since 1.0.0
  */
 final case class TypeAnnotationData(targetType: Int,
-                                    targetInfo: AnnotationTargetInfo,
+                                    targetInfo: AnnotationTargetType,
                                     typePath: AnnotationTypePath,
                                     typeIndex: Int,
                                     numberOfElementValuePairs: Int,
                                     elementValuePairs: Array[ElementValuePairAnnotationData]) {
-  def write(out: DataOutputStream): Unit =  {
+
+  println(targetInfo)
+
+  def write(out: DataOutputStream, constantPool: ConstantPool): Unit =  {
     out.writeShort(targetType)
     targetInfo.write(out)
     typePath.write(out)
     out.writeShort(typeIndex)
     out.writeShort(numberOfElementValuePairs)
-    elementValuePairs.foreach(pair => pair.write(out))
+    elementValuePairs.foreach(pair => pair.write(out, constantPool))
   }
 }
