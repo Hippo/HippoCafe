@@ -151,7 +151,7 @@ object CodeDisassembler {
           case _ =>
         }
 
-        localLookupMap.values.foreach(methodInfo.localVariables.+=)
+        methodInfo.localVariables ++= localLookupMap.values
 
         def u1: Int = code({
           val index = offset

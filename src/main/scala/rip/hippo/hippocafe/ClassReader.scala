@@ -350,12 +350,12 @@ final class ClassReader(parentInputStream: InputStream, lowLevel: Boolean = fals
             case LOCAL_VARIABLE_TABLE =>
               val localVariableTableLength = u2
               val localVariableTable = new Array[LocalVariableTableAttributeData](localVariableTableLength)
-              (0 until localVariableTableLength).foreach(i => localVariableTable(i) = LocalVariableTableAttributeData(u2, u2, u2, u2, u2))
+              (0 until localVariableTableLength).foreach(i => localVariableTable(i) = LocalVariableTableAttributeData(u2, u2, constantPool.readUTF8(u2), constantPool.readUTF8(u2), u2))
               LocalVariableTableAttribute(localVariableTableLength, localVariableTable)
             case LOCAL_VARIABLE_TYPE_TABLE =>
               val localVariableTypeTableLength = u2
               val localVariableTypeTable = new Array[LocalVariableTypeTableAttributeData](localVariableTypeTableLength)
-              (0 until localVariableTypeTableLength).foreach(i => localVariableTypeTable(i) = LocalVariableTypeTableAttributeData(u2, u2, u2, u2, u2))
+              (0 until localVariableTypeTableLength).foreach(i => localVariableTypeTable(i) = LocalVariableTypeTableAttributeData(u2, u2, constantPool.readUTF8(u2), constantPool.readUTF8(u2), u2))
               LocalVariableTypeTableAttribute(localVariableTypeTableLength, localVariableTypeTable)
             case DEPRECATED => DeprecatedAttribute()
             case RUNTIME_VISIBLE_ANNOTATIONS =>
