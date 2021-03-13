@@ -37,11 +37,14 @@ import scala.collection.mutable.ListBuffer
  * @version 1.0.0, 8/2/20
  * @since 1.0.0
  */
-final case class MethodInfo(var name: String, var descriptor: String, var accessFlags: AccessFlag*) {
+final case class MethodInfo(var name: String,
+                            var descriptor: String,
+                            var accessFlags: AccessFlag*) {
 
   val instructions: ListBuffer[Instruction] = ListBuffer[Instruction]()
   val tryCatchBlocks: ListBuffer[TryCatchBlock] = ListBuffer[TryCatchBlock]()
   val attributes: ListBuffer[AttributeInfo] = ListBuffer[AttributeInfo]()
+  val localVariables: ListBuffer[LocalVariableInfo] = ListBuffer[LocalVariableInfo]()
 
   var maxStack = 0
   var maxLocals = 0

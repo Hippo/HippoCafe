@@ -2,8 +2,8 @@ package rip.hippo.hippocafe.disassembler.context
 
 import rip.hippo.hippocafe.MethodInfo
 import rip.hippo.hippocafe.attribute.AttributeInfo
-import rip.hippo.hippocafe.attribute.impl.{LineNumberTableAttribute, StackMapTableAttribute}
-import rip.hippo.hippocafe.attribute.impl.data.{ExceptionTableAttributeData, LineNumberTableAttributeData}
+import rip.hippo.hippocafe.attribute.impl.{LineNumberTableAttribute, LocalVariableTableAttribute, LocalVariableTypeTableAttribute, StackMapTableAttribute}
+import rip.hippo.hippocafe.attribute.impl.data.{ExceptionTableAttributeData, LineNumberTableAttributeData, LocalVariableTableAttributeData, LocalVariableTypeTableAttributeData}
 import rip.hippo.hippocafe.disassembler.instruction.{BytecodeOpcode, FrameInstruction, Instruction}
 import rip.hippo.hippocafe.disassembler.instruction.BytecodeOpcode._
 import rip.hippo.hippocafe.disassembler.instruction.impl.{LabelInstruction, LineNumberInstruction, LookupSwitchInstruction, TableSwitchInstruction}
@@ -178,7 +178,7 @@ final class AssemblerContext(flags: Set[AssemblerFlag]) {
 
   }
 
-  def assembleMethodAttributes: Array[AttributeInfo] = {
+  def assembleMethodAttributes(methodInfo: MethodInfo): Array[AttributeInfo] = {
     val attributes = ArrayBuffer[AttributeInfo]()
 
     val lineNumberAttributeDataInfo = ArrayBuffer[LineNumberTableAttributeData]()
@@ -195,6 +195,29 @@ final class AssemblerContext(flags: Set[AssemblerFlag]) {
 
     attributes += LineNumberTableAttribute(lineNumberAttributeDataInfo.length, lineNumberAttributeDataInfo.toArray)
     attributes += StackMapTableAttribute(stackMapFrames.length, stackMapFrames.toArray)
+
+    val localVariableTable = ArrayBuffer[LocalVariableTableAttributeData]()
+    val localVariableTypeTable = ArrayBuffer[LocalVariableTypeTableAttributeData]()
+
+    methodInfo.localVariables.foreach(localVariable => {
+      val startOffset = code.indexOf(labelToByte(localVariable.start))
+      val endOffset = code.indexOf(labelToByte(localVariable.end))
+      val length = endOffset - startOffset
+
+      localVariableTable += LocalVariableTableAttributeData(startOffset, length, localVariable.name, localVariable.descriptor, localVariable.index)
+      localVariable.signature match {
+        case Some(value) =>
+          localVariableTypeTable += LocalVariableTypeTableAttributeData(startOffset, length, localVariable.name, value, localVariable.index)
+        case None =>
+      }
+    })
+
+    if (localVariableTable.nonEmpty) {
+      attributes += LocalVariableTableAttribute(localVariableTable.length, localVariableTable.toArray)
+    }
+    if (localVariableTypeTable.nonEmpty) {
+      attributes += LocalVariableTypeTableAttribute(localVariableTypeTable.length, localVariableTypeTable.toArray)
+    }
 
     attributes.toArray
   }

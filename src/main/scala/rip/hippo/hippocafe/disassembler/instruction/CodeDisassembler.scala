@@ -26,9 +26,9 @@ package rip.hippo.hippocafe.disassembler.instruction
 
 import rip.hippo.hippocafe.constantpool.info.impl.ReferenceInfo
 import rip.hippo.hippocafe.disassembler.instruction.impl.{ANewArrayInstruction, AppendFrameInstruction, BranchInstruction, ChopFrameInstruction, ConstantInstruction, FullFrameInstruction, IncrementInstruction, LabelInstruction, LineNumberInstruction, LookupSwitchInstruction, MultiANewArrayInstruction, NewArrayInstruction, PushInstruction, ReferenceInstruction, SameFrameInstruction, SameLocalsFrameInstruction, SimpleInstruction, TableSwitchInstruction, TypeInstruction, VariableInstruction}
-import rip.hippo.hippocafe.MethodInfo
+import rip.hippo.hippocafe.{LocalVariableInfo, MethodInfo}
 import rip.hippo.hippocafe.attribute.Attribute
-import rip.hippo.hippocafe.attribute.impl.{CodeAttribute, LineNumberTableAttribute, StackMapTableAttribute}
+import rip.hippo.hippocafe.attribute.impl.{CodeAttribute, LineNumberTableAttribute, LocalVariableTableAttribute, LocalVariableTypeTableAttribute, StackMapTableAttribute}
 import rip.hippo.hippocafe.constantpool.ConstantPool
 import rip.hippo.hippocafe.constantpool.info.ValueAwareness
 import rip.hippo.hippocafe.constantpool.info.impl.{ReferenceInfo, StringInfo}
@@ -51,6 +51,7 @@ import scala.collection.mutable.ListBuffer
  */
 object CodeDisassembler {
 
+  sealed case class LocalLookup(name: String, startPc: Int, length: Int, index: Int)
 
   def disassemble(methodInfo: MethodInfo, constantPool: ConstantPool): Unit = {
     methodInfo.attributes.find(_.kind == Attribute.CODE) match {
@@ -63,6 +64,7 @@ object CodeDisassembler {
         val codeLength = code.length
         val labels = mutable.SortedMap[Int, ListBuffer[Instruction]]()
         var labelDebugId = 0
+        val localLookupMap = mutable.Map[LocalLookup, LocalVariableInfo]()
         
         def addLabel(offset: Int, instruction: Instruction): Unit = {
           if (!labels.contains(offset)) {
@@ -74,6 +76,37 @@ object CodeDisassembler {
         codeAttribute.attributes.foreach {
           case lineNumberTableAttribute: LineNumberTableAttribute =>
             lineNumberTableAttribute.lineNumberTable.foreach(data => addLabel(data.startPc, LineNumberInstruction(data.lineNumber)))
+          case LocalVariableTableAttribute(_, table) =>
+            table.foreach(data => {
+              val lookup = LocalLookup(data.name, data.startPc, data.length, data.index)
+              localLookupMap.get(lookup) match {
+                case Some(value) =>
+                  value.descriptor = data.descriptor
+                case None =>
+                  val start = LabelInstruction()
+                  val end = LabelInstruction()
+                  addLabel(data.startPc, start)
+                  addLabel(data.startPc + data.length, end)
+                  val info = LocalVariableInfo(data.name, data.descriptor, Option.empty, start, end, data.index)
+                  localLookupMap += (lookup -> info)
+              }
+            })
+          case LocalVariableTypeTableAttribute(_, table) =>
+            table.foreach(data => {
+              val lookup = LocalLookup(data.name, data.startPc, data.length, data.index)
+              localLookupMap.get(lookup) match {
+                case Some(value) =>
+                  value.signature = Option(data.signature)
+                case None =>
+                  val start = LabelInstruction()
+                  val end = LabelInstruction()
+                  addLabel(data.startPc, start)
+                  addLabel(data.startPc + data.length, end)
+                  val info = LocalVariableInfo(data.name, null /*this will be changed when it reads a `LocalVariableTableAttribute`*/, Option(data.signature), start, end, data.index)
+                  localLookupMap += (lookup -> info)
+              }
+            })
+
           case stackMapTableAttribute: StackMapTableAttribute =>
             var offsetDelta = 0
             var deltaChanges = 0
@@ -117,6 +150,8 @@ object CodeDisassembler {
             }
           case _ =>
         }
+
+        localLookupMap.values.foreach(methodInfo.localVariables.+=)
 
         def u1: Int = code({
           val index = offset

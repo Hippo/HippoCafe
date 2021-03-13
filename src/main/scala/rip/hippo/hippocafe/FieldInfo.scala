@@ -35,7 +35,9 @@ import scala.collection.mutable.ListBuffer
  * @version 1.0.0, 8/2/20
  * @since 1.0.0
  */
-final case class FieldInfo(var name: String, var descriptor: String, var accessFlags: AccessFlag*) {
+final case class FieldInfo(var name: String,
+                           var descriptor: String,
+                           var accessFlags: AccessFlag*) {
 
   val attributes: ListBuffer[AttributeInfo] = ListBuffer[AttributeInfo]()
 

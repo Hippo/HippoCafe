@@ -24,6 +24,8 @@
 
 package rip.hippo.hippocafe.attribute.impl.data
 
+import rip.hippo.hippocafe.constantpool.ConstantPool
+
 /**
  * @author Hippo
  * @version 1.0.0, 8/2/20
@@ -31,6 +33,13 @@ package rip.hippo.hippocafe.attribute.impl.data
  */
 final case class LocalVariableTypeTableAttributeData(startPc: Int,
                                                      length: Int,
-                                                     nameIndex: Int,
-                                                     signatureIndex: Int,
-                                                     index: Int)
+                                                     name: String,
+                                                     signature: String,
+                                                     index: Int) {
+
+  def buildConstantPool(constantPool: ConstantPool): Unit = {
+    constantPool.insertUTF8IfAbsent(name)
+    constantPool.insertUTF8IfAbsent(signature)
+  }
+}
+

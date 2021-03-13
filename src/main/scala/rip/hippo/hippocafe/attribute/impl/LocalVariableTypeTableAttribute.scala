@@ -45,13 +45,12 @@ final case class LocalVariableTypeTableAttribute(localVariableTypeTableLength: I
     localVariableTypeTable.foreach(table => {
       out.writeShort(table.startPc)
       out.writeShort(table.length)
-      out.writeShort(table.nameIndex)
-      out.writeShort(table.signatureIndex)
+      out.writeShort(constantPool.findUTF8(table.name))
+      out.writeShort(constantPool.findUTF8(table.signature))
       out.writeShort(table.index)
     })
   }
 
-  override def buildConstantPool(constantPool: ConstantPool): Unit = {
-
-  }
+  override def buildConstantPool(constantPool: ConstantPool): Unit =
+    localVariableTypeTable.foreach(_.buildConstantPool(constantPool))
 }
