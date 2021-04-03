@@ -8,6 +8,7 @@ package rip.hippo.hippocafe.disassembler.context
 object AssemblerFlag {
   val CALCULATE_MAXES: AssemblerFlag = AssemblerFlag("CALCULATE_MAXES")
   val GENERATE_FRAMES: AssemblerFlag = AssemblerFlag("GENERATE_FRAMES (not supported)")
+  val APPEND_CONSTANT_POOL: AssemblerFlag = AssemblerFlag("APPEND CONSTANT POOL")
 }
 
 sealed case class AssemblerFlag(name: String)

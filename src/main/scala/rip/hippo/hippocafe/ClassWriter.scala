@@ -44,7 +44,7 @@ import scala.collection.mutable.ListBuffer
 
 /**
  * @author Hippo
- * @version 1.0.0, 8/3/20
+ * @version 1.0.1, 8/3/20
  * @since 1.0.0
  */
 final class ClassWriter(classFile: ClassFile) extends AutoCloseable {
@@ -207,9 +207,9 @@ final class ClassWriter(classFile: ClassFile) extends AutoCloseable {
   }
 
   def generateConstantPool: ConstantPool = {
-    val constantPool = new ConstantPool
+    val constantPool = if (flags.contains(AssemblerFlag.APPEND_CONSTANT_POOL)) classFile.constantPool.get else new ConstantPool
 
-    def add(info: ConstantPoolInfo, incr: Int = 1): Unit = {
+    def add(info: ConstantPoolInfo): Unit = {
       var index = 1
       if (constantPool.info.nonEmpty) {
         val max = constantPool.info.keys.max
@@ -255,9 +255,9 @@ final class ClassWriter(classFile: ClassFile) extends AutoCloseable {
             case FloatConstant(value) =>
               add(FloatInfo(value))
             case DoubleConstant(value) =>
-              add(DoubleInfo(value), 2)
+              add(DoubleInfo(value))
             case LongConstant(value) =>
-              add(LongInfo(value), 2)
+              add(LongInfo(value))
           }
         case _ =>
       }
@@ -289,6 +289,11 @@ final class ClassWriter(classFile: ClassFile) extends AutoCloseable {
 
   def generateFrames: ClassWriter = {
     flags += AssemblerFlag.GENERATE_FRAMES
+    this
+  }
+
+  def appendConstantPool: ClassWriter = {
+    flags += AssemblerFlag.APPEND_CONSTANT_POOL
     this
   }
 

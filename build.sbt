@@ -1,6 +1,6 @@
 name := "HippoCafe"
 
-version := "1.1.0"
+version := "1.3.3"
 
 scalaVersion := "2.13.3"
 

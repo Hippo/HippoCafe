@@ -26,6 +26,7 @@ package rip.hippo.testing.hippocafe
 
 import org.scalatest.FunSuite
 import rip.hippo.hippocafe.ClassReader
+import rip.hippo.hippocafe.access.AccessFlag
 
 import scala.util.{Failure, Success, Using}
 
@@ -36,7 +37,7 @@ import scala.util.{Failure, Success, Using}
  */
 final class InstructionReadSuite extends FunSuite {
 
-  private val className = "AnnotationTest"
+  private val className = "test"
 
   test("CodeDisassembler.disassemble") {
     Option(Thread.currentThread.getContextClassLoader.getResourceAsStream(s"$className.class")) match {
@@ -44,7 +45,11 @@ final class InstructionReadSuite extends FunSuite {
         val test = Using(new ClassReader(value)) {
           classReader =>
             val classFile = classReader.classFile
+
+            classFile.constantPool.get.info.foreach(println)
+
             classFile.methods.foreach(info => {
+
               info.attributes.foreach(println)
               info.instructions.foreach(println(_))
               info.tryCatchBlocks.foreach(println(_))

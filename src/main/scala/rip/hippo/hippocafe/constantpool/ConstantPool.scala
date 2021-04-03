@@ -87,7 +87,7 @@ final class ConstantPool {
     if (index == -1) {
       val max = info.keys.max
       index = max + (if (info(max).wide) 2 else 1)
-      insert(index, new StringInfo(value, ConstantPoolKind.CLASS))
+      insert(index, new StringInfo(value, constantPoolKind))
     }
   }
 
