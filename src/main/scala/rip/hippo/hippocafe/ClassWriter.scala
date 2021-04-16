@@ -49,7 +49,6 @@ import scala.collection.mutable.ListBuffer
  */
 final class ClassWriter(classFile: ClassFile) extends AutoCloseable {
 
-
   private val flags = mutable.Set[AssemblerFlag]()
   private val byteOut = new ByteArrayOutputStream()
   private val out = new DataOutputStream(byteOut)

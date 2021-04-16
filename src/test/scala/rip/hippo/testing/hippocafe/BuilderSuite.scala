@@ -34,6 +34,7 @@ import rip.hippo.hippocafe.disassembler.instruction.constant.impl.StringConstant
 import rip.hippo.hippocafe.disassembler.instruction.impl._
 import rip.hippo.hippocafe.version.MajorClassFileVersion._
 
+import java.io.FileOutputStream
 import scala.util.{Failure, Using}
 
 /**
