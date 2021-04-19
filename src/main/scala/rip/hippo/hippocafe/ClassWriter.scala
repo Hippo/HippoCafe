@@ -28,7 +28,6 @@ import rip.hippo.hippocafe.access.AccessFlag
 import rip.hippo.hippocafe.analaysis.MaxStackDepthCalculator
 import rip.hippo.hippocafe.analaysis.impl.StandardMaxStackDepthCalculator
 import rip.hippo.hippocafe.attribute.impl.CodeAttribute
-import rip.hippo.hippocafe.attribute.impl.data.ExceptionTableAttributeData
 import rip.hippo.hippocafe.attribute.{Attribute, AttributeInfo}
 import rip.hippo.hippocafe.constantpool.info.impl._
 import rip.hippo.hippocafe.constantpool.info.{ConstantPoolInfo, impl}
@@ -37,6 +36,8 @@ import rip.hippo.hippocafe.disassembler.context.{AssemblerContext, AssemblerFlag
 import rip.hippo.hippocafe.disassembler.instruction.constant.impl._
 import rip.hippo.hippocafe.disassembler.instruction.impl.{ConstantInstruction, ReferenceInstruction}
 import rip.hippo.hippocafe.util.Type
+import rip.hippo.hippocafe.writer.impl.{StandardAttributeWriter, StandardClassAttributesWriter, StandardClassHeaderWriter, StandardClassMetaWriter, StandardConstantPoolWriter, StandardFieldWriter, StandardInterfaceWriter, StandardMethodWriter}
+import rip.hippo.hippocafe.writer.{AttributeWriter, ClassAttributedMetaWriter, ClassHeaderWriter, ClassMetaWriter, ConstantPoolWriter}
 
 import java.io.{ByteArrayOutputStream, DataOutputStream}
 import scala.collection.mutable
@@ -44,10 +45,19 @@ import scala.collection.mutable.ListBuffer
 
 /**
  * @author Hippo
- * @version 1.0.1, 8/3/20
+ * @version 1.1.0, 8/3/20
  * @since 1.0.0
  */
-final class ClassWriter(classFile: ClassFile) extends AutoCloseable {
+final class ClassWriter(classFile: ClassFile,
+                        attributeWriter: AttributeWriter = StandardAttributeWriter(),
+                        classHeaderWriter: ClassHeaderWriter = StandardClassHeaderWriter(),
+                        constantPoolWriter: ConstantPoolWriter = StandardConstantPoolWriter(),
+                        classMetaWriter: ClassMetaWriter = StandardClassMetaWriter(),
+                        interfaceWriter: ClassMetaWriter = StandardInterfaceWriter(),
+                        fieldWriter: ClassAttributedMetaWriter = StandardFieldWriter(),
+                        methodWriter: ClassAttributedMetaWriter = StandardMethodWriter(),
+                        classAttributesWriter: ClassAttributedMetaWriter = StandardClassAttributesWriter())
+  extends AutoCloseable {
 
   private val flags = mutable.Set[AssemblerFlag]()
   private val byteOut = new ByteArrayOutputStream()
@@ -55,10 +65,7 @@ final class ClassWriter(classFile: ClassFile) extends AutoCloseable {
   private var stackDepthCalculator: MaxStackDepthCalculator = new StandardMaxStackDepthCalculator
 
   def write: Array[Byte] = {
-    out.writeInt(0xCAFEBABE)
-
-    out.writeShort(classFile.minorVersion)
-    out.writeShort(classFile.majorClassFileVersion.id)
+    classHeaderWriter.write(classFile, out)
 
     val removedCodeAttribute = ListBuffer[MethodInfo]()
 
@@ -130,73 +137,13 @@ final class ClassWriter(classFile: ClassFile) extends AutoCloseable {
 
 
 
-    out.writeShort(constantPool.info.keys.max + 1)
-    constantPool.info.foreach(entry => {
-      out.writeByte(entry._2.kind.id)
-      entry._2.write(out, constantPool)
-    })
+    constantPoolWriter.write(constantPool, out)
+    classMetaWriter.write(classFile, constantPool, out)
+    interfaceWriter.write(classFile, constantPool, out)
 
-    out.writeShort(AccessFlag.toMask(classFile.access: _*))
-    out.writeShort(constantPool.findString(classFile.name))
-    out.writeShort(constantPool.findString(classFile.superName))
-
-    out.writeShort(classFile.interfaces.size)
-    classFile.interfaces.foreach(interface => out.writeShort(constantPool.findString(interface)))
-
-    out.writeShort(classFile.fields.size)
-    classFile.fields.foreach(field => {
-      out.writeShort(AccessFlag.toMask(field.accessFlags: _*))
-      out.writeShort(constantPool.findUTF8(field.name))
-      out.writeShort(constantPool.findUTF8(field.descriptor))
-      out.writeShort(field.attributes.size)
-      field.attributes.foreach(attribute => {
-        val byteArrayOutputStream = new ByteArrayOutputStream()
-        val dataOutputStream = new DataOutputStream(byteArrayOutputStream)
-        attribute.write(dataOutputStream, constantPool)
-        val attributeData = byteArrayOutputStream.toByteArray
-
-        out.writeShort(constantPool.findUTF8(attribute.kind.toString))
-        out.writeInt(attributeData.length)
-        out.write(attributeData)
-
-        dataOutputStream.close()
-      })
-    })
-
-    out.writeShort(classFile.methods.size)
-    classFile.methods.foreach(method => {
-      out.writeShort(AccessFlag.toMask(method.accessFlags: _*))
-      out.writeShort(constantPool.findUTF8(method.name))
-      out.writeShort(constantPool.findUTF8(method.descriptor))
-      out.writeShort(method.attributes.size)
-
-      method.attributes.foreach(attribute => {
-        val byteArrayOutputStream = new ByteArrayOutputStream()
-        val dataOutputStream = new DataOutputStream(byteArrayOutputStream)
-        attribute.write(dataOutputStream, constantPool)
-        val attributeData = byteArrayOutputStream.toByteArray
-
-        out.writeShort(constantPool.findUTF8(attribute.kind.toString))
-        out.writeInt(attributeData.length)
-        out.write(attributeData)
-
-        dataOutputStream.close()
-      })
-    })
-
-    out.writeShort(classFile.attributes.size)
-    classFile.attributes.foreach(attribute => {
-      val byteArrayOutputStream = new ByteArrayOutputStream()
-      val dataOutputStream = new DataOutputStream(byteArrayOutputStream)
-      attribute.write(dataOutputStream, constantPool)
-      val attributeData = byteArrayOutputStream.toByteArray
-
-      out.writeShort(constantPool.findUTF8(attribute.kind.toString))
-      out.writeInt(attributeData.length)
-      out.write(attributeData)
-
-      dataOutputStream.close()
-    })
+    fieldWriter.write(classFile, constantPool, attributeWriter, out)
+    methodWriter.write(classFile, constantPool, attributeWriter, out)
+    classAttributesWriter.write(classFile, constantPool, attributeWriter, out)
 
     removedCodeAttribute.foreach(method => {
       method.attributes.filter(_.kind == Attribute.CODE).foreach(method.attributes.subtractOne)
