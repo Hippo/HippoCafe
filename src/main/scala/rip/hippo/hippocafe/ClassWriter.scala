@@ -196,6 +196,9 @@ final class ClassWriter(classFile: ClassFile,
             case StringConstant(value) =>
               add(UTF8Info(value))
               add(new StringInfo(value, ConstantPoolKind.STRING))
+            case ClassConstant(value) =>
+              add(UTF8Info(value))
+              add(new StringInfo(value, ConstantPoolKind.CLASS))
             case IntegerConstant(value) =>
               add(IntegerInfo(value))
             case FloatConstant(value) =>

@@ -1,9 +1,10 @@
 package rip.hippo.hippocafe.disassembler.instruction.constant
 
 import rip.hippo.hippocafe.constantpool.ConstantPool
+import rip.hippo.hippocafe.constantpool.ConstantPoolKind.{CLASS, DOUBLE, DYNAMIC, FIELD_REF, FLOAT, INTEGER, INTERFACE_METHOD_REF, INVOKE_DYNAMIC, LONG, METHOD_HANDLE, METHOD_REF, METHOD_TYPE, MODULE, NAME_AND_TYPE, PACKAGE, STRING, UTF8}
 import rip.hippo.hippocafe.constantpool.info.impl.StringInfo
 import rip.hippo.hippocafe.constantpool.info.{ConstantPoolInfo, ValueAwareness}
-import rip.hippo.hippocafe.disassembler.instruction.constant.impl.{DoubleConstant, FloatConstant, IntegerConstant, LongConstant, StringConstant, UTF8Constant}
+import rip.hippo.hippocafe.disassembler.instruction.constant.impl.{ClassConstant, DoubleConstant, FloatConstant, IntegerConstant, LongConstant, StringConstant, UTF8Constant}
 import rip.hippo.hippocafe.exception.HippoCafeException
 
 /**
@@ -37,7 +38,11 @@ object Constant {
         case x => throw new HippoCafeException(s"Invalid constant instruction $x")
       }
       case string: StringInfo =>
-        StringConstant(string.value)
+        string.kind match {
+          case CLASS => ClassConstant(string.value)
+          case STRING => StringConstant(string.value)
+          case x => throw new HippoCafeException(s"Invalid constant instruction $x")
+        }
       case x => throw new HippoCafeException(s"Invalid constant instruction $x")
     }
 }

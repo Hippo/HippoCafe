@@ -40,7 +40,7 @@ import scala.util.{Failure, Using}
  */
 final class ReadAssembleWriteSuite extends FunSuite {
 
-  private val className = "TcbTest"
+  private val className = "LoadConstantClassTest"
 
 
   test("assemble.readThenLoad") {
@@ -48,6 +48,8 @@ final class ReadAssembleWriteSuite extends FunSuite {
       case Some(value) =>
         val test = Using(new ClassReader(value)) {
           classReader =>
+
+            classReader.classFile.methods.foreach(_.instructions.foreach(println))
 
             val writerTest = Using(new ClassWriter(classReader.classFile)) {
               classWriter =>
