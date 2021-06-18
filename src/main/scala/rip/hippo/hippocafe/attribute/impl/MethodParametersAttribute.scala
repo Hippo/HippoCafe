@@ -36,12 +36,12 @@ import rip.hippo.hippocafe.constantpool.ConstantPool
  * @version 1.0.0, 8/2/20
  * @since 1.0.0
  */
-final case class MethodParametersAttribute(parametersCount: Int, parameters: Seq[MethodParametersAttributeData]) extends AttributeInfo {
+final case class MethodParametersAttribute(parameters: Seq[MethodParametersAttributeData]) extends AttributeInfo {
 
   override val kind: Attribute = Attribute.METHOD_PARAMETERS
 
   override def write(out: DataOutputStream, constantPool: ConstantPool): Unit = {
-    out.writeByte(parametersCount)
+    out.writeByte(parameters.size)
     parameters.foreach(parameter => {
       out.writeShort(parameter.nameIndex)
       out.writeShort(parameter.accessFlags)

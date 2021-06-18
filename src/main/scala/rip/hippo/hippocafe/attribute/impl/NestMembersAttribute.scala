@@ -35,12 +35,12 @@ import rip.hippo.hippocafe.constantpool.ConstantPool
  * @version 1.0.0, 8/2/20
  * @since 1.0.0
  */
-final case class NestMembersAttribute(numberOfClasses: Int, classes: Seq[Int]) extends AttributeInfo {
+final case class NestMembersAttribute(classes: Seq[Int]) extends AttributeInfo {
 
   override val kind: Attribute = Attribute.NEST_MEMBERS
 
   override def write(out: DataOutputStream, constantPool: ConstantPool): Unit = {
-    out.writeShort(numberOfClasses)
+    out.writeShort(classes.size)
     classes.foreach(data => out.writeShort(data))
   }
 

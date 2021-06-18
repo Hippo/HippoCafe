@@ -38,17 +38,14 @@ final case class TypeAnnotationData(targetType: Int,
                                     targetInfo: AnnotationTargetType,
                                     typePath: AnnotationTypePath,
                                     typeIndex: Int,
-                                    numberOfElementValuePairs: Int,
                                     elementValuePairs: Seq[ElementValuePairAnnotationData]) {
-
-  println(targetInfo)
 
   def write(out: DataOutputStream, constantPool: ConstantPool): Unit =  {
     out.writeShort(targetType)
     targetInfo.write(out)
     typePath.write(out)
     out.writeShort(typeIndex)
-    out.writeShort(numberOfElementValuePairs)
+    out.writeShort(elementValuePairs.size)
     elementValuePairs.foreach(pair => pair.write(out, constantPool))
   }
 }

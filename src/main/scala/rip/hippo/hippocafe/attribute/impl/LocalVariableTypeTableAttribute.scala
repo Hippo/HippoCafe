@@ -36,12 +36,12 @@ import rip.hippo.hippocafe.constantpool.ConstantPool
  * @version 1.0.0, 8/2/20
  * @since 1.0.0
  */
-final case class LocalVariableTypeTableAttribute(localVariableTypeTableLength: Int, localVariableTypeTable: Seq[LocalVariableTypeTableAttributeData]) extends AttributeInfo {
+final case class LocalVariableTypeTableAttribute(localVariableTypeTable: Seq[LocalVariableTypeTableAttributeData]) extends AttributeInfo {
 
   override val kind: Attribute = Attribute.LOCAL_VARIABLE_TYPE_TABLE
 
   override def write(out: DataOutputStream, constantPool: ConstantPool): Unit = {
-    out.writeShort(localVariableTypeTableLength)
+    out.writeShort(localVariableTypeTable.size)
     localVariableTypeTable.foreach(table => {
       out.writeShort(table.startPc)
       out.writeShort(table.length)

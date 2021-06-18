@@ -36,14 +36,14 @@ import rip.hippo.hippocafe.constantpool.ConstantPool
  * @version 1.0.0, 8/2/20
  * @since 1.0.0
  */
-final case class RuntimeVisibleParameterAnnotationsAttribute(numberOfParameters: Int, parameterAnnotations: Seq[ParameterAnnotationsData]) extends AttributeInfo {
+final case class RuntimeVisibleParameterAnnotationsAttribute(parameterAnnotations: Seq[ParameterAnnotationsData]) extends AttributeInfo {
 
   override val kind: Attribute = Attribute.RUNTIME_VISIBLE_PARAMETER_ANNOTATIONS
 
   override def write(out: DataOutputStream, constantPool: ConstantPool): Unit = {
-    out.writeByte(numberOfParameters)
+    out.writeByte(parameterAnnotations.size)
     parameterAnnotations.foreach(parameter => {
-      out.write(parameter.numberOfAnnotations)
+      out.write(parameter.annotations.size)
       parameter.annotations.foreach(annotation => annotation.write(out, constantPool))
     })
   }

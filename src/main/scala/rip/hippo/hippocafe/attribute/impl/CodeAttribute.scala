@@ -40,11 +40,9 @@ import rip.hippo.hippocafe.constantpool.info.impl.StringInfo
 final case class CodeAttribute(oak: Boolean,
                           maxStack: Int,
                           maxLocals: Int,
-                          codeLength: Int,
                           code: Seq[Byte],
                           exceptionTableLength: Int,
                           exceptionTable: Seq[ExceptionTableAttributeData],
-                          attributesCount: Int,
                           attributes: Seq[AttributeInfo]) extends AttributeInfo {
 
   override val kind: Attribute = Attribute.CODE
@@ -54,11 +52,11 @@ final case class CodeAttribute(oak: Boolean,
     if (oak) {
       out.writeByte(maxStack)
       out.writeByte(maxLocals)
-      out.writeShort(codeLength)
+      out.writeShort(code.size)
     } else {
       out.writeShort(maxStack)
       out.writeShort(maxLocals)
-      out.writeInt(codeLength)
+      out.writeInt(code.size)
     }
     out.write(code.toArray)
     out.writeShort(exceptionTableLength)
@@ -68,7 +66,7 @@ final case class CodeAttribute(oak: Boolean,
       out.writeShort(table.handlerPc)
       out.writeShort(constantPool.findString(table.catchType, ConstantPoolKind.CLASS))
     })
-    out.writeShort(attributesCount)
+    out.writeShort(attributes.size)
     attributes.foreach(attribute => {
       val byteArrayOutputStream = new ByteArrayOutputStream()
       val dataOutputStream = new DataOutputStream(byteArrayOutputStream)

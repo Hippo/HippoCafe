@@ -193,8 +193,8 @@ final class AssemblerContext(flags: Set[AssemblerFlag]) {
 
     sortedFrames.foreach(_._1.assemble(this))
 
-    attributes += LineNumberTableAttribute(lineNumberAttributeDataInfo.length, lineNumberAttributeDataInfo.toSeq)
-    attributes += StackMapTableAttribute(stackMapFrames.length, stackMapFrames.toSeq)
+    attributes += LineNumberTableAttribute(lineNumberAttributeDataInfo.toSeq)
+    attributes += StackMapTableAttribute(stackMapFrames.toSeq)
 
     val localVariableTable = ArrayBuffer[LocalVariableTableAttributeData]()
     val localVariableTypeTable = ArrayBuffer[LocalVariableTypeTableAttributeData]()
@@ -213,10 +213,10 @@ final class AssemblerContext(flags: Set[AssemblerFlag]) {
     })
 
     if (localVariableTable.nonEmpty) {
-      attributes += LocalVariableTableAttribute(localVariableTable.length, localVariableTable.toSeq)
+      attributes += LocalVariableTableAttribute(localVariableTable.toSeq)
     }
     if (localVariableTypeTable.nonEmpty) {
-      attributes += LocalVariableTypeTableAttribute(localVariableTypeTable.length, localVariableTypeTable.toSeq)
+      attributes += LocalVariableTypeTableAttribute(localVariableTypeTable.toSeq)
     }
 
     attributes.toArray

@@ -36,13 +36,13 @@ import rip.hippo.hippocafe.constantpool.ConstantPool
  * @version 1.0.0, 8/2/20
  * @since 1.0.0
  */
-final case class RuntimeInvisibleTypeAnnotationsAttribute(numberOfAnnotations: Int, annotations: Seq[TypeAnnotationData]) extends AttributeInfo {
+final case class RuntimeInvisibleTypeAnnotationsAttribute(annotations: Seq[TypeAnnotationData]) extends AttributeInfo {
 
   override val kind: Attribute = Attribute.RUNTIME_INVISIBLE_TYPE_ANNOTATIONS
 
 
   override def write(out: DataOutputStream, constantPool: ConstantPool): Unit = {
-    out.writeShort(numberOfAnnotations)
+    out.writeShort(annotations.size)
     annotations.foreach(annotation => annotation.write(out, constantPool))
   }
 

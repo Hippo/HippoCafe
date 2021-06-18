@@ -29,4 +29,4 @@ package rip.hippo.hippocafe.attribute.impl.data.annotation
  * @version 1.0.0, 8/2/20
  * @since 1.0.0
  */
-final case class ParameterAnnotationsData(numberOfAnnotations: Int, annotations: Seq[AnnotationAttributeData])
+final case class ParameterAnnotationsData(annotations: Seq[AnnotationAttributeData])

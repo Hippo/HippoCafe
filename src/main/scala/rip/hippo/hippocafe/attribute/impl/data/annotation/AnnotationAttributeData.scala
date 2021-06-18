@@ -34,12 +34,11 @@ import java.io.DataOutputStream
  * @since 1.0.0
  */
 final case class AnnotationAttributeData(typeName: String,
-                                   numberOfElementValuePairs: Int,
                                    elementValuePairs: Seq[ElementValuePairAnnotationData]) {
 
   def write(out: DataOutputStream, constantPool: ConstantPool): Unit = {
     out.writeShort(constantPool.findUTF8(typeName))
-    out.writeShort(numberOfElementValuePairs)
+    out.writeShort(elementValuePairs.size)
     elementValuePairs.foreach(pair => pair.write(out, constantPool))
   }
 

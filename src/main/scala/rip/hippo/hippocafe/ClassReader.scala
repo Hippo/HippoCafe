@@ -204,7 +204,7 @@ final class ClassReader(parentInputStream: InputStream, lowLevel: Boolean = fals
         val numberOfElementPairs = u2
         val elementValuePairs = new Array[ElementValuePairAnnotationData](numberOfElementPairs)
         (0 until numberOfElementPairs).foreach(i => elementValuePairs(i) = ElementValuePairAnnotationData(constantPool.readUTF8(u2), readAnnotationAttributeValue))
-        AnnotationAttributeData(constantPool.readUTF8(typeIndex), numberOfElementPairs, elementValuePairs)
+        AnnotationAttributeData(constantPool.readUTF8(typeIndex), elementValuePairs)
       }
 
       def readAnnotationAttributeValue: AnnotationAttributeValue = {
@@ -225,7 +225,7 @@ final class ClassReader(parentInputStream: InputStream, lowLevel: Boolean = fals
             val numberOfValues = u2
             val values = new Array[AnnotationAttributeValue](numberOfValues)
             (0 until numberOfValues).foreach(i => values(i) = readAnnotationAttributeValue)
-            ArrayValueAnnotationValue(numberOfValues, values)
+            ArrayValueAnnotationValue(values)
         }
       }
 
@@ -265,12 +265,12 @@ final class ClassReader(parentInputStream: InputStream, lowLevel: Boolean = fals
           case Some(value) => value
           case None => throw new HippoCafeException("Could not parse annotation type path kind")
         }, u1))
-        val typePath = AnnotationTypePath(pathLength, path)
+        val typePath = AnnotationTypePath(path)
         val typeIndex = u2
         val numberOfElementValuePairs = u2
         val elementValuePairs = new Array[ElementValuePairAnnotationData](numberOfElementValuePairs)
         (0 until numberOfElementValuePairs).foreach(i => elementValuePairs(i) = ElementValuePairAnnotationData(constantPool.readUTF8(u2), readAnnotationAttributeValue))
-        annotation.TypeAnnotationData(targetType, targetInfo, typePath, typeIndex, numberOfElementValuePairs, elementValuePairs)
+        annotation.TypeAnnotationData(targetType, targetInfo, typePath, typeIndex, elementValuePairs)
       }
 
       val name = constantPool.readUTF8(attributeNameIndex)
@@ -291,7 +291,7 @@ final class ClassReader(parentInputStream: InputStream, lowLevel: Boolean = fals
               val attributesCount = u2
               val attributes = new Array[AttributeInfo](attributesCount)
               (0 until attributesCount).foreach(i => attributes(i) = readAttribute(bufferStream))
-              CodeAttribute(oak, maxStack, maxLocals, codeLength, code, exceptionTableLength, exceptionTable, attributesCount, attributes)
+              CodeAttribute(oak, maxStack, maxLocals, code, exceptionTableLength, exceptionTable, attributes)
             case STACK_MAP_TABLE =>
               val numberOfEntries = u2
               val entries = new Array[StackMapFrame](numberOfEntries)
@@ -319,12 +319,12 @@ final class ClassReader(parentInputStream: InputStream, lowLevel: Boolean = fals
                     entries(i) = FullStackMapFrame(offsetDelta, numberOfLocals, locals, numberOfStackItems, stack)
                 }
               })
-              StackMapTableAttribute(numberOfEntries, entries)
+              StackMapTableAttribute(entries)
             case EXCEPTIONS =>
               val numberOfExceptions = u2
               val exceptionIndexTable = new Array[Int](numberOfExceptions)
               (0 until numberOfExceptions).foreach(i => exceptionIndexTable(i) = u2)
-              ExceptionsAttribute(numberOfExceptions, exceptionIndexTable)
+              ExceptionsAttribute(exceptionIndexTable)
             case INNER_CLASSES =>
               val numberOfClasses = u2
               val classes = new Array[ClassesAttributeData](numberOfClasses)
@@ -338,7 +338,7 @@ final class ClassReader(parentInputStream: InputStream, lowLevel: Boolean = fals
                   if (innerNameIndex == 0) Option.empty else Option(constantPool.readUTF8(innerNameIndex)),
                   u2)
               })
-              InnerClassesAttribute(numberOfClasses, classes)
+              InnerClassesAttribute(classes)
             case ENCLOSING_METHOD => EnclosingMethodAttribute(u2, u2)
             case SYNTHETIC => SyntheticAttribute()
             case SIGNATURE => SignatureAttribute(u2)
@@ -348,28 +348,28 @@ final class ClassReader(parentInputStream: InputStream, lowLevel: Boolean = fals
               val lineNumberTableLength = u2
               val lineNumberTable = new Array[LineNumberTableAttributeData](lineNumberTableLength)
               (0 until lineNumberTableLength).foreach(i => lineNumberTable(i) = LineNumberTableAttributeData(u2, u2))
-              LineNumberTableAttribute(lineNumberTableLength, lineNumberTable)
+              LineNumberTableAttribute(lineNumberTable)
             case LOCAL_VARIABLE_TABLE =>
               val localVariableTableLength = u2
               val localVariableTable = new Array[LocalVariableTableAttributeData](localVariableTableLength)
               (0 until localVariableTableLength).foreach(i => localVariableTable(i) = LocalVariableTableAttributeData(u2, u2, constantPool.readUTF8(u2), constantPool.readUTF8(u2), u2))
-              LocalVariableTableAttribute(localVariableTableLength, localVariableTable)
+              LocalVariableTableAttribute(localVariableTable)
             case LOCAL_VARIABLE_TYPE_TABLE =>
               val localVariableTypeTableLength = u2
               val localVariableTypeTable = new Array[LocalVariableTypeTableAttributeData](localVariableTypeTableLength)
               (0 until localVariableTypeTableLength).foreach(i => localVariableTypeTable(i) = LocalVariableTypeTableAttributeData(u2, u2, constantPool.readUTF8(u2), constantPool.readUTF8(u2), u2))
-              LocalVariableTypeTableAttribute(localVariableTypeTableLength, localVariableTypeTable)
+              LocalVariableTypeTableAttribute(localVariableTypeTable)
             case DEPRECATED => DeprecatedAttribute()
             case RUNTIME_VISIBLE_ANNOTATIONS =>
               val numberOfAnnotations = u2
               val annotations = new Array[AnnotationAttributeData](numberOfAnnotations)
               (0 until numberOfAnnotations).foreach(i => annotations(i) = readAnnotationData)
-              RuntimeVisibleAnnotationsAttribute(numberOfAnnotations, annotations)
+              RuntimeVisibleAnnotationsAttribute(annotations)
             case RUNTIME_INVISIBLE_ANNOTATIONS =>
               val numberOfAnnotations = u2
               val annotations = new Array[AnnotationAttributeData](numberOfAnnotations)
               (0 until numberOfAnnotations).foreach(i => annotations(i) = readAnnotationData)
-              RuntimeInvisibleAnnotationsAttribute(numberOfAnnotations, annotations)
+              RuntimeInvisibleAnnotationsAttribute(annotations)
             case RUNTIME_VISIBLE_PARAMETER_ANNOTATIONS =>
               val numberOfParameters = u1
               val parameterAnnotations = new Array[ParameterAnnotationsData](numberOfParameters)
@@ -377,9 +377,9 @@ final class ClassReader(parentInputStream: InputStream, lowLevel: Boolean = fals
                 val numberOfAnnotations = u2
                 val annotations = new Array[AnnotationAttributeData](numberOfAnnotations)
                 (0 until numberOfAnnotations).foreach(k => annotations(k) = readAnnotationData)
-                parameterAnnotations(i) = ParameterAnnotationsData(numberOfAnnotations, annotations)
+                parameterAnnotations(i) = ParameterAnnotationsData(annotations)
               })
-              RuntimeVisibleParameterAnnotationsAttribute(numberOfParameters, parameterAnnotations)
+              RuntimeVisibleParameterAnnotationsAttribute(parameterAnnotations)
             case RUNTIME_INVISIBLE_PARAMETER_ANNOTATIONS =>
               val numberOfParameters = u1
               val parameterAnnotations = new Array[ParameterAnnotationsData](numberOfParameters)
@@ -387,19 +387,19 @@ final class ClassReader(parentInputStream: InputStream, lowLevel: Boolean = fals
                 val numberOfAnnotations = u2
                 val annotations = new Array[AnnotationAttributeData](numberOfAnnotations)
                 (0 until numberOfAnnotations).foreach(k => annotations(k) = readAnnotationData)
-                parameterAnnotations(i) = ParameterAnnotationsData(numberOfAnnotations, annotations)
+                parameterAnnotations(i) = ParameterAnnotationsData(annotations)
               })
-              RuntimeInvisibleParameterAnnotationsAttribute(numberOfParameters, parameterAnnotations)
+              RuntimeInvisibleParameterAnnotationsAttribute(parameterAnnotations)
             case RUNTIME_VISIBLE_TYPE_ANNOTATIONS =>
               val numberOfAnnotations = u2
               val annotations = new Array[TypeAnnotationData](numberOfAnnotations)
               (0 until numberOfAnnotations).foreach(i => annotations(i) = readTypeAnnotationData)
-              RuntimeVisibleTypeAnnotationsAttribute(numberOfAnnotations, annotations)
+              RuntimeVisibleTypeAnnotationsAttribute(annotations)
             case RUNTIME_INVISIBLE_TYPE_ANNOTATIONS =>
               val numberOfAnnotations = u2
               val annotations = new Array[TypeAnnotationData](numberOfAnnotations)
               (0 until numberOfAnnotations).foreach(i => annotations(i) = readTypeAnnotationData)
-              RuntimeInvisibleTypeAnnotationsAttribute(numberOfAnnotations, annotations)
+              RuntimeInvisibleTypeAnnotationsAttribute(annotations)
             case ANNOTATION_DEFAULT => AnnotationDefaultAttribute(readAnnotationAttributeValue)
             case BOOTSTRAP_METHODS =>
               val numberOfBootstrapMethods = u2
@@ -409,14 +409,14 @@ final class ClassReader(parentInputStream: InputStream, lowLevel: Boolean = fals
                 val numberOfBootstrapArguments = u2
                 val bootstrapArguments = new Array[Int](numberOfBootstrapArguments)
                 (0 until numberOfBootstrapArguments).foreach(i => bootstrapArguments(i) = u2)
-                bootstrapMethods(i) = BootstrapMethodsAttributeData(bootstrapMethodRef, numberOfBootstrapArguments, bootstrapArguments)
+                bootstrapMethods(i) = BootstrapMethodsAttributeData(bootstrapMethodRef, bootstrapArguments)
               })
-              BootstrapMethodsAttribute(numberOfBootstrapMethods, bootstrapMethods)
+              BootstrapMethodsAttribute(bootstrapMethods)
             case METHOD_PARAMETERS =>
               val parametersCount = u1
               val parameters = new Array[MethodParametersAttributeData](parametersCount)
               (0 until parametersCount).foreach(i => parameters(i) = MethodParametersAttributeData(u2, u2))
-              MethodParametersAttribute(parametersCount, parameters)
+              MethodParametersAttribute(parameters)
             case MODULE =>
               val moduleNameIndex = u2
               val moduleFlags = u2
@@ -434,7 +434,7 @@ final class ClassReader(parentInputStream: InputStream, lowLevel: Boolean = fals
                 val exportsToCount = u2
                 val exportsToIndex = new Array[Int](exportsToCount)
                 (0 until exportsToCount).foreach(k => exportsToIndex(k) = u2)
-                exports(i) = ExportsModuleData(exportsIndex, exportsFlags, exportsToCount, exportsToIndex)
+                exports(i) = ExportsModuleData(exportsIndex, exportsFlags, exportsToIndex)
               })
 
               val opensCount = u2
@@ -445,7 +445,7 @@ final class ClassReader(parentInputStream: InputStream, lowLevel: Boolean = fals
                 val opensToCount = u2
                 val opensToIndex = new Array[Int](opensToCount)
                 (0 until opensToCount).foreach(k => opensToIndex(k) = u2)
-                opens(i) = OpensModuleData(opensIndex, opensFlags, opensToCount, opensToIndex)
+                opens(i) = OpensModuleData(opensIndex, opensFlags, opensToIndex)
               })
 
               val usesCount = u2
@@ -459,21 +459,21 @@ final class ClassReader(parentInputStream: InputStream, lowLevel: Boolean = fals
                 val providesWithCount = u2
                 val providesWithIndex = new Array[Int](providesWithCount)
                 (0 until providesWithCount).foreach(k => providesWithIndex(k) = u2)
-                provides(i) = ProvidesModuleData(providesIndex, providesWithCount, providesWithIndex)
+                provides(i) = ProvidesModuleData(providesIndex, providesWithIndex)
               })
-              ModuleAttribute(moduleNameIndex, moduleFlags, moduleVersionIndex, requiresCount, requires, exportsCount, exports, opensCount, opens, usesCount, usesIndex, providesCount, provides)
+              ModuleAttribute(moduleNameIndex, moduleFlags, moduleVersionIndex, requires, exports, opens, usesIndex, provides)
             case MODULE_PACKAGES =>
               val packageCount = u2
               val packageIndex = new Array[Int](packageCount)
               (0 until packageCount).foreach(i => packageIndex(i) = u2)
-              ModulePackagesAttribute(packageCount, packageIndex)
+              ModulePackagesAttribute(packageIndex)
             case MODULE_MAIN_CLASS => ModuleMainClassAttribute(u2)
             case NEST_HOST => NestHostAttribute(u2)
             case NEST_MEMBERS =>
               val numberOfClasses = u2
               val classes = new Array[Int](numberOfClasses)
               (0 until numberOfClasses).foreach(i => classes(i) = u2)
-              NestMembersAttribute(numberOfClasses, classes)
+              NestMembersAttribute(classes)
             case _ => UnknownAttribute(name, buffer)
           }
         case None => UnknownAttribute(name, buffer)

@@ -30,5 +30,4 @@ package rip.hippo.hippocafe.attribute.impl.data
  * @since 1.0.0
  */
 final case class BootstrapMethodsAttributeData(bootstrapMethodRef: Int,
-                                               numberOfBootstrapArguments: Int,
                                                bootstrapArguments: Seq[Int])

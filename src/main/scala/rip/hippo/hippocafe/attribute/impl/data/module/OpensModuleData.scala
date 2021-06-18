@@ -31,5 +31,4 @@ package rip.hippo.hippocafe.attribute.impl.data.module
  */
 final case class OpensModuleData(opensIndex: Int,
                                  opensFlags: Int,
-                                 opensToCount: Int,
                                  opensToIndex: Seq[Int])

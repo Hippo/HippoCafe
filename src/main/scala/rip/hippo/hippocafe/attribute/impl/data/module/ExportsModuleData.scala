@@ -31,5 +31,4 @@ package rip.hippo.hippocafe.attribute.impl.data.module
  */
 final case class ExportsModuleData(exportsIndex: Int,
                                    exportsFlags: Int,
-                                   exportsToCount: Int,
                                    exportsToIndex: Seq[Int])

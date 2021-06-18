@@ -35,12 +35,12 @@ import rip.hippo.hippocafe.constantpool.ConstantPool
  * @version 1.0.0, 8/2/20
  * @since 1.0.0
  */
-final case class ExceptionsAttribute(numberOfExceptions: Int, exceptionIndexTable: Seq[Int]) extends AttributeInfo {
+final case class ExceptionsAttribute(exceptionIndexTable: Seq[Int]) extends AttributeInfo {
 
   override val kind: Attribute = Attribute.EXCEPTIONS
 
   override def write(out: DataOutputStream, constantPool: ConstantPool): Unit = {
-    out.writeShort(numberOfExceptions)
+    out.writeShort(exceptionIndexTable.size)
     exceptionIndexTable.foreach(index => out.writeShort(index))
   }
 

@@ -35,13 +35,13 @@ import rip.hippo.hippocafe.constantpool.ConstantPool
  * @version 1.0.0, 8/2/20
  * @since 1.0.0
  */
-final case class ModulePackagesAttribute(packageCount: Int, packageIndex: Seq[Int]) extends AttributeInfo {
+final case class ModulePackagesAttribute(packageIndex: Seq[Int]) extends AttributeInfo {
 
   override val kind: Attribute = Attribute.MODULE_PACKAGES
 
 
   override def write(out: DataOutputStream, constantPool: ConstantPool): Unit = {
-    out.writeShort(packageCount)
+    out.writeShort(packageIndex.size)
     packageIndex.foreach(index => out.writeShort(index))
   }
 

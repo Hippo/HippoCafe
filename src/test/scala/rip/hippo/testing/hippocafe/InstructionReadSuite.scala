@@ -54,6 +54,7 @@ final class InstructionReadSuite extends FunSuite {
               info.instructions.foreach(println(_))
               info.tryCatchBlocks.foreach(println(_))
               info.attributes.foreach(println)
+              println(info.name)
               println()
             })
         }

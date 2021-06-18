@@ -36,16 +36,16 @@ import rip.hippo.hippocafe.constantpool.ConstantPool
  * @version 1.0.0, 8/2/20
  * @since 1.0.0
  */
-final case class BootstrapMethodsAttribute(numberOfBootstrapMethods: Int, bootstrapMethods: Seq[BootstrapMethodsAttributeData]) extends AttributeInfo {
+final case class BootstrapMethodsAttribute(bootstrapMethods: Seq[BootstrapMethodsAttributeData]) extends AttributeInfo {
 
   override val kind: Attribute = Attribute.BOOTSTRAP_METHODS
 
 
   override def write(out: DataOutputStream, constantPool: ConstantPool): Unit = {
-    out.writeShort(numberOfBootstrapMethods)
+    out.writeShort(bootstrapMethods.size)
     bootstrapMethods.foreach(data => {
       out.writeShort(data.bootstrapMethodRef)
-      out.writeShort(data.numberOfBootstrapArguments)
+      out.writeShort(data.bootstrapArguments.size)
       data.bootstrapArguments.foreach(arg => out.writeShort(arg))
     })
   }

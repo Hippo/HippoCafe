@@ -40,15 +40,10 @@ import rip.hippo.hippocafe.constantpool.ConstantPool
 final case class ModuleAttribute(moduleNameIndex: Int,
                                  moduleFlags: Int,
                                  moduleVersionIndex: Int,
-                                 requiresCount: Int,
                                  requires: Seq[RequiresModuleData],
-                                 exportsCount: Int,
                                  exports: Seq[ExportsModuleData],
-                                 opensCount: Int,
                                  opens: Seq[OpensModuleData],
-                                 usesCount: Int,
                                  usesIndex: Seq[Int],
-                                 providesCount: Int,
                                  provides: Seq[ProvidesModuleData]) extends AttributeInfo {
 
   override val kind: Attribute = Attribute.MODULE
@@ -59,36 +54,36 @@ final case class ModuleAttribute(moduleNameIndex: Int,
     out.writeShort(moduleFlags)
     out.writeShort(moduleVersionIndex)
 
-    out.writeShort(requiresCount)
+    out.writeShort(requires.size)
     requires.foreach(require => {
       out.writeShort(require.requiresIndex)
       out.writeShort(require.requiresFlags)
       out.writeShort(require.requiresVersionIndex)
     })
 
-    out.writeShort(exportsCount)
+    out.writeShort(exports.size)
     exports.foreach(export => {
       out.writeShort(export.exportsIndex)
       out.writeShort(export.exportsFlags)
-      out.writeShort(export.exportsToCount)
+      out.writeShort(export.exportsToIndex.size)
       export.exportsToIndex.foreach(index => out.writeShort(index))
     })
 
-    out.writeShort(opensCount)
+    out.writeShort(opens.size)
     opens.foreach(open => {
       out.writeShort(open.opensIndex)
       out.writeShort(open.opensFlags)
-      out.writeShort(open.opensToCount)
+      out.writeShort(open.opensToIndex.size)
       open.opensToIndex.foreach(index => out.writeShort(index))
     })
 
-    out.writeShort(usesCount)
+    out.writeShort(usesIndex.size)
     usesIndex.foreach(index => out.writeShort(index))
 
-    out.writeShort(providesCount)
+    out.writeShort(provides.size)
     provides.foreach(provide => {
       out.writeShort(provide.providesIndex)
-      out.writeShort(provide.providesWithCount)
+      out.writeShort(provide.providesWithIndex.size)
       provide.providesWithIndex.foreach(index => out.writeShort(index))
     })
   }

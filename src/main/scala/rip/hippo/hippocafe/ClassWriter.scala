@@ -123,11 +123,9 @@ final class ClassWriter(classFile: ClassFile,
           classFile.isOak,
           assemblerContext.maxStack,
           assemblerContext.maxLocals,
-          methodBytecode.length,
           methodBytecode.map(_.byte).toSeq,
           tryCatchBlocks.length,
           tryCatchBlocks,
-          attributes.length,
           attributes
         )
         codeAttribute.buildConstantPool(constantPool)

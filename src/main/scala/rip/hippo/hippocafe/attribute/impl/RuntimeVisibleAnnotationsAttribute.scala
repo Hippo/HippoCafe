@@ -36,19 +36,17 @@ import rip.hippo.hippocafe.constantpool.ConstantPool
  * @version 1.0.0, 8/2/20
  * @since 1.0.0
  */
-final case class RuntimeVisibleAnnotationsAttribute(numberOfAnnotations: Int, annotations: Seq[AnnotationAttributeData]) extends AttributeInfo {
+final case class RuntimeVisibleAnnotationsAttribute(annotations: Seq[AnnotationAttributeData]) extends AttributeInfo {
 
   override val kind: Attribute = Attribute.RUNTIME_VISIBLE_ANNOTATIONS
 
 
   override def write(out: DataOutputStream, constantPool: ConstantPool): Unit = {
-    out.writeShort(numberOfAnnotations)
+    out.writeShort(annotations.size)
     annotations.foreach(annotation => annotation.write(out, constantPool))
   }
 
   override def buildConstantPool(constantPool: ConstantPool): Unit = {
 
   }
-
-  override def toString: String = s"RuntimeVisibleAnnotationsAttribute($numberOfAnnotations, ${annotations.mkString(", ")})"
 }
