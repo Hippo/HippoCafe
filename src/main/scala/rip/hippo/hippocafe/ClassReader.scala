@@ -28,8 +28,8 @@ import rip.hippo.hippocafe.access.AccessFlag
 
 import java.io.{ByteArrayInputStream, DataInputStream, InputStream}
 import rip.hippo.hippocafe.constantpool.ConstantPoolKind._
-import rip.hippo.hippocafe.attribute.impl.{AnnotationDefaultAttribute, BootstrapMethodsAttribute, CodeAttribute, ConstantValueAttribute, DeprecatedAttribute, EnclosingMethodAttribute, ExceptionsAttribute, InnerClassesAttribute, LineNumberTableAttribute, LocalVariableTableAttribute, LocalVariableTypeTableAttribute, MethodParametersAttribute, ModuleAttribute, ModuleMainClassAttribute, ModulePackagesAttribute, NestHostAttribute, NestMembersAttribute, RuntimeInvisibleAnnotationsAttribute, RuntimeInvisibleParameterAnnotationsAttribute, RuntimeInvisibleTypeAnnotationsAttribute, RuntimeVisibleAnnotationsAttribute, RuntimeVisibleParameterAnnotationsAttribute, RuntimeVisibleTypeAnnotationsAttribute, SignatureAttribute, SourceDebugExtensionAttribute, SourceFileAttribute, StackMapTableAttribute, SyntheticAttribute, UnknownAttribute}
-import rip.hippo.hippocafe.attribute.impl.data.{BootstrapMethodsAttributeData, ClassesAttributeData, ExceptionTableAttributeData, LineNumberTableAttributeData, LocalVariableTableAttributeData, LocalVariableTypeTableAttributeData, MethodParametersAttributeData, annotation}
+import rip.hippo.hippocafe.attribute.impl.{AnnotationDefaultAttribute, BootstrapMethodsAttribute, CodeAttribute, ConstantValueAttribute, DeprecatedAttribute, EnclosingMethodAttribute, ExceptionsAttribute, InnerClassesAttribute, LineNumberTableAttribute, LocalVariableTableAttribute, LocalVariableTypeTableAttribute, MethodParametersAttribute, ModuleAttribute, ModuleMainClassAttribute, ModulePackagesAttribute, NestHostAttribute, NestMembersAttribute, RecordAttribute, RuntimeInvisibleAnnotationsAttribute, RuntimeInvisibleParameterAnnotationsAttribute, RuntimeInvisibleTypeAnnotationsAttribute, RuntimeVisibleAnnotationsAttribute, RuntimeVisibleParameterAnnotationsAttribute, RuntimeVisibleTypeAnnotationsAttribute, SignatureAttribute, SourceDebugExtensionAttribute, SourceFileAttribute, StackMapTableAttribute, SyntheticAttribute, UnknownAttribute}
+import rip.hippo.hippocafe.attribute.impl.data.{BootstrapMethodsAttributeData, ClassesAttributeData, ExceptionTableAttributeData, LineNumberTableAttributeData, LocalVariableTableAttributeData, LocalVariableTypeTableAttributeData, MethodParametersAttributeData, RecordComponentInfo, annotation}
 import rip.hippo.hippocafe.attribute.{Attribute, AttributeInfo}
 import rip.hippo.hippocafe.attribute.impl.data.annotation.path.{AnnotationTypePath, AnnotationTypePathKind, data}
 import rip.hippo.hippocafe.attribute.impl.data.annotation.path.data.AnnotationTypePathData
@@ -474,6 +474,18 @@ final class ClassReader(parentInputStream: InputStream, lowLevel: Boolean = fals
               val classes = new Array[Int](numberOfClasses)
               (0 until numberOfClasses).foreach(i => classes(i) = u2)
               NestMembersAttribute(classes)
+            case RECORD =>
+              val componentsCount = u2
+              val components = new Array[RecordComponentInfo](componentsCount)
+              (0 until componentsCount).foreach(i => {
+                val name = constantPool.readUTF8(u2)
+                val descriptor = constantPool.readUTF8(u2)
+                val attributesCount = u2
+                val attributes = new Array[AttributeInfo](attributesCount)
+                (0 until attributesCount).foreach(i => attributes(i) = readAttribute(bufferStream))
+                components(i) = RecordComponentInfo(name, descriptor, attributes)
+              })
+              RecordAttribute(components)
             case _ => UnknownAttribute(name, buffer)
           }
         case None => UnknownAttribute(name, buffer)
