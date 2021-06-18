@@ -35,7 +35,7 @@ import rip.hippo.hippocafe.attribute.impl.data.annotation.target.impl.data.Local
  * @version 1.0.0, 8/2/20
  * @since 1.0.0
  */
-final case class LocalVariableTarget(kind: AnnotationTargetInfoKind, tableLength: Int, table: Array[LocalVariableTargetData]) extends AnnotationTargetType {
+final case class LocalVariableTarget(kind: AnnotationTargetInfoKind, tableLength: Int, table: Seq[LocalVariableTargetData]) extends AnnotationTargetType {
   override def write(out: DataOutputStream): Unit = {
     out.writeShort(tableLength)
     table.foreach(local => {

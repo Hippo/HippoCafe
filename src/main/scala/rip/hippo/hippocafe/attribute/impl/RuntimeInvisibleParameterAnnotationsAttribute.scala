@@ -36,7 +36,7 @@ import rip.hippo.hippocafe.constantpool.ConstantPool
  * @version 1.0.0, 8/2/20
  * @since 1.0.0
  */
-final case class RuntimeInvisibleParameterAnnotationsAttribute(numberOfParameters: Int, parameterAnnotations: Array[ParameterAnnotationsData]) extends AttributeInfo {
+final case class RuntimeInvisibleParameterAnnotationsAttribute(numberOfParameters: Int, parameterAnnotations: Seq[ParameterAnnotationsData]) extends AttributeInfo {
 
   override val kind: Attribute = Attribute.RUNTIME_INVISIBLE_PARAMETER_ANNOTATIONS
 

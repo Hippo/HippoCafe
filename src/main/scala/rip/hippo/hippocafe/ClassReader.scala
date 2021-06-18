@@ -52,6 +52,8 @@ import rip.hippo.hippocafe.stackmap.verification.VerificationTypeInfo
 import rip.hippo.hippocafe.stackmap.verification.impl.{DoubleVerificationTypeInfo, FloatVerificationTypeInfo, IntegerVerificationTypeInfo, LongVerificationTypeInfo, NullVerificationTypeInfo, ObjectVerificationTypeInfo, TopVerificationTypeInfo, UninitializedThisVerificationTypeInfo, UninitializedVerificationTypeInfo}
 import rip.hippo.hippocafe.version.MajorClassFileVersion
 
+import scala.collection.mutable.ArrayBuffer
+
 
 /**
  * @author Hippo

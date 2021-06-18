@@ -36,7 +36,7 @@ import rip.hippo.hippocafe.constantpool.ConstantPool
  * @version 1.0.0, 8/2/20
  * @since 1.0.0
  */
-final case class LocalVariableTableAttribute(localVariableTableLength: Int, localVariableTable: Array[LocalVariableTableAttributeData]) extends AttributeInfo {
+final case class LocalVariableTableAttribute(localVariableTableLength: Int, localVariableTable: Seq[LocalVariableTableAttributeData]) extends AttributeInfo {
 
   override val kind: Attribute = Attribute.LOCAL_VARIABLE_TABLE
 

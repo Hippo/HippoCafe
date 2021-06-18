@@ -35,12 +35,12 @@ import rip.hippo.hippocafe.constantpool.ConstantPool
  * @version 1.0.0, 8/2/20
  * @since 1.0.0
  */
-final case class UnknownAttribute(name: String, data: Array[Byte]) extends AttributeInfo {
+final case class UnknownAttribute(name: String, data: Seq[Byte]) extends AttributeInfo {
 
   override val kind: Attribute = Attribute.unknown(name)
 
 
-  override def write(out: DataOutputStream, constantPool: ConstantPool): Unit = out.write(data)
+  override def write(out: DataOutputStream, constantPool: ConstantPool): Unit = out.write(data.toArray)
 
   override def buildConstantPool(constantPool: ConstantPool): Unit = {
 

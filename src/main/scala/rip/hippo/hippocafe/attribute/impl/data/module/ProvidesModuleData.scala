@@ -31,4 +31,4 @@ package rip.hippo.hippocafe.attribute.impl.data.module
  */
 final case class ProvidesModuleData(providesIndex: Int,
                                     providesWithCount: Int,
-                                    providesWithIndex: Array[Int])
+                                    providesWithIndex: Seq[Int])

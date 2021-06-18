@@ -33,7 +33,7 @@ import java.io.DataOutputStream
  * @version 1.0.0, 8/2/20
  * @since 1.0.0
  */
-final case class AnnotationTypePath(pathLength: Int, path: Array[AnnotationTypePathData]) {
+final case class AnnotationTypePath(pathLength: Int, path: Seq[AnnotationTypePathData]) {
   def write(out: DataOutputStream): Unit = {
     out.writeByte(pathLength)
     path.foreach(data => {

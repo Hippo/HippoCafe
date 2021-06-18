@@ -36,7 +36,7 @@ import rip.hippo.hippocafe.constantpool.{ConstantPool, ConstantPoolKind}
  * @version 1.0.0, 8/2/20
  * @since 1.0.0
  */
-final case class InnerClassesAttribute(numberOfClasses: Int, classes: Array[ClassesAttributeData]) extends AttributeInfo {
+final case class InnerClassesAttribute(numberOfClasses: Int, classes: Seq[ClassesAttributeData]) extends AttributeInfo {
 
   override val kind: Attribute = Attribute.INNER_CLASSES
 

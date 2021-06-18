@@ -36,7 +36,7 @@ import rip.hippo.hippocafe.constantpool.ConstantPool
  * @version 1.0.0, 8/2/20
  * @since 1.0.0
  */
-final case class LineNumberTableAttribute(lineNumberTableLength: Int, lineNumberTable: Array[LineNumberTableAttributeData]) extends AttributeInfo {
+final case class LineNumberTableAttribute(lineNumberTableLength: Int, lineNumberTable: Seq[LineNumberTableAttributeData]) extends AttributeInfo {
 
   override val kind: Attribute = Attribute.LINE_NUMBER_TABLE
 

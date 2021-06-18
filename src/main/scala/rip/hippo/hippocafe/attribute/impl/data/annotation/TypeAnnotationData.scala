@@ -39,7 +39,7 @@ final case class TypeAnnotationData(targetType: Int,
                                     typePath: AnnotationTypePath,
                                     typeIndex: Int,
                                     numberOfElementValuePairs: Int,
-                                    elementValuePairs: Array[ElementValuePairAnnotationData]) {
+                                    elementValuePairs: Seq[ElementValuePairAnnotationData]) {
 
   println(targetInfo)
 

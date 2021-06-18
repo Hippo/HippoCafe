@@ -37,7 +37,7 @@ import rip.hippo.hippocafe.stackmap.impl.{AppendStackMapFrame, FullStackMapFrame
  * @version 1.0.0, 8/2/20
  * @since 1.0.0
  */
-final case class StackMapTableAttribute(numberOfEntries: Int, entries: Array[StackMapFrame]) extends AttributeInfo {
+final case class StackMapTableAttribute(numberOfEntries: Int, entries: Seq[StackMapFrame]) extends AttributeInfo {
 
   override val kind: Attribute = Attribute.STACK_MAP_TABLE
 

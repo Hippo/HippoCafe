@@ -35,11 +35,11 @@ import rip.hippo.hippocafe.constantpool.ConstantPool
  * @version 1.0.0, 8/2/20
  * @since 1.0.0
  */
-final case class SourceDebugExtensionAttribute(debugExtension: Array[Byte]) extends AttributeInfo {
+final case class SourceDebugExtensionAttribute(debugExtension: Seq[Byte]) extends AttributeInfo {
 
   override val kind: Attribute = Attribute.SOURCE_DEBUG_EXTENSION
 
-  override def write(out: DataOutputStream, constantPool: ConstantPool): Unit = out.write(debugExtension)
+  override def write(out: DataOutputStream, constantPool: ConstantPool): Unit = out.write(debugExtension.toArray)
 
   override def buildConstantPool(constantPool: ConstantPool): Unit = {
 

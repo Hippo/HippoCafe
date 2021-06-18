@@ -36,7 +36,7 @@ import rip.hippo.hippocafe.constantpool.ConstantPool
  * @version 1.0.0, 8/2/20
  * @since 1.0.0
  */
-final case class RuntimeVisibleTypeAnnotationsAttribute(numberOfAnnotations: Int, annotations: Array[TypeAnnotationData]) extends AttributeInfo {
+final case class RuntimeVisibleTypeAnnotationsAttribute(numberOfAnnotations: Int, annotations: Seq[TypeAnnotationData]) extends AttributeInfo {
 
   override val kind: Attribute = Attribute.RUNTIME_VISIBLE_TYPE_ANNOTATIONS
 

@@ -41,15 +41,15 @@ final case class ModuleAttribute(moduleNameIndex: Int,
                                  moduleFlags: Int,
                                  moduleVersionIndex: Int,
                                  requiresCount: Int,
-                                 requires: Array[RequiresModuleData],
+                                 requires: Seq[RequiresModuleData],
                                  exportsCount: Int,
-                                 exports: Array[ExportsModuleData],
+                                 exports: Seq[ExportsModuleData],
                                  opensCount: Int,
-                                 opens: Array[OpensModuleData],
+                                 opens: Seq[OpensModuleData],
                                  usesCount: Int,
-                                 usesIndex: Array[Int],
+                                 usesIndex: Seq[Int],
                                  providesCount: Int,
-                                 provides: Array[ProvidesModuleData]) extends AttributeInfo {
+                                 provides: Seq[ProvidesModuleData]) extends AttributeInfo {
 
   override val kind: Attribute = Attribute.MODULE
 

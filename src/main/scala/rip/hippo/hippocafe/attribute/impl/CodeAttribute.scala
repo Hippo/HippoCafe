@@ -41,11 +41,11 @@ final case class CodeAttribute(oak: Boolean,
                           maxStack: Int,
                           maxLocals: Int,
                           codeLength: Int,
-                          code: Array[Byte],
+                          code: Seq[Byte],
                           exceptionTableLength: Int,
-                          exceptionTable: Array[ExceptionTableAttributeData],
+                          exceptionTable: Seq[ExceptionTableAttributeData],
                           attributesCount: Int,
-                          attributes: Array[AttributeInfo]) extends AttributeInfo {
+                          attributes: Seq[AttributeInfo]) extends AttributeInfo {
 
   override val kind: Attribute = Attribute.CODE
 
@@ -60,7 +60,7 @@ final case class CodeAttribute(oak: Boolean,
       out.writeShort(maxLocals)
       out.writeInt(codeLength)
     }
-    out.write(code)
+    out.write(code.toArray)
     out.writeShort(exceptionTableLength)
     exceptionTable.foreach(table => {
       out.writeShort(table.startPc)

@@ -40,7 +40,7 @@ import scala.util.{Failure, Using}
  */
 final class ReadAssembleWriteSuite extends FunSuite {
 
-  private val className = "LoadConstantClassTest"
+  private val className = "RecArray"
 
 
   test("assemble.readThenLoad") {
