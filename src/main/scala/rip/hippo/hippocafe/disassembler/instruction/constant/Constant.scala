@@ -2,9 +2,9 @@ package rip.hippo.hippocafe.disassembler.instruction.constant
 
 import rip.hippo.hippocafe.constantpool.ConstantPool
 import rip.hippo.hippocafe.constantpool.ConstantPoolKind.{CLASS, DOUBLE, DYNAMIC, FIELD_REF, FLOAT, INTEGER, INTERFACE_METHOD_REF, INVOKE_DYNAMIC, LONG, METHOD_HANDLE, METHOD_REF, METHOD_TYPE, MODULE, NAME_AND_TYPE, PACKAGE, STRING, UTF8}
-import rip.hippo.hippocafe.constantpool.info.impl.StringInfo
+import rip.hippo.hippocafe.constantpool.info.impl.{DynamicInfo, MethodHandleInfo, StringInfo}
 import rip.hippo.hippocafe.constantpool.info.{ConstantPoolInfo, ValueAwareness}
-import rip.hippo.hippocafe.disassembler.instruction.constant.impl.{ClassConstant, DoubleConstant, FloatConstant, IntegerConstant, LongConstant, StringConstant, UTF8Constant}
+import rip.hippo.hippocafe.disassembler.instruction.constant.impl.{ClassConstant, DoubleConstant, DynamicConstant, FloatConstant, IntegerConstant, InvokeDynamicConstant, LongConstant, MethodHandleConstant, MethodTypeConstant, ModuleConstant, PackageConstant, StringConstant, UTF8Constant}
 import rip.hippo.hippocafe.exception.HippoCafeException
 
 /**
@@ -41,6 +41,28 @@ object Constant {
         string.kind match {
           case CLASS => ClassConstant(string.value)
           case STRING => StringConstant(string.value)
+          case METHOD_TYPE => MethodTypeConstant(string.value)
+          case MODULE => ModuleConstant(string.value)
+          case PACKAGE => PackageConstant(string.value)
+          case x => throw new HippoCafeException(s"Invalid constant instruction $x")
+        }
+      case methodHandleInfo: MethodHandleInfo =>
+        val referenceInfo = methodHandleInfo.referenceInfo
+        MethodHandleConstant(methodHandleInfo.referenceKind, referenceInfo.classInfo.value, referenceInfo.nameAndTypeInfo.name, referenceInfo.nameAndTypeInfo.descriptor)
+
+      case dynamicInfo: DynamicInfo =>
+        val nameAndType = dynamicInfo.nameAndTypeInfo
+        val bsmData = dynamicInfo.bootstrapMethodsAttributeData
+        dynamicInfo.kind match {
+          case INVOKE_DYNAMIC => InvokeDynamicConstant(nameAndType.name,
+            nameAndType.descriptor,
+            Constant.fromInfo(bsmData.bootstrapMethodRef).asInstanceOf[MethodHandleConstant],
+            bsmData.bootstrapArguments)
+          case DYNAMIC => DynamicConstant(nameAndType.name,
+            nameAndType.descriptor,
+            Constant.fromInfo(bsmData.bootstrapMethodRef).asInstanceOf[MethodHandleConstant],
+            bsmData.bootstrapArguments)
+
           case x => throw new HippoCafeException(s"Invalid constant instruction $x")
         }
       case x => throw new HippoCafeException(s"Invalid constant instruction $x")

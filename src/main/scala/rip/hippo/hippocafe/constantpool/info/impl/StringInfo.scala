@@ -54,6 +54,9 @@ final case class StringInfo(index: Int, inputKind: ConstantPoolKind) extends Con
     value = constantPool.readUTF8(index)
   }
 
+  override def insertIfAbsent(constantPool: ConstantPool): Unit =
+    constantPool.insertStringIfAbsent(value, kind)
+
   override def toString: String =
     "StringInfo(" + (Option(value) match {
       case Some(value) => value

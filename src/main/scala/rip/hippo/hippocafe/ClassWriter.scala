@@ -27,14 +27,16 @@ package rip.hippo.hippocafe
 import rip.hippo.hippocafe.access.AccessFlag
 import rip.hippo.hippocafe.analaysis.MaxStackDepthCalculator
 import rip.hippo.hippocafe.analaysis.impl.StandardMaxStackDepthCalculator
-import rip.hippo.hippocafe.attribute.impl.CodeAttribute
+import rip.hippo.hippocafe.attribute.impl.data.BootstrapMethodsAttributeData
+import rip.hippo.hippocafe.attribute.impl.{BootstrapMethodsAttribute, CodeAttribute}
 import rip.hippo.hippocafe.attribute.{Attribute, AttributeInfo}
 import rip.hippo.hippocafe.constantpool.info.impl._
 import rip.hippo.hippocafe.constantpool.info.{ConstantPoolInfo, impl}
 import rip.hippo.hippocafe.constantpool.{ConstantPool, ConstantPoolKind}
 import rip.hippo.hippocafe.disassembler.context.{AssemblerContext, AssemblerFlag}
+import rip.hippo.hippocafe.disassembler.instruction.BytecodeOpcode
 import rip.hippo.hippocafe.disassembler.instruction.constant.impl._
-import rip.hippo.hippocafe.disassembler.instruction.impl.{ConstantInstruction, ReferenceInstruction}
+import rip.hippo.hippocafe.disassembler.instruction.impl.{ConstantInstruction, InvokeDynamicInstruction, ReferenceInstruction}
 import rip.hippo.hippocafe.util.Type
 import rip.hippo.hippocafe.writer.impl.{StandardAttributeWriter, StandardClassAttributesWriter, StandardClassHeaderWriter, StandardClassMetaWriter, StandardConstantPoolWriter, StandardFieldWriter, StandardInterfaceWriter, StandardMethodWriter}
 import rip.hippo.hippocafe.writer.{AttributeWriter, ClassAttributedMetaWriter, ClassHeaderWriter, ClassMetaWriter, ConstantPoolWriter}
@@ -75,7 +77,18 @@ final class ClassWriter(classFile: ClassFile,
       case None => generateConstantPool
     }
 
+    def hasDynamic(methodInfo: MethodInfo): Boolean =
+      methodInfo.instructions.exists {
+        case InvokeDynamicInstruction(invokeDynamicConstant) => true
+        case ConstantInstruction(constant) => constant.isInstanceOf[DynamicConstant]
+        case _ => false
+      }
+
     var hasCodeAttribute = constantPool.info.filter(_._2.isInstanceOf[UTF8Info]).exists(_._2.asInstanceOf[UTF8Info].value.equals("Code"))
+    val needsBsm = classFile.methods.exists(method => hasDynamic(method))
+    val bootstrapMethods = ListBuffer[BootstrapMethodsAttributeData]()
+
+
     classFile.methods.foreach(method => {
       if (method.instructions.nonEmpty) {
         if (!hasCodeAttribute) {
@@ -95,6 +108,7 @@ final class ClassWriter(classFile: ClassFile,
           assemblerContext.setMaxLocals(method.maxLocals)
           assemblerContext.setMaxStack(method.maxStack)
         }
+
 
         method.instructions.foreach(_.assemble(assemblerContext, constantPool))
         assemblerContext.processBranchOffsets()
@@ -133,6 +147,28 @@ final class ClassWriter(classFile: ClassFile,
       }
     })
 
+    if (needsBsm) {
+      constantPool.insertUTF8IfAbsent("BootstrapMethods")
+      var index = 0
+      constantPool.info.values.foreach {
+        case dynamicInfo: DynamicInfo =>
+          dynamicInfo.bsmAttributeIndex = index
+          bootstrapMethods += dynamicInfo.bootstrapMethodsAttributeData
+          index += 1
+        case _ =>
+      }
+
+      classFile.attributes.find(_.kind == Attribute.BOOTSTRAP_METHODS) match {
+        case Some(value) => classFile.attributes -= value
+        case None =>
+      }
+      val attribute = BootstrapMethodsAttribute(bootstrapMethods.toSeq)
+      attribute.buildConstantPool(constantPool)
+      classFile.attributes += attribute
+    }
+
+    // ensure that cp info dependencies are added
+    constantPool.info.values.foreach(info => info.insertIfAbsent(constantPool))
 
 
     constantPoolWriter.write(constantPool, out)
@@ -188,9 +224,9 @@ final class ClassWriter(classFile: ClassFile,
           add(new ReferenceInfo(
             new StringInfo(instruction.owner, ConstantPoolKind.CLASS),
             new NameAndTypeInfo(instruction.name, instruction.descriptor),
-            if (instruction.isMethod) ConstantPoolKind.METHOD_REF else ConstantPoolKind.FIELD_REF))
+            if (instruction.isField) ConstantPoolKind.FIELD_REF else if (instruction.bytecodeOpcode == BytecodeOpcode.INVOKEINTERFACE) ConstantPoolKind.INTERFACE_METHOD_REF else ConstantPoolKind.METHOD_REF))
         case instruction: ConstantInstruction =>
-          instruction.constant match { // TODO: finish
+          instruction.constant match {
             case StringConstant(value) =>
               add(UTF8Info(value))
               add(new StringInfo(value, ConstantPoolKind.STRING))
@@ -205,6 +241,7 @@ final class ClassWriter(classFile: ClassFile,
               add(DoubleInfo(value))
             case LongConstant(value) =>
               add(LongInfo(value))
+            case _ =>
           }
         case _ =>
       }

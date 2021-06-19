@@ -48,7 +48,6 @@ final case class ReferenceInfo(classIndex: Int, nameAndTypeIndex: Int, inputKind
   var nameAndTypeInfo: NameAndTypeInfo = _
 
   override def write(out: DataOutputStream, constantPool: ConstantPool): Unit = {
-
     // recompute class index
     val classIndex = constantPool.info.filter {
       case (_, info) => info.equals(classInfo)
@@ -70,6 +69,13 @@ final case class ReferenceInfo(classIndex: Int, nameAndTypeIndex: Int, inputKind
     nameAndTypeInfo = constantPool.info(nameAndTypeIndex).asInstanceOf[NameAndTypeInfo]
   }
 
+
+  override def insertIfAbsent(constantPool: ConstantPool): Unit = {
+    classInfo.insertIfAbsent(constantPool)
+    nameAndTypeInfo.insertIfAbsent(constantPool)
+    constantPool.insertIfAbsent(this)
+  }
+
   override def toString: String =
     "ReferenceInfo(" + (Option(classInfo) match {
       case Some(value) => value
@@ -77,7 +83,7 @@ final case class ReferenceInfo(classIndex: Int, nameAndTypeIndex: Int, inputKind
     }) + ", " + (Option(nameAndTypeInfo) match {
       case Some(value) => value
       case None => nameAndTypeIndex
-    }) + "), " + inputKind
+    }) + ", " + inputKind + ")"
 
   override def equals(obj: Any): Boolean =
     obj match {

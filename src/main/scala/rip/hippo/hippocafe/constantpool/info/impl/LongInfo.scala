@@ -43,4 +43,18 @@ final case class LongInfo(value: Long) extends ConstantPoolInfo with ValueAwaren
   override def write(out: DataOutputStream, constantPool: ConstantPool): Unit = out.writeLong(value)
 
   override def readCallback(constantPool: ConstantPool): Unit = {}
+
+  override def insertIfAbsent(constantPool: ConstantPool): Unit = {
+    var index = -1
+    constantPool.info
+      .filter(_._2.isInstanceOf[LongInfo])
+      .filter(_._2.asInstanceOf[LongInfo].value == value)
+      .keys
+      .foreach(index = _)
+    if (index == -1) {
+      val max = constantPool.info.keys.max
+      index = max + (if (constantPool.info(max).wide) 2 else 1)
+      constantPool.insert(index, this)
+    }
+  }
 }

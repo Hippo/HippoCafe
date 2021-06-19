@@ -47,7 +47,7 @@ final case class ConstantInstruction(var constant: Constant[_]) extends Instruct
       assemblerContext.labelQueue.foreach(label => assemblerContext.labelToByte += (label -> uniqueByte))
       assemblerContext.labelQueue.clear()
 
-      assemblerContext.code += uniqueByte
+      code += uniqueByte
       code += UniqueByte(((index >>> 8) & 0xFF).toByte)
       code += UniqueByte((index & 0xFF).toByte)
     }
@@ -63,7 +63,7 @@ final case class ConstantInstruction(var constant: Constant[_]) extends Instruct
           assemblerContext.labelQueue.foreach(label => assemblerContext.labelToByte += (label -> uniqueByte))
           assemblerContext.labelQueue.clear()
 
-          assemblerContext.code += uniqueByte
+          code += uniqueByte
           code += UniqueByte(((index >>> 8) & 0xFF).toByte)
           code += UniqueByte((index & 0xFF).toByte)
         } else {
@@ -71,7 +71,7 @@ final case class ConstantInstruction(var constant: Constant[_]) extends Instruct
           assemblerContext.labelQueue.foreach(label => assemblerContext.labelToByte += (label -> uniqueByte))
           assemblerContext.labelQueue.clear()
 
-          assemblerContext.code += uniqueByte
+          code += uniqueByte
           code += UniqueByte(index.toByte)
         }
     }

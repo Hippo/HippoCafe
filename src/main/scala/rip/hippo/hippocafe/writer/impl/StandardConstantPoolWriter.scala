@@ -15,6 +15,7 @@ final case class StandardConstantPoolWriter() extends ConstantPoolWriter {
     out.writeShort(constantPool.info.keys.max + 1)
     constantPool.info.foreach(entry => {
       out.writeByte(entry._2.kind.id)
+      entry._2.insertIfAbsent(constantPool)
       entry._2.write(out, constantPool)
     })
   }

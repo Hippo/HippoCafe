@@ -99,7 +99,7 @@ final case class ReferenceInstruction(var bytecodeOpcode: BytecodeOpcode, var ow
     code += UniqueByte((refIndex & 0xFF).toByte)
 
     if (bytecodeOpcode == INVOKEINTERFACE) {
-      code += UniqueByte(Type.getMethodParameterTypes(descriptor).map(_.getSize).sum.toByte)
+      code += UniqueByte((Type.getMethodParameterTypes(descriptor).map(_.getSize).sum + 1).toByte)
       code += UniqueByte(0)
     }
   }

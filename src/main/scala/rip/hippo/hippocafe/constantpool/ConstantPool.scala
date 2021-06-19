@@ -91,6 +91,25 @@ final class ConstantPool {
     }
   }
 
+  def insertIfAbsent(constantPoolInfo: ConstantPoolInfo): Unit = {
+    var index = -1
+    info
+      .filter(_._2.equals(constantPoolInfo))
+      .keys
+      .foreach(index = _)
+    if (index == -1) {
+      val max = info.keys.max
+      index = max + (if (info(max).wide) 2 else 1)
+      insert(index, constantPoolInfo)
+    }
+  }
+
+  def findInfo(constantPoolInfo: ConstantPoolInfo): Int =
+    info
+      .filter(_._2.equals(constantPoolInfo))
+      .keys
+      .head
+
   def findString(value: String, constantPoolKind: ConstantPoolKind): Int =
    info
     .filter(_._2.isInstanceOf[StringInfo])

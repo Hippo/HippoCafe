@@ -43,4 +43,6 @@ final case class UTF8Info(value: String) extends ConstantPoolInfo with ValueAwar
 
   override def readCallback(constantPool: ConstantPool): Unit = {}
 
+  override def insertIfAbsent(constantPool: ConstantPool): Unit =
+    constantPool.insertUTF8IfAbsent(value)
 }

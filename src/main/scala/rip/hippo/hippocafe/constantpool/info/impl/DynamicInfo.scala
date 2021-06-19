@@ -24,6 +24,8 @@
 
 package rip.hippo.hippocafe.constantpool.info.impl
 
+import rip.hippo.hippocafe.attribute.impl.data.BootstrapMethodsAttributeData
+
 import java.io.DataOutputStream
 import rip.hippo.hippocafe.constantpool.ConstantPool
 import rip.hippo.hippocafe.constantpool.ConstantPool
@@ -38,9 +40,17 @@ import rip.hippo.hippocafe.constantpool.info.ConstantPoolInfo
 final case class DynamicInfo(inputKind: ConstantPoolKind, var bsmAttributeIndex: Int, nameAndTypeIndex: Int) extends ConstantPoolInfo {
   override val kind: ConstantPoolKind = inputKind
 
+  def this (inputKind: ConstantPoolKind, bootstrapMethodsAttributeData: BootstrapMethodsAttributeData, nameAndTypeInfo: NameAndTypeInfo) {
+    this(inputKind, -1, -1)
+    this.bootstrapMethodsAttributeData = bootstrapMethodsAttributeData
+    this.nameAndTypeInfo = nameAndTypeInfo
+  }
+
+  var bootstrapMethodsAttributeData: BootstrapMethodsAttributeData = _
   var nameAndTypeInfo: NameAndTypeInfo = _
 
   override def write(out: DataOutputStream, constantPool: ConstantPool): Unit = {
+
     // todo: find out a way to recompute the index to point to the bootstrap_methods array effectively
     out.writeShort(bsmAttributeIndex)
 
@@ -55,5 +65,24 @@ final case class DynamicInfo(inputKind: ConstantPoolKind, var bsmAttributeIndex:
 
   override def readCallback(constantPool: ConstantPool): Unit = {
     nameAndTypeInfo = constantPool.info(nameAndTypeIndex).asInstanceOf[NameAndTypeInfo]
+  }
+
+  override def insertIfAbsent(constantPool: ConstantPool): Unit = {
+    nameAndTypeInfo.insertIfAbsent(constantPool)
+    bootstrapMethodsAttributeData.bootstrapMethodRef.insertIfAbsent(constantPool)
+    bootstrapMethodsAttributeData.bootstrapArguments.foreach(_.insertIfAbsent(constantPool))
+    constantPool.insertIfAbsent(this)
+  }
+
+  override def toString: String = {
+    "DynamicInfo(" + inputKind + ", " +
+      (Option(bootstrapMethodsAttributeData) match {
+      case Some(value) => value
+      case None => bsmAttributeIndex
+    }) + ", " +
+      (Option(nameAndTypeInfo) match {
+        case Some(value) => value
+        case None => nameAndTypeIndex
+      }) + ")"
   }
 }

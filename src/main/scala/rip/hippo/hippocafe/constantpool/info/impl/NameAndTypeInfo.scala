@@ -57,6 +57,12 @@ final case class NameAndTypeInfo(nameIndex: Int, descriptorIndex: Int) extends C
     descriptor = constantPool.readUTF8(descriptorIndex)
   }
 
+  override def insertIfAbsent(constantPool: ConstantPool): Unit = {
+    constantPool.insertUTF8IfAbsent(name)
+    constantPool.insertUTF8IfAbsent(descriptor)
+    constantPool.insertIfAbsent(this)
+  }
+
   override def toString: String =
     "NameAndTypeInfo(" + (Option(name) match {
       case Some(value) => value

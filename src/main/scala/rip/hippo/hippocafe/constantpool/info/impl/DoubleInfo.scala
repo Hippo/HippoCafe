@@ -43,4 +43,18 @@ final case class DoubleInfo(value: Double) extends ConstantPoolInfo with ValueAw
   override def write(out: DataOutputStream, constantPool: ConstantPool): Unit = out.writeDouble(value)
 
   override def readCallback(constantPool: ConstantPool): Unit = {}
+
+  override def insertIfAbsent(constantPool: ConstantPool): Unit = {
+    var index = -1
+    constantPool.info
+      .filter(_._2.isInstanceOf[DoubleInfo])
+      .filter(_._2.asInstanceOf[DoubleInfo].value == value)
+      .keys
+      .foreach(index = _)
+    if (index == -1) {
+      val max = constantPool.info.keys.max
+      index = max + (if (constantPool.info(max).wide) 2 else 1)
+      constantPool.insert(index, this)
+    }
+  }
 }

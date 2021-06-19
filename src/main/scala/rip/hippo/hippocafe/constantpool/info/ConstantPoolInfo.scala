@@ -41,4 +41,6 @@ trait ConstantPoolInfo {
   def write(out: DataOutputStream, constantPool: ConstantPool): Unit
 
   def readCallback(constantPool: ConstantPool): Unit
+
+  def insertIfAbsent(constantPool: ConstantPool): Unit
 }

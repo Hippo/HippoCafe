@@ -48,10 +48,10 @@ final case class MethodHandleInfo(referenceKind: ReferenceKind, referenceIndex: 
   var referenceInfo: ReferenceInfo = _
 
   override def write(out: DataOutputStream, constantPool: ConstantPool): Unit = {
-
     // recompute reference index
     val referenceIndex = constantPool.info.filter {
-      case (_, info) => info.equals(referenceInfo)
+      case (i, info: ReferenceInfo) =>
+        info.equals(referenceInfo)
       case _ => false
     }.keys.head
 
@@ -63,6 +63,11 @@ final case class MethodHandleInfo(referenceKind: ReferenceKind, referenceIndex: 
     referenceInfo = constantPool.info(referenceIndex).asInstanceOf[ReferenceInfo]
   }
 
+  override def insertIfAbsent(constantPool: ConstantPool): Unit = {
+    referenceInfo.insertIfAbsent(constantPool)
+    constantPool.insertIfAbsent(this)
+  }
+
   override def toString: String =
     "MethodHandleInfo(" + referenceKind + ", " + (Option(referenceInfo) match {
       case Some(value) => value
@@ -72,5 +77,6 @@ final case class MethodHandleInfo(referenceKind: ReferenceKind, referenceIndex: 
   override def equals(obj: Any): Boolean =
     obj match {
       case info: MethodHandleInfo => info.referenceInfo.equals(referenceInfo)
+      case _ => false
     }
 }

@@ -24,8 +24,6 @@
 
 package rip.hippo.hippocafe
 
-import rip.hippo.hippocafe.access.AccessFlag
-
 import java.io.{ByteArrayInputStream, DataInputStream, InputStream}
 import rip.hippo.hippocafe.constantpool.ConstantPoolKind._
 import rip.hippo.hippocafe.attribute.impl.{AnnotationDefaultAttribute, BootstrapMethodsAttribute, CodeAttribute, ConstantValueAttribute, DeprecatedAttribute, EnclosingMethodAttribute, ExceptionsAttribute, InnerClassesAttribute, LineNumberTableAttribute, LocalVariableTableAttribute, LocalVariableTypeTableAttribute, MethodParametersAttribute, ModuleAttribute, ModuleMainClassAttribute, ModulePackagesAttribute, NestHostAttribute, NestMembersAttribute, RecordAttribute, RuntimeInvisibleAnnotationsAttribute, RuntimeInvisibleParameterAnnotationsAttribute, RuntimeInvisibleTypeAnnotationsAttribute, RuntimeVisibleAnnotationsAttribute, RuntimeVisibleParameterAnnotationsAttribute, RuntimeVisibleTypeAnnotationsAttribute, SignatureAttribute, SourceDebugExtensionAttribute, SourceFileAttribute, StackMapTableAttribute, SyntheticAttribute, UnknownAttribute}
@@ -52,7 +50,7 @@ import rip.hippo.hippocafe.stackmap.verification.VerificationTypeInfo
 import rip.hippo.hippocafe.stackmap.verification.impl.{DoubleVerificationTypeInfo, FloatVerificationTypeInfo, IntegerVerificationTypeInfo, LongVerificationTypeInfo, NullVerificationTypeInfo, ObjectVerificationTypeInfo, TopVerificationTypeInfo, UninitializedThisVerificationTypeInfo, UninitializedVerificationTypeInfo}
 import rip.hippo.hippocafe.version.MajorClassFileVersion
 
-import scala.collection.mutable.ArrayBuffer
+import scala.collection.mutable.{ArrayBuffer, ListBuffer}
 
 
 /**
@@ -405,13 +403,21 @@ final class ClassReader(parentInputStream: InputStream, lowLevel: Boolean = fals
               val numberOfBootstrapMethods = u2
               val bootstrapMethods = new Array[BootstrapMethodsAttributeData](numberOfBootstrapMethods)
               (0 until numberOfBootstrapMethods).foreach(i => {
-                val bootstrapMethodRef = u2
+                val bootstrapMethodRef = constantPool.info(u2).asInstanceOf[MethodHandleInfo]
                 val numberOfBootstrapArguments = u2
-                val bootstrapArguments = new Array[Int](numberOfBootstrapArguments)
-                (0 until numberOfBootstrapArguments).foreach(i => bootstrapArguments(i) = u2)
+                val bootstrapArguments = ListBuffer[Constant[_]]()
+                (0 until numberOfBootstrapArguments).foreach(i => bootstrapArguments += Constant.fromInfo(constantPool.info(u2)))
                 bootstrapMethods(i) = BootstrapMethodsAttributeData(bootstrapMethodRef, bootstrapArguments)
               })
-              BootstrapMethodsAttribute(bootstrapMethods)
+              val bsmAttribute = BootstrapMethodsAttribute(bootstrapMethods)
+
+              constantPool.info.values.foreach {
+                case dynamicInfo: DynamicInfo =>
+                  dynamicInfo.bootstrapMethodsAttributeData = bootstrapMethods(dynamicInfo.bsmAttributeIndex)
+                case _ =>
+              }
+
+              bsmAttribute
             case METHOD_PARAMETERS =>
               val parametersCount = u1
               val parameters = new Array[MethodParametersAttributeData](parametersCount)
@@ -493,7 +499,15 @@ final class ClassReader(parentInputStream: InputStream, lowLevel: Boolean = fals
     } finally if (parentStream != null && parentStream != inputStream) parentStream.close()
   }
 
-  if (!lowLevel) classFile.methods.foreach(methodInfo => CodeDisassembler.disassemble(methodInfo, constantPool))
+  if (!lowLevel) {
+    val bootstrapMethodsAttribute = classFile.attributes.find(_.isInstanceOf[BootstrapMethodsAttribute]) match {
+      case Some(value) =>
+        classFile.attributes -= value
+        Option(value.asInstanceOf[BootstrapMethodsAttribute])
+      case None => Option.empty[BootstrapMethodsAttribute]
+    }
+    classFile.methods.foreach(methodInfo => CodeDisassembler.disassemble(methodInfo, constantPool, bootstrapMethodsAttribute))
+  }
 
   override def close(): Unit = inputStream.close()
 }

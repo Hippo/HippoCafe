@@ -24,14 +24,13 @@
 
 package rip.hippo.hippocafe.disassembler.instruction
 
-import rip.hippo.hippocafe.constantpool.info.impl.ReferenceInfo
-import rip.hippo.hippocafe.disassembler.instruction.impl.{ANewArrayInstruction, AppendFrameInstruction, BranchInstruction, ChopFrameInstruction, ConstantInstruction, FullFrameInstruction, IncrementInstruction, LabelInstruction, LineNumberInstruction, LookupSwitchInstruction, MultiANewArrayInstruction, NewArrayInstruction, PushInstruction, ReferenceInstruction, SameFrameInstruction, SameLocalsFrameInstruction, SimpleInstruction, TableSwitchInstruction, TypeInstruction, VariableInstruction}
+import rip.hippo.hippocafe.constantpool.info.impl.{DynamicInfo, ReferenceInfo, StringInfo}
+import rip.hippo.hippocafe.disassembler.instruction.impl.{ANewArrayInstruction, AppendFrameInstruction, BranchInstruction, ChopFrameInstruction, ConstantInstruction, FullFrameInstruction, IncrementInstruction, InvokeDynamicInstruction, LabelInstruction, LineNumberInstruction, LookupSwitchInstruction, MultiANewArrayInstruction, NewArrayInstruction, PushInstruction, ReferenceInstruction, SameFrameInstruction, SameLocalsFrameInstruction, SimpleInstruction, TableSwitchInstruction, TypeInstruction, VariableInstruction}
 import rip.hippo.hippocafe.{LocalVariableInfo, MethodInfo}
 import rip.hippo.hippocafe.attribute.Attribute
-import rip.hippo.hippocafe.attribute.impl.{CodeAttribute, LineNumberTableAttribute, LocalVariableTableAttribute, LocalVariableTypeTableAttribute, StackMapTableAttribute}
+import rip.hippo.hippocafe.attribute.impl.{BootstrapMethodsAttribute, CodeAttribute, LineNumberTableAttribute, LocalVariableTableAttribute, LocalVariableTypeTableAttribute, StackMapTableAttribute}
 import rip.hippo.hippocafe.constantpool.ConstantPool
 import rip.hippo.hippocafe.constantpool.info.ValueAwareness
-import rip.hippo.hippocafe.constantpool.info.impl.{ReferenceInfo, StringInfo}
 import rip.hippo.hippocafe.disassembler.instruction.array.ArrayType
 import rip.hippo.hippocafe.disassembler.instruction.constant.Constant
 import rip.hippo.hippocafe.disassembler.instruction.constant.impl._
@@ -53,7 +52,7 @@ object CodeDisassembler {
 
   sealed case class LocalLookup(name: String, startPc: Int, length: Int, index: Int)
 
-  def disassemble(methodInfo: MethodInfo, constantPool: ConstantPool): Unit = {
+  def disassemble(methodInfo: MethodInfo, constantPool: ConstantPool, bootstrapMethods: Option[BootstrapMethodsAttribute]): Unit = {
     methodInfo.attributes.find(_.kind == Attribute.CODE) match {
       case Some(codeAttribute: CodeAttribute) =>
         val instructions = mutable.SortedMap[Int, Instruction]()
@@ -65,7 +64,7 @@ object CodeDisassembler {
         val labels = mutable.SortedMap[Int, ListBuffer[Instruction]]()
         var labelDebugId = 0
         val localLookupMap = mutable.Map[LocalLookup, LocalVariableInfo]()
-        
+
         def addLabel(offset: Int, instruction: Instruction): Unit = {
           if (!labels.contains(offset)) {
             labels += (offset -> ListBuffer[Instruction]())
@@ -76,7 +75,7 @@ object CodeDisassembler {
         codeAttribute.attributes.foreach {
           case lineNumberTableAttribute: LineNumberTableAttribute =>
             lineNumberTableAttribute.lineNumberTable.foreach(data => addLabel(data.startPc, LineNumberInstruction(data.lineNumber)))
-          case LocalVariableTableAttribute(_, table) =>
+          case LocalVariableTableAttribute(table) =>
             table.foreach(data => {
               val lookup = LocalLookup(data.name, data.startPc, data.length, data.index)
               localLookupMap.get(lookup) match {
@@ -91,7 +90,7 @@ object CodeDisassembler {
                   localLookupMap += (lookup -> info)
               }
             })
-          case LocalVariableTypeTableAttribute(_, table) =>
+          case LocalVariableTypeTableAttribute(table) =>
             table.foreach(data => {
               val lookup = LocalLookup(data.name, data.startPc, data.length, data.index)
               localLookupMap.get(lookup) match {
@@ -330,7 +329,19 @@ object CodeDisassembler {
                     case reference: ReferenceInfo => instructions += (instructionOffset -> ReferenceInstruction(opcode, reference.classInfo.value, reference.nameAndTypeInfo.name, reference.nameAndTypeInfo.descriptor))
                     case _ => throw new HippoCafeException(s"Invalid reference instruction at $offset")
                   }
-                  if (opcode == INVOKEINTERFACE) offset += 2
+                  if (opcode == INVOKEINTERFACE) u2
+
+                case INVOKEDYNAMIC =>
+                  val bsms = bootstrapMethods match {
+                    case Some(value) => value
+                    case None => throw new HippoCafeException("Found invoke dynamic instruction, but class has no BootstrapMethods Attribute.")
+                  }
+                  constantPool.info(u2) match {
+                    case dynamicInfo: DynamicInfo =>
+                      instructions += (instructionOffset -> InvokeDynamicInstruction(Constant.fromInfo(dynamicInfo).asInstanceOf[InvokeDynamicConstant]))
+                    case _ => throw new HippoCafeException(s"Invalid invoke dynamic instruction at $offset")
+                  }
+                  u2
 
                 case ALOAD |
                      ASTORE |

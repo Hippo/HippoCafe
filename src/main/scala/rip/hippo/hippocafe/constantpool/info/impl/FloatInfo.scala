@@ -43,4 +43,17 @@ final case class FloatInfo(value: Float) extends ConstantPoolInfo with ValueAwar
 
   override def readCallback(constantPool: ConstantPool): Unit = {}
 
+  override def insertIfAbsent(constantPool: ConstantPool): Unit = {
+    var index = -1
+    constantPool.info
+      .filter(_._2.isInstanceOf[FloatInfo])
+      .filter(_._2.asInstanceOf[FloatInfo].value == value)
+      .keys
+      .foreach(index = _)
+    if (index == -1) {
+      val max = constantPool.info.keys.max
+      index = max + (if (constantPool.info(max).wide) 2 else 1)
+      constantPool.insert(index, this)
+    }
+  }
 }

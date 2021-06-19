@@ -44,13 +44,14 @@ final case class BootstrapMethodsAttribute(bootstrapMethods: Seq[BootstrapMethod
   override def write(out: DataOutputStream, constantPool: ConstantPool): Unit = {
     out.writeShort(bootstrapMethods.size)
     bootstrapMethods.foreach(data => {
-      out.writeShort(data.bootstrapMethodRef)
+      out.writeShort(constantPool.findInfo(data.bootstrapMethodRef))
       out.writeShort(data.bootstrapArguments.size)
-      data.bootstrapArguments.foreach(arg => out.writeShort(arg))
+
+      data.bootstrapArguments.foreach(arg => out.writeShort(arg.getConstantPoolIndex(constantPool)))
     })
   }
 
   override def buildConstantPool(constantPool: ConstantPool): Unit = {
-
+    bootstrapMethods.foreach(_.buildConstantPool(constantPool))
   }
 }

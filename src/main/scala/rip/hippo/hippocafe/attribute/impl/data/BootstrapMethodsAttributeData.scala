@@ -24,10 +24,23 @@
 
 package rip.hippo.hippocafe.attribute.impl.data
 
+import rip.hippo.hippocafe.constantpool.ConstantPool
+import rip.hippo.hippocafe.constantpool.info.impl.{MethodHandleInfo, UTF8Info}
+import rip.hippo.hippocafe.disassembler.instruction.constant.Constant
+
+import scala.collection.mutable.ListBuffer
+
 /**
  * @author Hippo
  * @version 1.0.0, 8/2/20
  * @since 1.0.0
  */
-final case class BootstrapMethodsAttributeData(bootstrapMethodRef: Int,
-                                               bootstrapArguments: Seq[Int])
+final case class BootstrapMethodsAttributeData(bootstrapMethodRef: MethodHandleInfo,
+                                               bootstrapArguments: ListBuffer[Constant[_]]) {
+
+
+  def buildConstantPool(constantPool: ConstantPool): Unit = {
+    bootstrapMethodRef.insertIfAbsent(constantPool)
+    bootstrapArguments.foreach(_.insertIfAbsent(constantPool))
+  }
+}
