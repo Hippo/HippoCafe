@@ -1,8 +1,8 @@
 name := "HippoCafe"
 
-version := "1.5.0"
+version := "1.5.1"
 
-scalaVersion := "2.13.3"
+scalaVersion := "2.13.6"
 
 resolvers += "jitpack" at "https://jitpack.io"
 
