@@ -35,7 +35,7 @@ object AccessFlag extends Enumeration {
 
   private val lookup = mutable.Map[Int,AccessFlag]()
 
-  implicit protected class MaskVal(val mask: Int) extends super.Val {
+  protected implicit class MaskVal(val mask: Int) extends super.Val {
     lookup += (mask -> this)
   }
 

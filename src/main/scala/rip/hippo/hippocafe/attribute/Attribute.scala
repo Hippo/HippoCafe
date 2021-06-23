@@ -24,7 +24,7 @@
 
 package rip.hippo.hippocafe.attribute
 
-import rip.hippo.hippocafe.attribute
+import scala.language.implicitConversions
 
 /**
  * @author Hippo

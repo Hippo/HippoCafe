@@ -24,6 +24,8 @@
 
 package rip.hippo.hippocafe.disassembler.instruction
 
+import scala.language.implicitConversions
+
 /**
  * @author Hippo
  * @version 1.0.0, 8/4/20
@@ -31,7 +33,7 @@ package rip.hippo.hippocafe.disassembler.instruction
  */
 object BytecodeOpcode extends Enumeration {
 
-  implicit private def toValue(opcode: Int): Value = Value(opcode)
+  private implicit def toValue(opcode: Int): Value = Value(opcode)
 
   type BytecodeOpcode = Value
 

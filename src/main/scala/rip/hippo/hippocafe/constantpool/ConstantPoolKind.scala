@@ -24,6 +24,8 @@
 
 package rip.hippo.hippocafe.constantpool
 
+import scala.language.implicitConversions
+
 /**
  * @author Hippo
  * @version 1.0.0, 8/1/20

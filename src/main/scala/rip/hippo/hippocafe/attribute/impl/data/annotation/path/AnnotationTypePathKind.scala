@@ -24,6 +24,8 @@
 
 package rip.hippo.hippocafe.attribute.impl.data.annotation.path
 
+import scala.language.implicitConversions
+
 /**
  * @author Hippo
  * @version 1.0.0, 8/2/20

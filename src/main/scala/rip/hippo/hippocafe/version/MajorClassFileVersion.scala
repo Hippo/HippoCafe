@@ -24,13 +24,16 @@
 
 package rip.hippo.hippocafe.version
 
+import scala.language.implicitConversions
+
+
 /**
  * @author Hippo
  * @version 1.0.0, 8/1/20
  * @since 1.0.0
  */
 object MajorClassFileVersion extends Enumeration {
-  implicit private def toValue(version: Int): Value = Value(version)
+  private implicit def toValue(version: Int): Value = Value(version)
 
   type MajorClassFileVersion = Value
   

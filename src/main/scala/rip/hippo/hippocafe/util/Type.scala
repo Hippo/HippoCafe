@@ -3,6 +3,7 @@ package rip.hippo.hippocafe.util
 import Type.{DOUBLE, LONG, VOID}
 
 import scala.collection.mutable.ListBuffer
+import scala.language.implicitConversions
 
 /**
  * @author Hippo
