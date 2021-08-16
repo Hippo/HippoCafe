@@ -17,23 +17,15 @@ import scala.collection.mutable.ListBuffer
 final case class InvokeDynamicConstant(name: String,
                                        descriptor: String,
                                        bootstrapMethod: MethodHandleConstant,
-                                       bootstrapArguments: ListBuffer[Constant[_]]) extends Constant[Int] {
+                                       bootstrapArguments: ListBuffer[Constant[?]]) extends Constant[Int] {
 
   override val value: Int = -1
 
-  override val constantPoolInfoAssociate: Class[_ <: ConstantPoolInfo] = classOf[MethodHandleInfo]
+  override val constantPoolInfoAssociate: Class[? <: ConstantPoolInfo] = classOf[MethodHandleInfo]
 
   override def insertIfAbsent(constantPool: ConstantPool): Unit = {
     val info = makeInfo
     val ref = info.bootstrapMethodsAttributeData.bootstrapMethodRef
-
-    /*ref.insertIfAbsent(constantPool)
-    constantPool.insertIfAbsent(info.nameAndTypeInfo)
-    constantPool.insertIfAbsent(ref)
-    constantPool.insertIfAbsent(ref.referenceInfo)
-    constantPool.insertIfAbsent(ref.referenceInfo.classInfo)
-    constantPool.insertIfAbsent(ref.referenceInfo.nameAndTypeInfo)
-    info.bootstrapMethodsAttributeData.bootstrapArguments.foreach(_.insertIfAbsent(constantPool))*/
 
     info.insertIfAbsent(constantPool)
   }

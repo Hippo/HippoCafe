@@ -39,13 +39,13 @@ final case class IncrementInstruction(var localIndex: Int, var value: Int) exten
   override def assemble(assemblerContext: AssemblerContext, constantPool: ConstantPool): Unit = {
     val wide = localIndex > 255 || value > 255
     if (wide) {
-      val uniqueByte = UniqueByte(BytecodeOpcode.WIDE.id.toByte)
+      val uniqueByte = UniqueByte(BytecodeOpcode.WIDE.opcode.toByte)
       assemblerContext.labelQueue.foreach(label => assemblerContext.labelToByte += (label -> uniqueByte))
       assemblerContext.labelQueue.clear()
 
       assemblerContext.code += uniqueByte
     }
-    val uniqueByte = UniqueByte(BytecodeOpcode.IINC.id.toByte)
+    val uniqueByte = UniqueByte(BytecodeOpcode.IINC.opcode.toByte)
     assemblerContext.labelQueue.foreach(label => assemblerContext.labelToByte += (label -> uniqueByte))
     assemblerContext.labelQueue.clear()
 

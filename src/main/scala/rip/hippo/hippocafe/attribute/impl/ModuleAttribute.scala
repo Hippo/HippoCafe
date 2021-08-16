@@ -62,11 +62,11 @@ final case class ModuleAttribute(moduleNameIndex: Int,
     })
 
     out.writeShort(exports.size)
-    exports.foreach(export => {
-      out.writeShort(export.exportsIndex)
-      out.writeShort(export.exportsFlags)
-      out.writeShort(export.exportsToIndex.size)
-      export.exportsToIndex.foreach(index => out.writeShort(index))
+    exports.foreach(exportModule => {
+      out.writeShort(exportModule.exportsIndex)
+      out.writeShort(exportModule.exportsFlags)
+      out.writeShort(exportModule.exportsToIndex.size)
+      exportModule.exportsToIndex.foreach(index => out.writeShort(index))
     })
 
     out.writeShort(opens.size)

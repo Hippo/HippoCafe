@@ -11,7 +11,7 @@ import rip.hippo.hippocafe.disassembler.instruction.constant.Constant
  * @since 1.0.1
  */
 final case class UTF8Constant(value: String) extends Constant[String] {
-  override val constantPoolInfoAssociate: Class[_ <: ConstantPoolInfo] = classOf[StringInfo]
+  override val constantPoolInfoAssociate: Class[? <: ConstantPoolInfo] = classOf[StringInfo]
 
   override def insertIfAbsent(constantPool: ConstantPool): Unit =
     constantPool.insertUTF8IfAbsent(value)

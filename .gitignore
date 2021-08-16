@@ -2,6 +2,7 @@
 /target/
 project/*
 !project/build.properties
+.bsp/
 
 # IDEA
 .idea

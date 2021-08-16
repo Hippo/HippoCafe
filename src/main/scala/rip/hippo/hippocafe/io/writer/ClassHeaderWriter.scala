@@ -1,4 +1,4 @@
-package rip.hippo.hippocafe.writer
+package rip.hippo.hippocafe.io.writer
 
 import rip.hippo.hippocafe.ClassFile
 
@@ -9,6 +9,5 @@ import java.io.DataOutputStream
  * @version 1.0.0, 4/14/21
  * @since 1.4.0
  */
-trait ClassHeaderWriter {
+trait ClassHeaderWriter:
   def write(classFile: ClassFile, out: DataOutputStream): Unit
-}

@@ -29,6 +29,5 @@ package rip.hippo.hippocafe.constantpool.info
  * @version 1.0.0, 8/2/20
  * @since 1.0.0
  */
-trait ValueAwareness[T] {
+trait ValueAwareness[T]:
   val value: T
-}

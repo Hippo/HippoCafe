@@ -33,6 +33,5 @@ import java.io.DataOutputStream
  * @version 1.0.0, 8/2/20
  * @since 1.0.0
  */
-trait StackMapFrame {
+trait StackMapFrame:
   def write(out: DataOutputStream, constantPool: ConstantPool): Unit
-}

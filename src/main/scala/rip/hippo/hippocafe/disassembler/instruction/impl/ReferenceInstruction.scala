@@ -24,7 +24,7 @@
 
 package rip.hippo.hippocafe.disassembler.instruction.impl
 
-import rip.hippo.hippocafe.disassembler.instruction.BytecodeOpcode.{BytecodeOpcode, INVOKEINTERFACE, INVOKESPECIAL, INVOKESTATIC, INVOKEVIRTUAL}
+import rip.hippo.hippocafe.disassembler.instruction.BytecodeOpcode.{INVOKEINTERFACE, INVOKESPECIAL, INVOKESTATIC, INVOKEVIRTUAL}
 import rip.hippo.hippocafe.constantpool.{ConstantPool, ConstantPoolKind}
 import rip.hippo.hippocafe.constantpool.info.ConstantPoolInfo
 import rip.hippo.hippocafe.constantpool.info.impl.{NameAndTypeInfo, ReferenceInfo, StringInfo, UTF8Info}
@@ -90,7 +90,7 @@ final case class ReferenceInstruction(var bytecodeOpcode: BytecodeOpcode, var ow
         if (isMethod) ConstantPoolKind.METHOD_REF else ConstantPoolKind.FIELD_REF))
       
     } else refIndex = index
-    val uniqueByte = UniqueByte(bytecodeOpcode.id.toByte)
+    val uniqueByte = UniqueByte(bytecodeOpcode.opcode.toByte)
     assemblerContext.labelQueue.foreach(label => assemblerContext.labelToByte += (label -> uniqueByte))
     assemblerContext.labelQueue.clear()
 

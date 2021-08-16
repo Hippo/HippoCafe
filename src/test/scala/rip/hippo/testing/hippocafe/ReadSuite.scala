@@ -25,7 +25,7 @@
 package rip.hippo.testing.hippocafe
 
 
-import org.scalatest.FunSuite
+import org.scalatest.funsuite.AnyFunSuite
 import rip.hippo.hippocafe.{ClassReader, ClassWriter}
 
 import java.io.FileOutputStream
@@ -36,7 +36,7 @@ import scala.util.{Failure, Using}
  * @version 1.0.0, 8/4/20
  * @since 1.1.0
  */
-final class ReadSuite extends FunSuite {
+final class ReadSuite extends AnyFunSuite {
 
   private val className = "SwitchTest"
 

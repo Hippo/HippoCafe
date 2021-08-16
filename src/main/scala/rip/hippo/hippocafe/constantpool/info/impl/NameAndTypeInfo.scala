@@ -27,7 +27,7 @@ package rip.hippo.hippocafe.constantpool.info.impl
 import java.io.DataOutputStream
 import rip.hippo.hippocafe.constantpool.ConstantPool
 import rip.hippo.hippocafe.constantpool.{ConstantPool, ConstantPoolKind}
-import rip.hippo.hippocafe.constantpool.ConstantPoolKind.ConstantPoolKind
+import rip.hippo.hippocafe.constantpool.ConstantPoolKind
 import rip.hippo.hippocafe.constantpool.info.ConstantPoolInfo
 
 /**
@@ -38,7 +38,7 @@ import rip.hippo.hippocafe.constantpool.info.ConstantPoolInfo
 final case class NameAndTypeInfo(nameIndex: Int, descriptorIndex: Int) extends ConstantPoolInfo {
   override val kind: ConstantPoolKind = ConstantPoolKind.NAME_AND_TYPE
 
-  def this(name: String, descriptor: String) {
+  def this(name: String, descriptor: String) = {
     this(-1, -1)
     this.name = name;
     this.descriptor = descriptor

@@ -1,8 +1,8 @@
-package rip.hippo.hippocafe.writer.impl
+package rip.hippo.hippocafe.io.writer.impl
 
 import rip.hippo.hippocafe.attribute.AttributeInfo
 import rip.hippo.hippocafe.constantpool.ConstantPool
-import rip.hippo.hippocafe.writer.AttributeWriter
+import rip.hippo.hippocafe.io.writer.AttributeWriter
 
 import java.io.{ByteArrayOutputStream, DataOutputStream}
 import scala.util.Using

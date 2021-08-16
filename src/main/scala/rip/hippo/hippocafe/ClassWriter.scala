@@ -38,8 +38,8 @@ import rip.hippo.hippocafe.disassembler.instruction.BytecodeOpcode
 import rip.hippo.hippocafe.disassembler.instruction.constant.impl._
 import rip.hippo.hippocafe.disassembler.instruction.impl.{ConstantInstruction, InvokeDynamicInstruction, ReferenceInstruction}
 import rip.hippo.hippocafe.util.Type
-import rip.hippo.hippocafe.writer.impl.{StandardAttributeWriter, StandardClassAttributesWriter, StandardClassHeaderWriter, StandardClassMetaWriter, StandardConstantPoolWriter, StandardFieldWriter, StandardInterfaceWriter, StandardMethodWriter}
-import rip.hippo.hippocafe.writer.{AttributeWriter, ClassAttributedMetaWriter, ClassHeaderWriter, ClassMetaWriter, ConstantPoolWriter}
+import rip.hippo.hippocafe.io.writer.impl.{StandardAttributeWriter, StandardClassAttributesWriter, StandardClassHeaderWriter, StandardClassMetaWriter, StandardConstantPoolWriter, StandardFieldWriter, StandardInterfaceWriter, StandardMethodWriter}
+import rip.hippo.hippocafe.io.writer.{AttributeWriter, ClassAttributesMetaWriter, ClassHeaderWriter, ClassMetaWriter, ConstantPoolWriter}
 
 import java.io.{ByteArrayOutputStream, DataOutputStream}
 import scala.collection.mutable
@@ -56,9 +56,9 @@ final class ClassWriter(classFile: ClassFile,
                         constantPoolWriter: ConstantPoolWriter = StandardConstantPoolWriter(),
                         classMetaWriter: ClassMetaWriter = StandardClassMetaWriter(),
                         interfaceWriter: ClassMetaWriter = StandardInterfaceWriter(),
-                        fieldWriter: ClassAttributedMetaWriter = StandardFieldWriter(),
-                        methodWriter: ClassAttributedMetaWriter = StandardMethodWriter(),
-                        classAttributesWriter: ClassAttributedMetaWriter = StandardClassAttributesWriter())
+                        fieldWriter: ClassAttributesMetaWriter = StandardFieldWriter(),
+                        methodWriter: ClassAttributesMetaWriter = StandardMethodWriter(),
+                        classAttributesWriter: ClassAttributesMetaWriter = StandardClassAttributesWriter())
   extends AutoCloseable {
 
   private val flags = mutable.Set[AssemblerFlag]()

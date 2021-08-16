@@ -26,8 +26,8 @@ package rip.hippo.hippocafe.disassembler.instruction.impl
 
 import rip.hippo.hippocafe.constantpool.ConstantPool
 import rip.hippo.hippocafe.disassembler.context.{AssemblerContext, UniqueByte}
-import rip.hippo.hippocafe.disassembler.instruction.BytecodeOpcode._
-import rip.hippo.hippocafe.disassembler.instruction.Instruction
+import rip.hippo.hippocafe.disassembler.instruction.BytecodeOpcode.*
+import rip.hippo.hippocafe.disassembler.instruction.{BytecodeOpcode, Instruction}
 
 import scala.collection.mutable.ListBuffer
 
@@ -38,7 +38,7 @@ import scala.collection.mutable.ListBuffer
  */
 final case class SimpleInstruction(var bytecodeOpcode: BytecodeOpcode) extends Instruction {
   override def assemble(assemblerContext: AssemblerContext, constantPool: ConstantPool): Unit = {
-    val uniqueByte = UniqueByte(bytecodeOpcode.id.toByte)
+    val uniqueByte = UniqueByte(bytecodeOpcode.opcode.toByte)
     assemblerContext.labelQueue.foreach(label => assemblerContext.labelToByte += (label -> uniqueByte))
     assemblerContext.labelQueue.clear()
 

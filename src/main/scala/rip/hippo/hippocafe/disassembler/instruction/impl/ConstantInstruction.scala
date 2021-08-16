@@ -36,14 +36,14 @@ import rip.hippo.hippocafe.disassembler.instruction.{BytecodeOpcode, Instruction
  * @version 1.0.0, 8/4/20
  * @since 1.0.0
  */
-final case class ConstantInstruction(var constant: Constant[_]) extends Instruction {
+final case class ConstantInstruction(var constant: Constant[?]) extends Instruction {
   override def assemble(assemblerContext: AssemblerContext, constantPool: ConstantPool): Unit = {
     constant.insertIfAbsent(constantPool)
     val code = assemblerContext.code
     val index = constant.getConstantPoolIndex(constantPool)
 
     def writeWide(): Unit = {
-      val uniqueByte = UniqueByte(BytecodeOpcode.LDC2_W.id.toByte)
+      val uniqueByte = UniqueByte(BytecodeOpcode.LDC2_W.opcode.toByte)
       assemblerContext.labelQueue.foreach(label => assemblerContext.labelToByte += (label -> uniqueByte))
       assemblerContext.labelQueue.clear()
 
@@ -59,7 +59,7 @@ final case class ConstantInstruction(var constant: Constant[_]) extends Instruct
         writeWide()
       case _ =>
         if (index > 255) {
-          val uniqueByte = UniqueByte(BytecodeOpcode.LDC_W.id.toByte)
+          val uniqueByte = UniqueByte(BytecodeOpcode.LDC_W.opcode.toByte)
           assemblerContext.labelQueue.foreach(label => assemblerContext.labelToByte += (label -> uniqueByte))
           assemblerContext.labelQueue.clear()
 
@@ -67,7 +67,7 @@ final case class ConstantInstruction(var constant: Constant[_]) extends Instruct
           code += UniqueByte(((index >>> 8) & 0xFF).toByte)
           code += UniqueByte((index & 0xFF).toByte)
         } else {
-          val uniqueByte = UniqueByte(BytecodeOpcode.LDC.id.toByte)
+          val uniqueByte = UniqueByte(BytecodeOpcode.LDC.opcode.toByte)
           assemblerContext.labelQueue.foreach(label => assemblerContext.labelToByte += (label -> uniqueByte))
           assemblerContext.labelQueue.clear()
 

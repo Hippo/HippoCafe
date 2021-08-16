@@ -27,7 +27,7 @@ package rip.hippo.hippocafe.constantpool.info
 import rip.hippo.hippocafe.constantpool.ConstantPool
 
 import java.io.DataOutputStream
-import rip.hippo.hippocafe.constantpool.ConstantPoolKind.ConstantPoolKind
+import rip.hippo.hippocafe.constantpool.ConstantPoolKind
 
 /**
  * @author Hippo

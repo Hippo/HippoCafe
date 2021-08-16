@@ -24,7 +24,7 @@
 
 package rip.hippo.hippocafe.disassembler.instruction.impl
 
-import rip.hippo.hippocafe.disassembler.instruction.BytecodeOpcode.{BytecodeOpcode, DLOAD, DSTORE, FLOAD, ILOAD, LLOAD, LSTORE}
+import rip.hippo.hippocafe.disassembler.instruction.BytecodeOpcode.{DLOAD, DSTORE, FLOAD, ILOAD, LLOAD, LSTORE}
 import rip.hippo.hippocafe.constantpool.ConstantPool
 import rip.hippo.hippocafe.disassembler.context.{AssemblerContext, UniqueByte}
 import rip.hippo.hippocafe.disassembler.instruction.{BytecodeOpcode, Instruction}
@@ -49,14 +49,14 @@ final case class VariableInstruction(var bytecodeOpcode: BytecodeOpcode, var ind
     val wide = index > 255
 
     if (wide) {
-      val uniqueByte = UniqueByte(BytecodeOpcode.WIDE.id.toByte)
+      val uniqueByte = UniqueByte(BytecodeOpcode.WIDE.opcode.toByte)
       assemblerContext.labelQueue.foreach(label => assemblerContext.labelToByte += (label -> uniqueByte))
       assemblerContext.labelQueue.clear()
 
       assemblerContext.code += uniqueByte
     }
 
-    val uniqueByte = UniqueByte(bytecodeOpcode.id.toByte)
+    val uniqueByte = UniqueByte(bytecodeOpcode.opcode.toByte)
     assemblerContext.labelQueue.foreach(label => assemblerContext.labelToByte += (label -> uniqueByte))
     assemblerContext.labelQueue.clear()
 

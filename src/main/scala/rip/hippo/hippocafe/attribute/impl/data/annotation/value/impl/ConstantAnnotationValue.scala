@@ -34,7 +34,7 @@ import rip.hippo.hippocafe.disassembler.instruction.constant.Constant
  * @version 1.0.0, 8/2/20
  * @since 1.0.0
  */
-final case class ConstantAnnotationValue(constant: Constant[_]) extends AnnotationAttributeValue {
+final case class ConstantAnnotationValue(constant: Constant[?]) extends AnnotationAttributeValue {
   override def write(out: DataOutputStream, constantPool: ConstantPool): Unit =
     out.writeShort(constant.getConstantPoolIndex(constantPool))
 

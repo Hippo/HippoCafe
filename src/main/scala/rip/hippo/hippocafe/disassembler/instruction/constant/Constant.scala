@@ -13,7 +13,7 @@ import rip.hippo.hippocafe.exception.HippoCafeException
  * @since 1.0.1
  */
 trait Constant[T] {
-  val constantPoolInfoAssociate: Class[_ <: ConstantPoolInfo]
+  val constantPoolInfoAssociate: Class[? <: ConstantPoolInfo]
   val value: T
 
   def insertIfAbsent(constantPool: ConstantPool): Unit
@@ -22,9 +22,9 @@ trait Constant[T] {
 
 
 object Constant {
-  def fromInfo(constantPoolInfo: ConstantPoolInfo): Constant[_] =
-    constantPoolInfo match { // TODO: finish
-      case aware: ValueAwareness[_] =>
+  def fromInfo(constantPoolInfo: ConstantPoolInfo): Constant[?] =
+    constantPoolInfo match {
+      case aware: ValueAwareness[?] =>
         aware.value match {
         case int: Int => IntegerConstant(int)
         case float: Float => FloatConstant(float)

@@ -25,7 +25,7 @@
 package rip.hippo.testing.hippocafe
 
 
-import org.scalatest.FunSuite
+import org.scalatest.funsuite.AnyFunSuite
 import rip.hippo.hippocafe.ClassWriter
 import rip.hippo.hippocafe.access.AccessFlag._
 import rip.hippo.hippocafe.builder.ClassBuilder
@@ -42,7 +42,7 @@ import scala.util.{Failure, Using}
  * @version 1.0.0, 8/4/20
  * @since 1.1.0
  */
-final class BuilderSuite extends FunSuite {
+final class BuilderSuite extends AnyFunSuite {
 
   test("ClassBuilder.result") {
 

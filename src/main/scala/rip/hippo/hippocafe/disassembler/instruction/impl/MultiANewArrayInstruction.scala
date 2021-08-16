@@ -57,7 +57,7 @@ final case class MultiANewArrayInstruction(var descriptor: String, var dimension
 
 
 
-    val uniqueByte = UniqueByte(BytecodeOpcode.MULTIANEWARRAY.id.toByte)
+    val uniqueByte = UniqueByte(BytecodeOpcode.MULTIANEWARRAY.opcode.toByte)
     assemblerContext.labelQueue.foreach(label => assemblerContext.labelToByte += (label -> uniqueByte))
     assemblerContext.labelQueue.clear()
 

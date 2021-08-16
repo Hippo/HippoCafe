@@ -29,7 +29,7 @@ import rip.hippo.hippocafe.attribute.impl.data.BootstrapMethodsAttributeData
 import java.io.DataOutputStream
 import rip.hippo.hippocafe.constantpool.ConstantPool
 import rip.hippo.hippocafe.constantpool.ConstantPool
-import rip.hippo.hippocafe.constantpool.ConstantPoolKind.ConstantPoolKind
+import rip.hippo.hippocafe.constantpool.ConstantPoolKind
 import rip.hippo.hippocafe.constantpool.info.ConstantPoolInfo
 
 /**
@@ -40,7 +40,7 @@ import rip.hippo.hippocafe.constantpool.info.ConstantPoolInfo
 final case class DynamicInfo(inputKind: ConstantPoolKind, var bsmAttributeIndex: Int, nameAndTypeIndex: Int) extends ConstantPoolInfo {
   override val kind: ConstantPoolKind = inputKind
 
-  def this (inputKind: ConstantPoolKind, bootstrapMethodsAttributeData: BootstrapMethodsAttributeData, nameAndTypeInfo: NameAndTypeInfo) {
+  def this (inputKind: ConstantPoolKind, bootstrapMethodsAttributeData: BootstrapMethodsAttributeData, nameAndTypeInfo: NameAndTypeInfo) = {
     this(inputKind, -1, -1)
     this.bootstrapMethodsAttributeData = bootstrapMethodsAttributeData
     this.nameAndTypeInfo = nameAndTypeInfo

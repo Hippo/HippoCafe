@@ -27,7 +27,7 @@ package rip.hippo.hippocafe.constantpool.info.impl
 import rip.hippo.hippocafe.constantpool.ConstantPool
 
 import java.io.DataOutputStream
-import rip.hippo.hippocafe.constantpool.ConstantPoolKind.ConstantPoolKind
+import rip.hippo.hippocafe.constantpool.ConstantPoolKind
 import rip.hippo.hippocafe.constantpool.info.ConstantPoolInfo
 
 /**
@@ -37,7 +37,7 @@ import rip.hippo.hippocafe.constantpool.info.ConstantPoolInfo
  */
 final case class StringInfo(index: Int, inputKind: ConstantPoolKind) extends ConstantPoolInfo {
 
-  def this(value: String, inputKind: ConstantPoolKind) {
+  def this(value: String, inputKind: ConstantPoolKind) = {
     this(-1, inputKind)
     this.value = value
   }

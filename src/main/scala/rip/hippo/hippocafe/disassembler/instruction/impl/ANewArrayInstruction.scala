@@ -41,7 +41,7 @@ final case class ANewArrayInstruction(var descriptor: String) extends Instructio
     constantPool.insertStringIfAbsent(descriptor, ConstantPoolKind.CLASS)
     val index = constantPool.findString(descriptor, ConstantPoolKind.CLASS)
 
-    val uniqueByte = UniqueByte(BytecodeOpcode.ANEWARRAY.id.toByte)
+    val uniqueByte = UniqueByte(BytecodeOpcode.ANEWARRAY.opcode.toByte)
     assemblerContext.labelQueue.foreach(label => assemblerContext.labelToByte += (label -> uniqueByte))
     assemblerContext.labelQueue.clear()
 

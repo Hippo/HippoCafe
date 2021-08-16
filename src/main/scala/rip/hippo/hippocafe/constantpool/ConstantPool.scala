@@ -24,7 +24,7 @@
 
 package rip.hippo.hippocafe.constantpool
 
-import rip.hippo.hippocafe.constantpool.ConstantPoolKind.ConstantPoolKind
+import rip.hippo.hippocafe.constantpool.ConstantPoolKind
 import rip.hippo.hippocafe.constantpool.info.impl.UTF8Info
 import rip.hippo.hippocafe.constantpool.info.ConstantPoolInfo
 import rip.hippo.hippocafe.constantpool.info.impl.{StringInfo, UTF8Info}

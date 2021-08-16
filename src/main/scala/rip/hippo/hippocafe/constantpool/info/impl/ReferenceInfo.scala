@@ -27,7 +27,7 @@ package rip.hippo.hippocafe.constantpool.info.impl
 import rip.hippo.hippocafe.constantpool.ConstantPool
 
 import java.io.DataOutputStream
-import rip.hippo.hippocafe.constantpool.ConstantPoolKind.ConstantPoolKind
+import rip.hippo.hippocafe.constantpool.ConstantPoolKind
 import rip.hippo.hippocafe.constantpool.info.ConstantPoolInfo
 
 /**
@@ -38,7 +38,7 @@ import rip.hippo.hippocafe.constantpool.info.ConstantPoolInfo
 final case class ReferenceInfo(classIndex: Int, nameAndTypeIndex: Int, inputKind: ConstantPoolKind) extends ConstantPoolInfo {
   override val kind: ConstantPoolKind = inputKind
 
-  def this(classInfo: StringInfo, nameAndTypeInfo: NameAndTypeInfo, inputKind: ConstantPoolKind) {
+  def this(classInfo: StringInfo, nameAndTypeInfo: NameAndTypeInfo, inputKind: ConstantPoolKind) = {
     this(-1, -1, inputKind)
     this.classInfo = classInfo
     this.nameAndTypeInfo = nameAndTypeInfo

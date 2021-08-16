@@ -7,6 +7,5 @@ import rip.hippo.hippocafe.disassembler.context.AssemblerContext
  * @version 1.0.0, 3/4/21
  * @since 1.0.0
  */
-trait FrameInstruction {
+trait FrameInstruction:
   def assemble(assemblerContext: AssemblerContext): Unit
-}

@@ -36,7 +36,7 @@ import scala.collection.mutable.ListBuffer
  * @since 1.0.0
  */
 final case class BootstrapMethodsAttributeData(bootstrapMethodRef: MethodHandleInfo,
-                                               bootstrapArguments: ListBuffer[Constant[_]]) {
+                                               bootstrapArguments: ListBuffer[Constant[?]]) {
 
 
   def buildConstantPool(constantPool: ConstantPool): Unit = {

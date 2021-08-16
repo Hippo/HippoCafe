@@ -15,7 +15,7 @@ final case class MethodHandleConstant(referenceKind: ReferenceKind, owner: Strin
 
   override val value: Int = -1
 
-  override val constantPoolInfoAssociate: Class[_ <: ConstantPoolInfo] = classOf[MethodHandleInfo]
+  override val constantPoolInfoAssociate: Class[? <: ConstantPoolInfo] = classOf[MethodHandleInfo]
 
   override def insertIfAbsent(constantPool: ConstantPool): Unit =
     constantPool.insertIfAbsent(makeInfo)

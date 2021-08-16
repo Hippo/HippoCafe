@@ -1,6 +1,6 @@
 package rip.hippo.testing.hippocafe
 
-import org.scalatest.FunSuite
+import org.scalatest.funsuite.AnyFunSuite
 import rip.hippo.hippocafe.ClassReader
 
 import scala.util.{Failure, Using}
@@ -10,7 +10,7 @@ import scala.util.{Failure, Using}
  * @version 1.0.0, 2/13/21
  * @since 1.0.0
  */
-final class ConstantPoolSuite extends FunSuite {
+final class ConstantPoolSuite extends AnyFunSuite {
   private val className = "HelloWorld"
 
   test("ClassReader.read.cp") {

@@ -11,7 +11,7 @@ import rip.hippo.hippocafe.disassembler.instruction.constant.Constant
  * @since 1.0.1
  */
 final case class LongConstant(value: Long) extends Constant[Long] {
-  override val constantPoolInfoAssociate: Class[_ <: ConstantPoolInfo] = classOf[LongInfo]
+  override val constantPoolInfoAssociate: Class[? <: ConstantPoolInfo] = classOf[LongInfo]
 
   override def insertIfAbsent(constantPool: ConstantPool): Unit = {
     var index = -1

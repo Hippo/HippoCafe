@@ -41,7 +41,7 @@ final case class LookupSwitchInstruction(var default: LabelInstruction) extends 
 
   override def assemble(assemblerContext: AssemblerContext, constantPool: ConstantPool): Unit = {
     val code = assemblerContext.code
-    val uniqueByte = UniqueByte(BytecodeOpcode.LOOKUPSWITCH.id.toByte)
+    val uniqueByte = UniqueByte(BytecodeOpcode.LOOKUPSWITCH.opcode.toByte)
     assemblerContext.labelQueue.foreach(label => assemblerContext.labelToByte += (label -> uniqueByte))
     assemblerContext.labelQueue.clear()
 

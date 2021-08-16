@@ -11,7 +11,7 @@ import rip.hippo.hippocafe.disassembler.instruction.constant.Constant
  * @since 1.5.0
  */
 final case class MethodTypeConstant(value: String) extends Constant[String] {
-  override val constantPoolInfoAssociate: Class[_ <: ConstantPoolInfo] = classOf[StringInfo]
+  override val constantPoolInfoAssociate: Class[? <: ConstantPoolInfo] = classOf[StringInfo]
 
   override def insertIfAbsent(constantPool: ConstantPool): Unit =
     constantPool.insertStringIfAbsent(value, ConstantPoolKind.METHOD_TYPE)

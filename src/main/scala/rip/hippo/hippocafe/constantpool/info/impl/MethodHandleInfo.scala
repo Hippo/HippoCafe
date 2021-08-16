@@ -27,7 +27,7 @@ package rip.hippo.hippocafe.constantpool.info.impl
 import java.io.DataOutputStream
 import rip.hippo.hippocafe.constantpool.ConstantPool
 import rip.hippo.hippocafe.constantpool.{ConstantPool, ConstantPoolKind}
-import rip.hippo.hippocafe.constantpool.ConstantPoolKind.ConstantPoolKind
+import rip.hippo.hippocafe.constantpool.ConstantPoolKind
 import rip.hippo.hippocafe.constantpool.info.ConstantPoolInfo
 import rip.hippo.hippocafe.constantpool.info.impl.data.ReferenceKind
 
@@ -38,7 +38,7 @@ import rip.hippo.hippocafe.constantpool.info.impl.data.ReferenceKind
  */
 final case class MethodHandleInfo(referenceKind: ReferenceKind, referenceIndex: Int) extends ConstantPoolInfo {
 
-  def this(referenceKind: ReferenceKind, referenceInfo: ReferenceInfo) {
+  def this(referenceKind: ReferenceKind, referenceInfo: ReferenceInfo) = {
     this(referenceKind, -1)
     this.referenceInfo = referenceInfo
   }

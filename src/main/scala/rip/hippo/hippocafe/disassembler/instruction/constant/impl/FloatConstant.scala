@@ -11,7 +11,7 @@ import rip.hippo.hippocafe.disassembler.instruction.constant.Constant
  * @since 1.0.1
  */
 final case class FloatConstant(value: Float) extends Constant[Float] {
-  override val constantPoolInfoAssociate: Class[_ <: ConstantPoolInfo] = classOf[FloatInfo]
+  override val constantPoolInfoAssociate: Class[? <: ConstantPoolInfo] = classOf[FloatInfo]
 
   override def insertIfAbsent(constantPool: ConstantPool): Unit = {
     var index = -1

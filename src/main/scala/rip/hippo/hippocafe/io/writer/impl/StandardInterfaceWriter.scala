@@ -1,8 +1,8 @@
-package rip.hippo.hippocafe.writer.impl
+package rip.hippo.hippocafe.io.writer.impl
 
 import rip.hippo.hippocafe.ClassFile
 import rip.hippo.hippocafe.constantpool.ConstantPool
-import rip.hippo.hippocafe.writer.ClassMetaWriter
+import rip.hippo.hippocafe.io.writer.ClassMetaWriter
 
 import java.io.DataOutputStream
 

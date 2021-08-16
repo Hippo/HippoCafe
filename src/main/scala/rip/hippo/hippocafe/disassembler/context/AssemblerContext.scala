@@ -56,7 +56,7 @@ final class AssemblerContext(flags: Set[AssemblerFlag]) {
 
     // re-align offsets
     var shouldRealign = false
-    do {
+    while {
       shouldRealign = false
       switchPadding.foreach(pair => {
         val index = code.indexOf(pair._1)
@@ -82,7 +82,8 @@ final class AssemblerContext(flags: Set[AssemblerFlag]) {
           shouldRealign = true
         }
       })
-    } while(shouldRealign)
+      shouldRealign
+    } do ()
 
     // write branch instruction
     preprocessedBranches.foreach(preprocessedBranch => {
@@ -104,7 +105,7 @@ final class AssemblerContext(flags: Set[AssemblerFlag]) {
         case JSR_W if !wide => JSR
         case x => x
       }
-      code(opcodeIndex).byte = opcode.id.toByte
+      code(opcodeIndex).byte = opcode.opcode.toByte
       if (wide) {
         code.insert(opcodeIndex + 1, shift(24))
         code.insert(opcodeIndex + 2, shift(16))

@@ -24,40 +24,35 @@
 
 package rip.hippo.hippocafe.constantpool
 
-import scala.language.implicitConversions
 
 /**
  * @author Hippo
  * @version 1.0.0, 8/1/20
  * @since 1.0.0
  */
-object ConstantPoolKind extends Enumeration {
+enum ConstantPoolKind(val tag: Int) {
 
+  case CLASS extends ConstantPoolKind(7)
+  case FIELD_REF extends ConstantPoolKind(9)
+  case METHOD_REF extends ConstantPoolKind(10)
+  case INTERFACE_METHOD_REF extends ConstantPoolKind(11)
+  case STRING extends ConstantPoolKind(8)
+  case INTEGER extends ConstantPoolKind( 3)
+  case FLOAT extends ConstantPoolKind(4)
+  case LONG extends ConstantPoolKind(5)
+  case DOUBLE extends ConstantPoolKind(6)
+  case NAME_AND_TYPE extends ConstantPoolKind(12)
+  case UTF8 extends ConstantPoolKind(1)
+  case METHOD_HANDLE extends ConstantPoolKind(15)
+  case METHOD_TYPE extends ConstantPoolKind(16)
+  case DYNAMIC extends ConstantPoolKind(17)
+  case INVOKE_DYNAMIC extends ConstantPoolKind(18)
+  case MODULE extends ConstantPoolKind(19)
+  case PACKAGE extends ConstantPoolKind(20)
 
-  private implicit def toValue(id: Int): Value = Value(id)
+}
 
-  type ConstantPoolKind = Value
-
-  val CLASS: ConstantPoolKind = 7
-  val FIELD_REF: ConstantPoolKind = 9
-  val METHOD_REF: ConstantPoolKind = 10
-  val INTERFACE_METHOD_REF: ConstantPoolKind = 11
-  val STRING: ConstantPoolKind = 8
-  val INTEGER: ConstantPoolKind =  3
-  val FLOAT: ConstantPoolKind = 4
-  val LONG: ConstantPoolKind = 5
-  val DOUBLE: ConstantPoolKind = 6
-  val NAME_AND_TYPE: ConstantPoolKind = 12
-  val UTF8: ConstantPoolKind = 1
-  val METHOD_HANDLE: ConstantPoolKind = 15
-  val METHOD_TYPE: ConstantPoolKind = 16
-  val DYNAMIC: ConstantPoolKind = 17
-  val INVOKE_DYNAMIC: ConstantPoolKind = 18
-  val MODULE: ConstantPoolKind = 19
-  val PACKAGE: ConstantPoolKind = 20
-
-
+object ConstantPoolKind {
   def fromTag(tag: Int): Option[ConstantPoolKind] =
-    ConstantPoolKind.values.find(_.id == tag)
-
+    ConstantPoolKind.values.find(_.tag == tag)
 }

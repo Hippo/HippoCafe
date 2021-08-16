@@ -357,7 +357,7 @@ object CodeDisassembler {
                   instructions += (instructionOffset -> impl.VariableInstruction(opcode, u1))
 
                 case SIPUSH | BIPUSH =>
-                  val value = if (opcode == SIPUSH) s2 else s1
+                  val value: Int = if (opcode == SIPUSH) s2 else s1
                   instructions += (instructionOffset -> PushInstruction(value))
 
                 case IINC => instructions += (instructionOffset -> IncrementInstruction(u1, s1))
@@ -396,7 +396,7 @@ object CodeDisassembler {
                      IF_ICMPLE |
                      IF_ICMPLT |
                      IF_ICMPNE =>
-                  val branchOffset = if (opcode == GOTO_W || opcode == JSR_W) u4 else s2
+                  val branchOffset: Int = if (opcode == GOTO_W || opcode == JSR_W) u4 else s2
                   val label = LabelInstruction(labelDebugId)
                   labelDebugId += 1
                   addLabel(instructionOffset + branchOffset, label)

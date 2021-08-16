@@ -24,7 +24,7 @@
 
 package rip.hippo.testing.hippocafe
 
-import org.scalatest.FunSuite
+import org.scalatest.funsuite.AnyFunSuite
 import rip.hippo.hippocafe.ClassReader
 import rip.hippo.hippocafe.access.AccessFlag
 
@@ -35,7 +35,7 @@ import scala.util.{Failure, Success, Using}
  * @version 1.0.0, 8/4/20
  * @since 1.1.0
  */
-final class InstructionReadSuite extends FunSuite {
+final class InstructionReadSuite extends AnyFunSuite {
 
   private val className = "AnnotationTest"
 

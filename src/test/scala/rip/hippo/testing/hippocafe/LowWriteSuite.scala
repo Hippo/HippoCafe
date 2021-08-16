@@ -24,7 +24,7 @@
 
 package rip.hippo.testing.hippocafe
 
-import org.scalatest.FunSuite
+import org.scalatest.funsuite.AnyFunSuite
 import rip.hippo.hippocafe.attribute.impl.CodeAttribute
 import rip.hippo.hippocafe.{ClassReader, ClassWriter}
 
@@ -35,7 +35,7 @@ import scala.util.{Failure, Success, Using}
  * @version 1.0.0, 8/4/20
  * @since 1.1.0
  */
-final class LowWriteSuite extends FunSuite {
+final class LowWriteSuite extends AnyFunSuite {
 
   private val className = "LocalAnnotation"
 

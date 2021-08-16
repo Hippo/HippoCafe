@@ -38,7 +38,7 @@ import scala.collection.mutable.ListBuffer
  */
 final case class NewArrayInstruction(var arrayType: ArrayType) extends Instruction {
   override def assemble(assemblerContext: AssemblerContext, constantPool: ConstantPool): Unit = {
-    val uniqueByte = UniqueByte(BytecodeOpcode.NEWARRAY.id.toByte)
+    val uniqueByte = UniqueByte(BytecodeOpcode.NEWARRAY.opcode.toByte)
     assemblerContext.labelQueue.foreach(label => assemblerContext.labelToByte += (label -> uniqueByte))
     assemblerContext.labelQueue.clear()
 

@@ -24,7 +24,7 @@
 
 package rip.hippo.testing.hippocafe.assemble
 
-import org.scalatest.FunSuite
+import org.scalatest.funsuite.AnyFunSuite
 import rip.hippo.hippocafe.version.MajorClassFileVersion
 import rip.hippo.hippocafe.{ClassReader, ClassWriter}
 import rip.hippo.testing.hippocafe.CustomClassLoader
@@ -38,7 +38,7 @@ import scala.util.{Failure, Using}
  * @version 1.0.0, 2/25/21
  * @since 1.1.0
  */
-final class ReadAssembleWriteSuite extends FunSuite {
+final class ReadAssembleWriteSuite extends AnyFunSuite {
 
   private val className = "InvokeDynamicTest"
 

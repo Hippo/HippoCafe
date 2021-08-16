@@ -31,264 +31,213 @@ import scala.language.implicitConversions
  * @version 1.0.0, 8/4/20
  * @since 1.0.0
  */
-object BytecodeOpcode extends Enumeration {
+enum BytecodeOpcode(val opcode: Int) {
 
-  private implicit def toValue(opcode: Int): Value = Value(opcode)
+  case NOP extends BytecodeOpcode(0x0)
+  case ACONST_NULL extends BytecodeOpcode(0x1)
+  case ICONST_M1 extends BytecodeOpcode(0x2)
+  case ICONST_0 extends BytecodeOpcode(0x3)
+  case ICONST_1 extends BytecodeOpcode(0x4)
+  case ICONST_2 extends BytecodeOpcode(0x5)
+  case ICONST_3 extends BytecodeOpcode(0x6)
+  case ICONST_4 extends BytecodeOpcode(0x7)
+  case ICONST_5 extends BytecodeOpcode(0x8)
+  case LCONST_0 extends BytecodeOpcode(0x9)
+  case LCONST_1 extends BytecodeOpcode(0xA)
+  case FCONST_0 extends BytecodeOpcode(0xB)
+  case FCONST_1 extends BytecodeOpcode(0xC)
+  case FCONST_2 extends BytecodeOpcode(0xD)
+  case DCONST_0 extends BytecodeOpcode(0xE)
+  case DCONST_1 extends BytecodeOpcode(0xF)
+  case BIPUSH extends BytecodeOpcode(0x10)
+  case SIPUSH extends BytecodeOpcode(0x11)
+  case LDC extends BytecodeOpcode(0x12)
+  case LDC_W extends BytecodeOpcode(0x13)
+  case LDC2_W extends BytecodeOpcode(0x14)
+  case ILOAD extends BytecodeOpcode(0x15)
+  case LLOAD extends BytecodeOpcode(0x16)
+  case FLOAD extends BytecodeOpcode(0x17)
+  case DLOAD extends BytecodeOpcode(0x18)
+  case ALOAD extends BytecodeOpcode(0x19)
+  case ILOAD_0 extends BytecodeOpcode(0x1A)
+  case ILOAD_1 extends BytecodeOpcode(0x1B)
+  case ILOAD_2 extends BytecodeOpcode(0x1C)
+  case ILOAD_3 extends BytecodeOpcode(0x1D)
+  case LLOAD_0 extends BytecodeOpcode(0x1E)
+  case LLOAD_1 extends BytecodeOpcode(0x1F)
+  case LLOAD_2 extends BytecodeOpcode(0x20)
+  case LLOAD_3 extends BytecodeOpcode(0x21)
+  case FLOAD_0 extends BytecodeOpcode(0x22)
+  case FLOAD_1 extends BytecodeOpcode(0x23)
+  case FLOAD_2 extends BytecodeOpcode(0x24)
+  case FLOAD_3 extends BytecodeOpcode(0x25)
+  case DLOAD_0 extends BytecodeOpcode(0x26)
+  case DLOAD_1 extends BytecodeOpcode(0x27)
+  case DLOAD_2 extends BytecodeOpcode(0x28)
+  case DLOAD_3 extends BytecodeOpcode(0x29)
+  case ALOAD_0 extends BytecodeOpcode(0x2A)
+  case ALOAD_1 extends BytecodeOpcode(0x2B)
+  case ALOAD_2 extends BytecodeOpcode(0x2C)
+  case ALOAD_3 extends BytecodeOpcode(0x2D)
+  case IALOAD extends BytecodeOpcode(0x2E)
+  case LALOAD extends BytecodeOpcode(0x2F)
+  case FALOAD extends BytecodeOpcode(0x30)
+  case DALOAD extends BytecodeOpcode(0x31)
+  case AALOAD extends BytecodeOpcode(0x32)
+  case BALOAD extends BytecodeOpcode(0x33)
+  case CALOAD extends BytecodeOpcode(0x34)
+  case SALOAD extends BytecodeOpcode(0x35)
+  case ISTORE extends BytecodeOpcode(0x36)
+  case LSTORE extends BytecodeOpcode(0x37)
+  case FSTORE extends BytecodeOpcode(0x38)
+  case DSTORE extends BytecodeOpcode(0x39)
+  case ASTORE extends BytecodeOpcode(0x3A)
+  case ISTORE_0 extends BytecodeOpcode(0x3B)
+  case ISTORE_1 extends BytecodeOpcode(0x3C)
+  case ISTORE_2 extends BytecodeOpcode(0x3D)
+  case ISTORE_3 extends BytecodeOpcode(0x3E)
+  case LSTORE_0 extends BytecodeOpcode(0x3F)
+  case LSTORE_1 extends BytecodeOpcode(0x40)
+  case LSTORE_2 extends BytecodeOpcode(0x41)
+  case LSTORE_3 extends BytecodeOpcode(0x42)
+  case FSTORE_0 extends BytecodeOpcode(0x43)
+  case FSTORE_1 extends BytecodeOpcode(0x44)
+  case FSTORE_2 extends BytecodeOpcode(0x45)
+  case FSTORE_3 extends BytecodeOpcode(0x46)
+  case DSTORE_0 extends BytecodeOpcode(0x47)
+  case DSTORE_1 extends BytecodeOpcode(0x48)
+  case DSTORE_2 extends BytecodeOpcode(0x49)
+  case DSTORE_3 extends BytecodeOpcode(0x4A)
+  case ASTORE_0 extends BytecodeOpcode(0x4B)
+  case ASTORE_1 extends BytecodeOpcode(0x4C)
+  case ASTORE_2 extends BytecodeOpcode(0x4D)
+  case ASTORE_3 extends BytecodeOpcode(0x4E)
+  case IASTORE extends BytecodeOpcode(0x4F)
+  case LASTORE extends BytecodeOpcode(0x50)
+  case FASTORE extends BytecodeOpcode(0x51)
+  case DASTORE extends BytecodeOpcode(0x52)
+  case AASTORE extends BytecodeOpcode(0x53)
+  case BASTORE extends BytecodeOpcode(0x54)
+  case CASTORE extends BytecodeOpcode(0x55)
+  case SASTORE extends BytecodeOpcode(0x56)
+  case POP extends BytecodeOpcode(0x57)
+  case POP2 extends BytecodeOpcode(0x58)
+  case DUP extends BytecodeOpcode(0x59)
+  case DUP_X1 extends BytecodeOpcode(0x5A)
+  case DUP_X2 extends BytecodeOpcode(0x5B)
+  case DUP2 extends BytecodeOpcode(0x5C)
+  case DUP2_X1 extends BytecodeOpcode(0x5D)
+  case DUP2_X2 extends BytecodeOpcode(0x5E)
+  case SWAP extends BytecodeOpcode(0x5F)
+  case IADD extends BytecodeOpcode(0x60)
+  case LADD extends BytecodeOpcode(0x61)
+  case FADD extends BytecodeOpcode(0x62)
+  case DADD extends BytecodeOpcode(0x63)
+  case ISUB extends BytecodeOpcode(0x64)
+  case LSUB extends BytecodeOpcode(0x65)
+  case FSUB extends BytecodeOpcode(0x66)
+  case DSUB extends BytecodeOpcode(0x67)
+  case IMUL extends BytecodeOpcode(0x68)
+  case LMUL extends BytecodeOpcode(0x69)
+  case FMUL extends BytecodeOpcode(0x6A)
+  case DMUL extends BytecodeOpcode(0x6B)
+  case IDIV extends BytecodeOpcode(0x6C)
+  case LDIV extends BytecodeOpcode(0x6D)
+  case FDIV extends BytecodeOpcode(0x6E)
+  case DDIV extends BytecodeOpcode(0x6F)
+  case IREM extends BytecodeOpcode(0x70)
+  case LREM extends BytecodeOpcode(0x71)
+  case FREM extends BytecodeOpcode(0x72)
+  case DREM extends BytecodeOpcode(0x73)
+  case INEG extends BytecodeOpcode(0x74)
+  case LNEG extends BytecodeOpcode(0x75)
+  case FNEG extends BytecodeOpcode(0x76)
+  case DNEG extends BytecodeOpcode(0x77)
+  case ISHL extends BytecodeOpcode(0x78)
+  case LSHL extends BytecodeOpcode(0x79)
+  case ISHR extends BytecodeOpcode(0x7A)
+  case LSHR extends BytecodeOpcode(0x7B)
+  case IUSHR extends BytecodeOpcode(0x7C)
+  case LUSHR extends BytecodeOpcode(0x7D)
+  case IAND extends BytecodeOpcode(0x7E)
+  case LAND extends BytecodeOpcode(0x7F)
+  case IOR extends BytecodeOpcode(0x80)
+  case LOR extends BytecodeOpcode(0x81)
+  case IXOR extends BytecodeOpcode(0x82)
+  case LXOR extends BytecodeOpcode(0x83)
+  case IINC extends BytecodeOpcode(0x84)
+  case I2L extends BytecodeOpcode(0x85)
+  case I2F extends BytecodeOpcode(0x86)
+  case I2D extends BytecodeOpcode(0x87)
+  case L2I extends BytecodeOpcode(0x88)
+  case L2F extends BytecodeOpcode(0x89)
+  case L2D extends BytecodeOpcode(0x8A)
+  case F2I extends BytecodeOpcode(0x8B)
+  case F2L extends BytecodeOpcode(0x8C)
+  case F2D extends BytecodeOpcode(0x8D)
+  case D2I extends BytecodeOpcode(0x8E)
+  case D2L extends BytecodeOpcode(0x8F)
+  case D2F extends BytecodeOpcode(0x90)
+  case I2B extends BytecodeOpcode(0x91)
+  case I2C extends BytecodeOpcode(0x92)
+  case I2S extends BytecodeOpcode(0x93)
+  case LCMP extends BytecodeOpcode(0x94)
+  case FCMPL extends BytecodeOpcode(0x95)
+  case FCMPG extends BytecodeOpcode(0x96)
+  case DCMPL extends BytecodeOpcode(0x97)
+  case DCMPG extends BytecodeOpcode(0x98)
+  case IFEQ extends BytecodeOpcode(0x99)
+  case IFNE extends BytecodeOpcode(0x9A)
+  case IFLT extends BytecodeOpcode(0x9B)
+  case IFGE extends BytecodeOpcode(0x9C)
+  case IFGT extends BytecodeOpcode(0x9D)
+  case IFLE extends BytecodeOpcode(0x9E)
+  case IF_ICMPEQ extends BytecodeOpcode(0x9F)
+  case IF_ICMPNE extends BytecodeOpcode(0xA0)
+  case IF_ICMPLT extends BytecodeOpcode(0xA1)
+  case IF_ICMPGE extends BytecodeOpcode(0xA2)
+  case IF_ICMPGT extends BytecodeOpcode(0xA3)
+  case IF_ICMPLE extends BytecodeOpcode(0xA4)
+  case IF_ACMPEQ extends BytecodeOpcode(0xA5)
+  case IF_ACMPNE extends BytecodeOpcode(0xA6)
+  case GOTO extends BytecodeOpcode(0xA7)
+  case JSR extends BytecodeOpcode(0xA8)
+  case RET extends BytecodeOpcode(0xA9)
+  case TABLESWITCH extends BytecodeOpcode(0xAA)
+  case LOOKUPSWITCH extends BytecodeOpcode(0xAB)
+  case IRETURN extends BytecodeOpcode(0xAC)
+  case LRETURN extends BytecodeOpcode(0xAD)
+  case FRETURN extends BytecodeOpcode(0xAE)
+  case DRETURN extends BytecodeOpcode(0xAF)
+  case ARETURN extends BytecodeOpcode(0xB0)
+  case RETURN extends BytecodeOpcode(0xB1)
+  case GETSTATIC extends BytecodeOpcode(0xB2)
+  case PUTSTATIC extends BytecodeOpcode(0xB3)
+  case GETFIELD extends BytecodeOpcode(0xB4)
+  case PUTFIELD extends BytecodeOpcode(0xB5)
+  case INVOKEVIRTUAL extends BytecodeOpcode(0xB6)
+  case INVOKESPECIAL extends BytecodeOpcode(0xB7)
+  case INVOKESTATIC extends BytecodeOpcode(0xB8)
+  case INVOKEINTERFACE extends BytecodeOpcode(0xB9)
+  case INVOKEDYNAMIC extends BytecodeOpcode(0xBA)
+  case NEW extends BytecodeOpcode(0xBB)
+  case NEWARRAY extends BytecodeOpcode(0xBC)
+  case ANEWARRAY extends BytecodeOpcode(0xBD)
+  case ARRAYLENGTH extends BytecodeOpcode(0xBE)
+  case ATHROW extends BytecodeOpcode(0xBF)
+  case CHECKCAST extends BytecodeOpcode(0xC0)
+  case INSTANCEOF extends BytecodeOpcode(0xC1)
+  case MONITORENTER extends BytecodeOpcode(0xC2)
+  case MONITOREXIT extends BytecodeOpcode(0xC3)
+  case WIDE extends BytecodeOpcode(0xC4)
+  case MULTIANEWARRAY extends BytecodeOpcode(0xC5)
+  case IFNULL extends BytecodeOpcode(0xC6)
+  case IFNONNULL extends BytecodeOpcode(0xC7)
+  case GOTO_W extends BytecodeOpcode(0xC8)
+  case JSR_W extends BytecodeOpcode(0xC9)
+}
 
-  type BytecodeOpcode = Value
-
-  val AALOAD: BytecodeOpcode = 0x32
-  val AASTORE: BytecodeOpcode = 0x53
-
-  val ACONST_NULL: BytecodeOpcode = 0x1
-
-  val ALOAD: BytecodeOpcode = 0x19
-  val ALOAD_0: BytecodeOpcode = 0x2a
-  val ALOAD_1: BytecodeOpcode = 0x2b
-  val ALOAD_2: BytecodeOpcode = 0x2c
-  val ALOAD_3: BytecodeOpcode = 0x2d
-
-  val ANEWARRAY: BytecodeOpcode = 0xbd
-  val ARETURN: BytecodeOpcode = 0xb0
-  val ARRAYLENGTH: BytecodeOpcode = 0xbe
-
-  val ASTORE: BytecodeOpcode = 0x3a
-  val ASTORE_0: BytecodeOpcode = 0x4b
-  val ASTORE_1: BytecodeOpcode = 0x4c
-  val ASTORE_2: BytecodeOpcode = 0x4d
-  val ASTORE_3: BytecodeOpcode = 0x4e
-
-  val ATHROW: BytecodeOpcode = 0xbf
-
-  val BALOAD: BytecodeOpcode = 0x33
-  val BASTORE: BytecodeOpcode = 0x54
-  val BIPUSH: BytecodeOpcode = 0x10
-
-  val CALOAD: BytecodeOpcode = 0x34
-  val CASTORE: BytecodeOpcode = 0x55
-
-  val CHECKCAST: BytecodeOpcode = 0xc0
-
-  val D2F: BytecodeOpcode = 0x90
-  val D2I: BytecodeOpcode = 0x8e
-  val D2L: BytecodeOpcode = 0x8f
-  val DADD: BytecodeOpcode = 0x63
-  val DALOAD: BytecodeOpcode = 0x31
-  val DASTORE: BytecodeOpcode = 0x52
-  val DCMPG: BytecodeOpcode = 0x98
-  val DCMPL: BytecodeOpcode = 0x97
-  val DCONST_0: BytecodeOpcode = 0xe
-  val DCONST_1: BytecodeOpcode = 0xf
-  val DDIV: BytecodeOpcode = 0x6f
-  val DLOAD: BytecodeOpcode = 0x18
-  val DLOAD_0: BytecodeOpcode = 0x26
-  val DLOAD_1: BytecodeOpcode = 0x27
-  val DLOAD_2: BytecodeOpcode = 0x28
-  val DLOAD_3: BytecodeOpcode = 0x29
-  val DMUL: BytecodeOpcode = 0x6b
-  val DNEG: BytecodeOpcode = 0x77
-  val DREM: BytecodeOpcode = 0x73
-  val DRETURN: BytecodeOpcode = 0xaf
-  val DSTORE: BytecodeOpcode = 0x39
-  val DSTORE_0: BytecodeOpcode = 0x47
-  val DSTORE_1: BytecodeOpcode = 0x48
-  val DSTORE_2: BytecodeOpcode = 0x49
-  val DSTORE_3: BytecodeOpcode = 0x4a
-  val DSUB: BytecodeOpcode = 0x67
-
-  val DUP: BytecodeOpcode = 0x59
-  val DUP_X1: BytecodeOpcode = 0x5a
-  val DUP_X2: BytecodeOpcode = 0x5b
-  val DUP2: BytecodeOpcode = 0x5c
-  val DUP2_X1: BytecodeOpcode = 0x5d
-  val DUP2_X2: BytecodeOpcode = 0x5e
-
-  val F2D: BytecodeOpcode = 0x8d
-  val F2I: BytecodeOpcode = 0x8b
-  val F2L: BytecodeOpcode = 0x8c
-  val FADD: BytecodeOpcode = 0x62
-  val FALOAD: BytecodeOpcode = 0x30
-  val FASTORE: BytecodeOpcode = 0x51
-  val FCMPG: BytecodeOpcode = 0x96
-  val FCMPL: BytecodeOpcode = 0x95
-  val FCONST_0: BytecodeOpcode = 0xb
-  val FCONST_1: BytecodeOpcode = 0xc
-  val FCONST_2: BytecodeOpcode = 0xd
-  val FDIV: BytecodeOpcode = 0x6e
-  val FLOAD: BytecodeOpcode = 0x17
-  val FLOAD_0: BytecodeOpcode = 0x22
-  val FLOAD_1: BytecodeOpcode = 0x23
-  val FLOAD_2: BytecodeOpcode = 0x24
-  val FLOAD_3: BytecodeOpcode = 0x25
-  val FMUL: BytecodeOpcode = 0x6a
-  val FNEG: BytecodeOpcode = 0x76
-  val FREM: BytecodeOpcode = 0x72
-  val FRETURN: BytecodeOpcode = 0xae
-  val FSTORE: BytecodeOpcode = 0x38
-  val FSTORE_0: BytecodeOpcode = 0x43
-  val FSTORE_1: BytecodeOpcode = 0x44
-  val FSTORE_2: BytecodeOpcode = 0x45
-  val FSTORE_3: BytecodeOpcode = 0x46
-  val FSUB: BytecodeOpcode = 0x66
-
-  val GETFIELD: BytecodeOpcode = 0xb4
-  val GETSTATIC: BytecodeOpcode = 0xb2
-
-  val GOTO: BytecodeOpcode = 0xa7
-  val GOTO_W: BytecodeOpcode = 0xc8
-
-  val I2B: BytecodeOpcode = 0x91
-  val I2C: BytecodeOpcode = 0x92
-  val I2D: BytecodeOpcode = 0x87
-  val I2F: BytecodeOpcode = 0x86
-  val I2L: BytecodeOpcode = 0x85
-  val I2S: BytecodeOpcode = 0x93
-  val IADD: BytecodeOpcode = 0x60
-  val IALOAD: BytecodeOpcode = 0x2e
-  val IAND: BytecodeOpcode = 0x7e
-  val IASTORE: BytecodeOpcode = 0x4f
-  val ICONST_M1: BytecodeOpcode = 0x2
-  val ICONST_0: BytecodeOpcode = 0x3
-  val ICONST_1: BytecodeOpcode = 0x4
-  val ICONST_2: BytecodeOpcode = 0x5
-  val ICONST_3: BytecodeOpcode = 0x6
-  val ICONST_4: BytecodeOpcode = 0x7
-  val ICONST_5: BytecodeOpcode = 0x8
-  val IDIV: BytecodeOpcode = 0x6c
-
-  val IF_ACMPEQ: BytecodeOpcode = 0xa5
-  val IF_ACMPNE: BytecodeOpcode = 0xa6
-  val IF_ICMPEQ: BytecodeOpcode = 0x9f
-  val IF_ICMPNE: BytecodeOpcode = 0xa0
-  val IF_ICMPLT: BytecodeOpcode = 0xa1
-  val IF_ICMPGE: BytecodeOpcode = 0xa2
-  val IF_ICMPGT: BytecodeOpcode = 0xa3
-  val IF_ICMPLE: BytecodeOpcode = 0xa4
-  val IFEQ: BytecodeOpcode = 0x99
-  val IFNE: BytecodeOpcode = 0x9a
-  val IFLT: BytecodeOpcode = 0x9b
-  val IFGE: BytecodeOpcode = 0x9c
-  val IFGT: BytecodeOpcode = 0x9d
-  val IFLE: BytecodeOpcode = 0x9e
-  val IFNONNULL: BytecodeOpcode = 0xc7
-  val IFNULL: BytecodeOpcode = 0xc6
-
-  val IINC: BytecodeOpcode = 0x84
-
-  val ILOAD: BytecodeOpcode = 0x15
-  val ILOAD_0: BytecodeOpcode = 0x1a
-  val ILOAD_1: BytecodeOpcode = 0x1b
-  val ILOAD_2: BytecodeOpcode = 0x1c
-  val ILOAD_3: BytecodeOpcode = 0x1d
-
-  val IMUL: BytecodeOpcode = 0x68
-  val INEG: BytecodeOpcode = 0x74
-
-  val INSTANCEOF: BytecodeOpcode = 0xc1
-  val INVOKEDYNAMIC: BytecodeOpcode = 0xba
-  val INVOKEINTERFACE: BytecodeOpcode = 0xb9
-  val INVOKESPECIAL: BytecodeOpcode = 0xb7
-  val INVOKESTATIC: BytecodeOpcode = 0xb8
-  val INVOKEVIRTUAL: BytecodeOpcode = 0xb6
-
-  val IOR: BytecodeOpcode = 0x80
-  val IREM: BytecodeOpcode = 0x70
-
-  val IRETURN: BytecodeOpcode = 0xac
-
-  val ISHL: BytecodeOpcode = 0x78
-  val ISHR: BytecodeOpcode = 0x7a
-
-  val ISTORE: BytecodeOpcode = 0x36
-  val ISTORE_0: BytecodeOpcode = 0x3b
-  val ISTORE_1: BytecodeOpcode = 0x3c
-  val ISTORE_2: BytecodeOpcode = 0x3d
-  val ISTORE_3: BytecodeOpcode = 0x3e
-
-  val ISUB: BytecodeOpcode = 0x64
-  val IUSHR: BytecodeOpcode = 0x7c
-  val IXOR: BytecodeOpcode = 0x82
-
-  val JSR: BytecodeOpcode = 0xa8
-  val JSR_W: BytecodeOpcode = 0xc9
-
-  val L2D: BytecodeOpcode = 0x8a
-  val L2F: BytecodeOpcode = 0x89
-  val L2I: BytecodeOpcode = 0x88
-  val LADD: BytecodeOpcode = 0x61
-  val LALOAD: BytecodeOpcode = 0x2f
-  val LAND: BytecodeOpcode = 0x7f
-  val LASTORE: BytecodeOpcode = 0x50
-  val LCMP: BytecodeOpcode = 0x94
-  val LCONST_0: BytecodeOpcode = 0x9
-  val LCONST_1: BytecodeOpcode = 0xa
-
-  val LDC: BytecodeOpcode = 0x12
-  val LDC_W: BytecodeOpcode = 0x13
-  val LDC2_W: BytecodeOpcode = 0x14
-
-  val LDIV: BytecodeOpcode = 0x6d
-
-  val LLOAD: BytecodeOpcode = 0x16
-  val LLOAD_0: BytecodeOpcode = 0x1e
-  val LLOAD_1: BytecodeOpcode = 0x1f
-  val LLOAD_2: BytecodeOpcode = 0x20
-  val LLOAD_3: BytecodeOpcode = 0x21
-
-  val LMUL: BytecodeOpcode = 0x69
-  val LNEG: BytecodeOpcode = 0x75
-
-  val LOOKUPSWITCH: BytecodeOpcode = 0xab // "The CIA wants you to think it's the same as if-else, it's not" - Terry Davis
-
-  val LOR: BytecodeOpcode = 0x81
-  val LREM: BytecodeOpcode = 0x71
-
-  val LRETURN: BytecodeOpcode = 0xad
-
-  val LSHL: BytecodeOpcode = 0x79
-  val LSHR: BytecodeOpcode = 0x7b
-
-  val LSTORE: BytecodeOpcode = 0x37
-  val LSTORE_0: BytecodeOpcode = 0x3f
-  val LSTORE_1: BytecodeOpcode = 0x40
-  val LSTORE_2: BytecodeOpcode = 0x41
-  val LSTORE_3: BytecodeOpcode = 0x42
-
-  val LSUB: BytecodeOpcode = 0x65
-  val LUSHR: BytecodeOpcode = 0x7d
-  val LXOR: BytecodeOpcode = 0x83
-
-  val MONITORENTER: BytecodeOpcode = 0xc2
-  val MONITOREXIT: BytecodeOpcode = 0xc3
-
-  val MULTIANEWARRAY: BytecodeOpcode = 0xc5
-  val NEW: BytecodeOpcode = 0xbb
-  val NEWARRAY: BytecodeOpcode = 0xbc
-
-  val NOP: BytecodeOpcode = 0x0
-
-  val POP: BytecodeOpcode = 0x57
-  val POP2: BytecodeOpcode = 0x58
-
-  val PUTFIELD: BytecodeOpcode = 0xb5
-  val PUTSTATIC: BytecodeOpcode = 0xb3
-
-  val RET: BytecodeOpcode = 0xa9
-
-  val RETURN: BytecodeOpcode = 0xb1
-
-  val SALOAD: BytecodeOpcode = 0x35
-  val SASTORE: BytecodeOpcode = 0x56
-  val SIPUSH: BytecodeOpcode = 0x11
-
-  val SWAP: BytecodeOpcode = 0x5f
-
-  val TABLESWITCH: BytecodeOpcode = 0xaa
-
-  val WIDE: BytecodeOpcode = 0xc4
-
+object BytecodeOpcode {
   def fromOpcode(opcode: Int): Option[BytecodeOpcode] =
-    BytecodeOpcode.values.find(_.id == (opcode & 0xFF))
-
-
+    BytecodeOpcode.values.find(_.opcode == (opcode & 0xFF))
 }

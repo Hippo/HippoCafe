@@ -38,7 +38,7 @@ import scala.collection.mutable.ListBuffer
  */
 final case class BranchInstruction(var bytecodeOpcode: BytecodeOpcode, var label: LabelInstruction) extends Instruction {
   override def assemble(assemblerContext: AssemblerContext, constantPool: ConstantPool): Unit = {
-    val uniqueByte = UniqueByte(bytecodeOpcode.id.toByte)
+    val uniqueByte = UniqueByte(bytecodeOpcode.opcode.toByte)
     assemblerContext.labelQueue.foreach(label => assemblerContext.labelToByte += (label -> uniqueByte))
     assemblerContext.labelQueue.clear()
 

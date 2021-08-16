@@ -26,7 +26,7 @@ package rip.hippo.hippocafe.constantpool.info.impl
 
 import java.io.DataOutputStream
 import rip.hippo.hippocafe.constantpool.ConstantPool
-import rip.hippo.hippocafe.constantpool.ConstantPoolKind.ConstantPoolKind
+import rip.hippo.hippocafe.constantpool.ConstantPoolKind
 import rip.hippo.hippocafe.constantpool.info.ValueAwareness
 import rip.hippo.hippocafe.constantpool.{ConstantPool, ConstantPoolKind}
 import rip.hippo.hippocafe.constantpool.info.{ConstantPoolInfo, ValueAwareness}

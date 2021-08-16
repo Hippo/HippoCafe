@@ -1,6 +1,6 @@
 package rip.hippo.testing.hippocafe.assemble
 
-import org.scalatest.FunSuite
+import org.scalatest.funsuite.AnyFunSuite
 import rip.hippo.hippocafe.ClassWriter
 import rip.hippo.hippocafe.access.AccessFlag.{ACC_PUBLIC, ACC_STATIC}
 import rip.hippo.hippocafe.builder.ClassBuilder
@@ -19,7 +19,7 @@ import scala.util.{Failure, Success, Using}
  * @version 1.0.0, 2/21/21
  * @since 1.0.0
  */
-final class VariableAssemblerSuite extends FunSuite {
+final class VariableAssemblerSuite extends AnyFunSuite {
 
   test("assemble.variable") {
     val classFile = ClassBuilder(

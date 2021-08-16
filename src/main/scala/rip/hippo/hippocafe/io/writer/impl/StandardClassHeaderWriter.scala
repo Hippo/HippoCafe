@@ -1,7 +1,7 @@
-package rip.hippo.hippocafe.writer.impl
+package rip.hippo.hippocafe.io.writer.impl
 
 import rip.hippo.hippocafe.ClassFile
-import rip.hippo.hippocafe.writer.ClassHeaderWriter
+import rip.hippo.hippocafe.io.writer.ClassHeaderWriter
 
 import java.io.DataOutputStream
 

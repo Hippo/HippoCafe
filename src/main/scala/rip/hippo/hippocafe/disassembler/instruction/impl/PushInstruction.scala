@@ -47,14 +47,14 @@ final case class PushInstruction(var value: Int) extends Instruction {
 
         assemblerContext.code += uniqueByte
       case x if x >= Byte.MinValue && x <= Byte.MaxValue =>
-        val uniqueByte = UniqueByte(BytecodeOpcode.BIPUSH.id.toByte)
+        val uniqueByte = UniqueByte(BytecodeOpcode.BIPUSH.opcode.toByte)
         assemblerContext.labelQueue.foreach(label => assemblerContext.labelToByte += (label -> uniqueByte))
         assemblerContext.labelQueue.clear()
 
         assemblerContext.code += uniqueByte
         code += UniqueByte(x.toByte)
       case x if x >= Short.MinValue && x <= Short.MaxValue =>
-        val uniqueByte = UniqueByte(BytecodeOpcode.SIPUSH.id.toByte)
+        val uniqueByte = UniqueByte(BytecodeOpcode.SIPUSH.opcode.toByte)
         assemblerContext.labelQueue.foreach(label => assemblerContext.labelToByte += (label -> uniqueByte))
         assemblerContext.labelQueue.clear()
 
