@@ -50,7 +50,7 @@ final class BuilderSuite extends AnyFunSuite {
       SE8,
       "HelloWorld",
       "java/lang/Object",
-      ACC_PUBLIC
+      ACC_PUBLIC, ACC_FINAL
     ).method(
       "<init>",
       "()V",
