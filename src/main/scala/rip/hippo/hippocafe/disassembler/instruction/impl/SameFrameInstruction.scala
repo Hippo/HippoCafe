@@ -2,7 +2,7 @@ package rip.hippo.hippocafe.disassembler.instruction.impl
 
 import rip.hippo.hippocafe.constantpool.ConstantPool
 import rip.hippo.hippocafe.disassembler.context.AssemblerContext
-import rip.hippo.hippocafe.disassembler.instruction.{FrameInstruction, Instruction}
+import rip.hippo.hippocafe.disassembler.instruction.{BytecodeOpcode, FrameInstruction, Instruction}
 import rip.hippo.hippocafe.stackmap.impl.{SameExtendedStackMapFrame, SameStackMapFrame}
 
 /**
@@ -24,6 +24,10 @@ final class SameFrameInstruction extends Instruction with FrameInstruction {
       assemblerContext.stackMapFrames += SameExtendedStackMapFrame(nextDelta)
     }
   }
+
+  override def finalizeVerificationTypes(assemblerContext: AssemblerContext): Unit = {}
+
+  override def getOpcode: Option[BytecodeOpcode] = Option.empty
 
   override def toString: String = "SameFrameInstruction()"
 }

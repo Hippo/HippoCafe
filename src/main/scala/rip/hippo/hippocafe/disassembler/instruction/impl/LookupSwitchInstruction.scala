@@ -63,5 +63,7 @@ final case class LookupSwitchInstruction(var default: LabelInstruction) extends 
     })
   }
 
+  override def getOpcode: Option[BytecodeOpcode] = Option(BytecodeOpcode.LOOKUPSWITCH)
+
   override def toString: String = s"LookupSwitchInstruction($default, $pairs)"
 }

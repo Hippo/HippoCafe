@@ -2,7 +2,7 @@ package rip.hippo.hippocafe.disassembler.instruction.impl
 
 import rip.hippo.hippocafe.constantpool.ConstantPool
 import rip.hippo.hippocafe.disassembler.context.AssemblerContext
-import rip.hippo.hippocafe.disassembler.instruction.{FrameInstruction, Instruction}
+import rip.hippo.hippocafe.disassembler.instruction.{BytecodeOpcode, FrameInstruction, Instruction}
 import rip.hippo.hippocafe.stackmap.impl.FullStackMapFrame
 import rip.hippo.hippocafe.stackmap.verification.VerificationTypeInfo
 
@@ -21,6 +21,13 @@ final class FullFrameInstruction(var locals: Array[VerificationTypeInfo], var st
 
     assemblerContext.stackMapFrames += FullStackMapFrame(nextDelta, locals.length, locals, stack.length, stack)
   }
+
+  override def finalizeVerificationTypes(assemblerContext: AssemblerContext): Unit = {
+    super.alignUninitalized(assemblerContext, locals)
+    super.alignUninitalized(assemblerContext, stack)
+  }
+
+  override def getOpcode: Option[BytecodeOpcode] = Option.empty
 
   override def toString = "FullFrameInstruction([" + locals.mkString(", ") + "], [" + stack.mkString(", ") + "])"
 }

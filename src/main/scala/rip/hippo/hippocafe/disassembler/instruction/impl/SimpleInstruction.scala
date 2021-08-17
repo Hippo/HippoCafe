@@ -58,4 +58,6 @@ final case class SimpleInstruction(var bytecodeOpcode: BytecodeOpcode) extends I
       }
     }
   }
+
+  override def getOpcode: Option[BytecodeOpcode] = Option(bytecodeOpcode)
 }

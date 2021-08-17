@@ -40,6 +40,8 @@ trait Instruction {
   private var uniqueId: UUID = _
 
   def assemble(assemblerContext: AssemblerContext, constantPool: ConstantPool): Unit
+  
+  def getOpcode: Option[BytecodeOpcode]
 
   def getUniqueId: UUID = {
     if (uniqueId == null) {

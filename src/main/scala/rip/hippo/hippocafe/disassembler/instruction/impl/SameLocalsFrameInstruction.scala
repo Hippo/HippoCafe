@@ -2,7 +2,7 @@ package rip.hippo.hippocafe.disassembler.instruction.impl
 
 import rip.hippo.hippocafe.constantpool.ConstantPool
 import rip.hippo.hippocafe.disassembler.context.AssemblerContext
-import rip.hippo.hippocafe.disassembler.instruction.{FrameInstruction, Instruction}
+import rip.hippo.hippocafe.disassembler.instruction.{BytecodeOpcode, FrameInstruction, Instruction}
 import rip.hippo.hippocafe.stackmap.impl.{SameLocalsExtendedStackMapFrame, SameLocalsStackMapFrame}
 import rip.hippo.hippocafe.stackmap.verification.VerificationTypeInfo
 
@@ -25,6 +25,12 @@ final class SameLocalsFrameInstruction(var verificationTypeInfo: VerificationTyp
       assemblerContext.stackMapFrames += SameLocalsExtendedStackMapFrame(nextDelta, Array[VerificationTypeInfo](verificationTypeInfo))
     }
   }
+
+  override def finalizeVerificationTypes(assemblerContext: AssemblerContext): Unit = {
+    super.alignUninitalized(assemblerContext, Array(verificationTypeInfo))
+  }
+
+  override def getOpcode: Option[BytecodeOpcode] = Option.empty
 
   override def toString: String = s"SameLocalsFrameInstruction($verificationTypeInfo)"
 }

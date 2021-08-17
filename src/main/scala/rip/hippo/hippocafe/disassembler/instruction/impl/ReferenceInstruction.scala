@@ -103,4 +103,6 @@ final case class ReferenceInstruction(var bytecodeOpcode: BytecodeOpcode, var ow
       code += UniqueByte(0)
     }
   }
+
+  override def getOpcode: Option[BytecodeOpcode] = Option(bytecodeOpcode)
 }

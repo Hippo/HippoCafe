@@ -37,7 +37,7 @@ import scala.util.{Failure, Success, Using}
  */
 final class InstructionReadSuite extends AnyFunSuite {
 
-  private val className = "AnnotationTest"
+  private val className = "ArrayTest"
 
   test("CodeDisassembler.disassemble") {
     Option(Thread.currentThread.getContextClassLoader.getResourceAsStream(s"$className.class")) match {

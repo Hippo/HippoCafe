@@ -60,4 +60,6 @@ final case class IncrementInstruction(var localIndex: Int, var value: Int) exten
       assemblerContext.code += UniqueByte(value.toByte)
     }
   }
+
+  override def getOpcode: Option[BytecodeOpcode] = Option(BytecodeOpcode.IINC)
 }

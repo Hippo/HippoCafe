@@ -75,4 +75,6 @@ final case class VariableInstruction(var bytecodeOpcode: BytecodeOpcode, var ind
       }))
     }
   }
+
+  override def getOpcode: Option[BytecodeOpcode] = Option(bytecodeOpcode)
 }

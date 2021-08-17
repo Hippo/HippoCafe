@@ -3,7 +3,7 @@ package rip.hippo.hippocafe.analaysis.impl
 import rip.hippo.hippocafe.MethodInfo
 import rip.hippo.hippocafe.analaysis.MaxStackDepthCalculator
 import rip.hippo.hippocafe.disassembler.instruction.Instruction
-import rip.hippo.hippocafe.disassembler.instruction.impl.{ANewArrayInstruction, BranchInstruction, ConstantInstruction, IncrementInstruction, LabelInstruction, LookupSwitchInstruction, MultiANewArrayInstruction, NewArrayInstruction, PushInstruction, ReferenceInstruction, SimpleInstruction, TableSwitchInstruction, TypeInstruction, VariableInstruction}
+import rip.hippo.hippocafe.disassembler.instruction.impl.{ANewArrayInstruction, BranchInstruction, ConstantInstruction, IncrementInstruction, LabelInstruction, LookupSwitchInstruction, MultiANewArrayInstruction, NewArrayInstruction, PushInstruction, ReferenceInstruction, SimpleInstruction, TableSwitchInstruction, TypeInstruction, VariableInstruction, InvokeDynamicInstruction}
 import rip.hippo.hippocafe.disassembler.instruction.BytecodeOpcode._
 import rip.hippo.hippocafe.disassembler.instruction.constant.impl.{DoubleConstant, LongConstant}
 import rip.hippo.hippocafe.util.Type
@@ -120,11 +120,12 @@ sealed case class Block() {
           case GETSTATIC => Type.getType(descriptor).getSize
           case PUTSTATIC => -Type.getType(descriptor).getSize
           case GETFIELD => Type.getType(descriptor).getSize - 1
-          case PUTFIELD => Type.getType(descriptor).getSize + 1
+          case PUTFIELD => -Type.getType(descriptor).getSize + 1
           case INVOKEVIRTUAL | INVOKESPECIAL | INVOKEINTERFACE => getMethodStackDepth(instruction) - 1
           case INVOKESTATIC => getMethodStackDepth(instruction)
         }
-      case SimpleInstruction(bytecodeOpcode) => 
+      case InvokeDynamicInstruction(invokeDynamicConstant) => getMethodStackDepth(instruction)
+      case SimpleInstruction(bytecodeOpcode) =>
         bytecodeOpcode match {
           case ALOAD_0 | ALOAD_1 | ALOAD_2 | ALOAD_3 |
                ILOAD_0 | ILOAD_1 | ILOAD_2 | ILOAD_3 |
@@ -192,7 +193,9 @@ sealed case class Block() {
       case ReferenceInstruction(_, _, _, descriptor) =>
         parameters.addAll(Type.getMethodParameterTypes(descriptor))
         returnType = Type.getMethodReturnType(descriptor)
-      //TODO: Invoke dynamic
+      case InvokeDynamicInstruction(invokeDynamicConstant) =>
+        parameters.addAll(Type.getMethodParameterTypes(invokeDynamicConstant.descriptor))
+        returnType = Type.getMethodReturnType(invokeDynamicConstant.descriptor)
     }
     parameters.foreach(size -= _.getSize)
     size += returnType.getSize

@@ -66,10 +66,10 @@ final class BuilderSuite extends AnyFunSuite {
     ).apply(instructions => {
       instructions += ReferenceInstruction(GETSTATIC, "java/lang/System", "out", "Ljava/io/PrintStream;")
       instructions += ConstantInstruction(StringConstant("Hello World"))
-      instructions += ReferenceInstruction(INVOKEVIRTUAL, "java/io/PrintStream", "println", "(Ljava/lang/String;)V")
+      instructions += ReferenceInstruction(INVOKEVIRTUAL, "java/io/PrintStream", "println", "(Ljava/lang/Object;)V")
       instructions += SimpleInstruction(RETURN)
     }).result
-    val test = Using(new ClassWriter(classFile).calculateMaxes) {
+    val test = Using(new ClassWriter(classFile).calculateMaxes.generateFrames) {
       classWriter =>
         val bytecode = classWriter.write
         val classLoader = new CustomClassLoader()

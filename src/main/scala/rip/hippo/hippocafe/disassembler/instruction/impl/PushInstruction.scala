@@ -64,4 +64,11 @@ final case class PushInstruction(var value: Int) extends Instruction {
       case _ => ConstantInstruction(IntegerConstant(value)).assemble(assemblerContext, constantPool)
     }
   }
+
+  override def getOpcode: Option[BytecodeOpcode] = Option(value match {
+    case x if x >= -1 && x < 5 => BytecodeOpcode.fromOpcode(x + 3).get
+    case x if x >= Byte.MinValue && x <= Byte.MaxValue => BytecodeOpcode.BIPUSH
+    case x if x >= Short.MinValue && x <= Short.MaxValue => BytecodeOpcode.SIPUSH
+    case _ => BytecodeOpcode.LDC
+  })
 }

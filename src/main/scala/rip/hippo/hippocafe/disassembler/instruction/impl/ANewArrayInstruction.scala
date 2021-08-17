@@ -49,4 +49,6 @@ final case class ANewArrayInstruction(var descriptor: String) extends Instructio
     assemblerContext.code += UniqueByte(((index >>> 8) & 0xFF).toByte)
     assemblerContext.code += UniqueByte((index & 0xFF).toByte)
   }
+
+  override def getOpcode: Option[BytecodeOpcode] = Option(BytecodeOpcode.ANEWARRAY)
 }

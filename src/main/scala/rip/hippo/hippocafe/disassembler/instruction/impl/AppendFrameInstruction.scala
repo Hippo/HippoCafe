@@ -2,7 +2,7 @@ package rip.hippo.hippocafe.disassembler.instruction.impl
 
 import rip.hippo.hippocafe.constantpool.ConstantPool
 import rip.hippo.hippocafe.disassembler.context.AssemblerContext
-import rip.hippo.hippocafe.disassembler.instruction.{FrameInstruction, Instruction}
+import rip.hippo.hippocafe.disassembler.instruction.{BytecodeOpcode, FrameInstruction, Instruction}
 import rip.hippo.hippocafe.stackmap.impl.AppendStackMapFrame
 import rip.hippo.hippocafe.stackmap.verification.VerificationTypeInfo
 
@@ -21,6 +21,10 @@ final class AppendFrameInstruction(var locals: Array[VerificationTypeInfo]) exte
 
     assemblerContext.stackMapFrames += AppendStackMapFrame(locals.length + 251, nextDelta, locals)
   }
+
+  override def finalizeVerificationTypes(assemblerContext: AssemblerContext): Unit = {}
+
+  override def getOpcode: Option[BytecodeOpcode] = Option.empty
 
   override def toString: String = "AppendFrameInstruction([" + locals.mkString(", ") + "])"
 }

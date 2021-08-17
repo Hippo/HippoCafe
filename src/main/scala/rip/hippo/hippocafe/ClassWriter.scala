@@ -64,7 +64,7 @@ final class ClassWriter(classFile: ClassFile,
   private val flags = mutable.Set[AssemblerFlag]()
   private val byteOut = new ByteArrayOutputStream()
   private val out = new DataOutputStream(byteOut)
-  private var stackDepthCalculator: MaxStackDepthCalculator = new StandardMaxStackDepthCalculator
+  private var maxStackDepthCalculator: MaxStackDepthCalculator = new StandardMaxStackDepthCalculator
 
   def write: Array[Byte] = {
     classHeaderWriter.write(classFile, out)
@@ -101,7 +101,7 @@ final class ClassWriter(classFile: ClassFile,
 
         if (assemblerContext.calculateMaxes) {
           val defaultSize = Type.getMethodParameterTypes(method.descriptor).map(_.getSize).sum + (if (method.accessFlags.contains(AccessFlag.ACC_STATIC)) 0 else 1)
-          val maxStack = stackDepthCalculator.calculateMaxStack(method)
+          val maxStack = maxStackDepthCalculator.calculateMaxStack(method)
           assemblerContext.setMaxLocals(defaultSize)
           assemblerContext.setMaxStack(maxStack)
         } else {
@@ -139,8 +139,8 @@ final class ClassWriter(classFile: ClassFile,
           assemblerContext.maxLocals,
           methodBytecode.map(_.byte).toSeq,
           tryCatchBlocks.length,
-          tryCatchBlocks,
-          attributes
+          tryCatchBlocks.toIndexedSeq,
+          attributes.toIndexedSeq
         )
         codeAttribute.buildConstantPool(constantPool)
         method.attributes += codeAttribute
@@ -281,8 +281,8 @@ final class ClassWriter(classFile: ClassFile,
     this
   }
 
-  def setStackCalculator(maxStackDepthCalculator: MaxStackDepthCalculator): ClassWriter = {
-    this.stackDepthCalculator = maxStackDepthCalculator
+  def setMaxStackDepthCalculator(maxStackDepthCalculator: MaxStackDepthCalculator): ClassWriter = {
+    this.maxStackDepthCalculator = maxStackDepthCalculator
     this
   }
 

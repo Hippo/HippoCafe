@@ -45,4 +45,6 @@ final case class NewArrayInstruction(var arrayType: ArrayType) extends Instructi
     assemblerContext.code += uniqueByte
     assemblerContext.code += UniqueByte(arrayType.id.toByte)
   }
+
+  override def getOpcode: Option[BytecodeOpcode] = Option(BytecodeOpcode.NEWARRAY)
 }

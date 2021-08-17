@@ -46,4 +46,6 @@ final case class BranchInstruction(var bytecodeOpcode: BytecodeOpcode, var label
     assemblerContext.code += uniqueByte
 
   }
+
+  override def getOpcode: Option[BytecodeOpcode] = Option(bytecodeOpcode)
 }

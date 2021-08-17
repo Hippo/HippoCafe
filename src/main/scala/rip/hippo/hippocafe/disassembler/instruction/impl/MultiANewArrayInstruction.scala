@@ -28,6 +28,7 @@ import rip.hippo.hippocafe.constantpool.info.impl.{StringInfo, UTF8Info}
 import rip.hippo.hippocafe.constantpool.{ConstantPool, ConstantPoolKind}
 import rip.hippo.hippocafe.disassembler.context.{AssemblerContext, UniqueByte}
 import rip.hippo.hippocafe.disassembler.instruction.{BytecodeOpcode, Instruction}
+import rip.hippo.hippocafe.util.Type
 
 import scala.collection.mutable.ListBuffer
 
@@ -39,6 +40,7 @@ import scala.collection.mutable.ListBuffer
 final case class MultiANewArrayInstruction(var descriptor: String, var dimensions: Int) extends Instruction {
   override def assemble(assemblerContext: AssemblerContext, constantPool: ConstantPool): Unit = {
     var index = -1
+    
     constantPool.info
       .filter(_._2.isInstanceOf[StringInfo])
       .filter(_._2.kind == ConstantPoolKind.CLASS)
@@ -66,4 +68,6 @@ final case class MultiANewArrayInstruction(var descriptor: String, var dimension
     assemblerContext.code += UniqueByte((index & 0xFF).toByte)
     assemblerContext.code += UniqueByte(dimensions.toByte)
   }
+
+  override def getOpcode: Option[BytecodeOpcode] = Option(BytecodeOpcode.MULTIANEWARRAY)
 }

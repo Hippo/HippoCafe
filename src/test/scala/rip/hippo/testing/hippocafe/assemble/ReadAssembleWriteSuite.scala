@@ -49,7 +49,7 @@ final class ReadAssembleWriteSuite extends AnyFunSuite {
         val test = Using(new ClassReader(value)) {
           classReader =>
 
-            val writerTest = Using(new ClassWriter(classReader.classFile)) {
+            val writerTest = Using(new ClassWriter(classReader.classFile).calculateMaxes.generateFrames) {
               classWriter =>
                 val bytecode = classWriter.write
 

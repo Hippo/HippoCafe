@@ -45,9 +45,15 @@ final case class TypeInstruction(var bytecodeOpcode: BytecodeOpcode, var typeNam
     val uniqueByte = UniqueByte(bytecodeOpcode.opcode.toByte)
     assemblerContext.labelQueue.foreach(label => assemblerContext.labelToByte += (label -> uniqueByte))
     assemblerContext.labelQueue.clear()
+    
+    if (bytecodeOpcode == BytecodeOpcode.NEW) {
+      assemblerContext.labelToByte += (this -> uniqueByte)
+    }
 
     assemblerContext.code += uniqueByte
     assemblerContext.code += UniqueByte(((index >>> 8) & 0xFF).toByte)
     assemblerContext.code += UniqueByte((index & 0xFF).toByte)
   }
+
+  override def getOpcode: Option[BytecodeOpcode] = Option(bytecodeOpcode)
 }

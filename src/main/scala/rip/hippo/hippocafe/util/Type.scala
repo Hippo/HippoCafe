@@ -57,6 +57,9 @@ object Type {
 
   def getMethodReturnType(descriptor: String): Type =
     Type.getType(descriptor.substring(descriptor.lastIndexOf(')') + 1))
+  
+  def getArrayType(descriptor: String): String =
+    if (descriptor.startsWith("[")) getArrayType(descriptor.substring(1)) else descriptor
 }
 
 sealed case class Type(descriptor: String) {

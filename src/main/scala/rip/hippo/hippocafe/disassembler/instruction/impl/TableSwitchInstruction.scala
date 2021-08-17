@@ -62,5 +62,7 @@ final case class TableSwitchInstruction(var default: LabelInstruction, var low: 
     table.foreach(_ => (0 until 4).foreach(_ => code += UniqueByte(0)))
   }
 
+  override def getOpcode: Option[BytecodeOpcode] = Option(BytecodeOpcode.TABLESWITCH)
+
   override def toString: String = s"TableSwitchInstruction($default, $low, $high, $table)"
 }

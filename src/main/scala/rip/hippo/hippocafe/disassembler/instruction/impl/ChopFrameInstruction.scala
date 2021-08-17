@@ -2,7 +2,7 @@ package rip.hippo.hippocafe.disassembler.instruction.impl
 
 import rip.hippo.hippocafe.constantpool.ConstantPool
 import rip.hippo.hippocafe.disassembler.context.AssemblerContext
-import rip.hippo.hippocafe.disassembler.instruction.{FrameInstruction, Instruction}
+import rip.hippo.hippocafe.disassembler.instruction.{BytecodeOpcode, FrameInstruction, Instruction}
 import rip.hippo.hippocafe.stackmap.impl.ChopStackMapFrame
 
 /**
@@ -20,6 +20,10 @@ final class ChopFrameInstruction(var numberOfAbsentLocals: Int) extends Instruct
 
     assemblerContext.stackMapFrames += ChopStackMapFrame(251 - numberOfAbsentLocals, nextDelta)
   }
+
+  override def finalizeVerificationTypes(assemblerContext: AssemblerContext): Unit = {}
+
+  override def getOpcode: Option[BytecodeOpcode] = Option.empty
 
   override def toString: String = s"ChopFrameInstruction($numberOfAbsentLocals)"
 }

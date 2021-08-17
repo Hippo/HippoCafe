@@ -42,6 +42,8 @@ final class LabelInstruction(var debugId: Int = -1) extends Instruction {
   override def assemble(assemblerContext: AssemblerContext, constantPool: ConstantPool): Unit = {
     assemblerContext.labelQueue += this
   }
+
+  override def getOpcode: Option[BytecodeOpcode] = Option.empty
 }
 
 

@@ -76,5 +76,7 @@ final case class ConstantInstruction(var constant: Constant[?]) extends Instruct
         }
     }
   }
+
+  override def getOpcode: Option[BytecodeOpcode] = Option(BytecodeOpcode.LDC)
 }
 

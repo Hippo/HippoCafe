@@ -27,4 +27,6 @@ final case class InvokeDynamicInstruction(invokeDynamicConstant: InvokeDynamicCo
     code += UniqueByte(0)
     code += UniqueByte(0)
   }
+
+  override def getOpcode: Option[BytecodeOpcode] = Option(BytecodeOpcode.INVOKEDYNAMIC)
 }

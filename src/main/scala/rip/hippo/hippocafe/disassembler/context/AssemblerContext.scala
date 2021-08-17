@@ -192,6 +192,7 @@ final class AssemblerContext(flags: Set[AssemblerFlag]) {
 
     labelToByte.filter(_._1.isInstanceOf[FrameInstruction]).toSeq.sortWith((a, b) => code.indexOf(a._2) < code.indexOf(b._2)).foreach(pair => sortedFrames += (pair._1.asInstanceOf[FrameInstruction] -> code.indexOf(pair._2)))
 
+    sortedFrames.foreach(_._1.finalizeVerificationTypes(this))
     sortedFrames.foreach(_._1.assemble(this))
 
     attributes += LineNumberTableAttribute(lineNumberAttributeDataInfo.toSeq)
