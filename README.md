@@ -22,6 +22,14 @@ dependencies {
 }
 ```
 
+Or using Scala SBT
+
+```scala
+resolvers += "jitpack" at "https://jitpack.io"
+
+libraryDependencies += "com.github.Hippo" % "HippoCafe" % "2.0.1"
+```
+
 # Reading class files
 
 With the `ClassReader` you are able to read class files via a `Array[Byte]` or an `InputStream`.
