@@ -24,36 +24,32 @@
 
 package rip.hippo.hippocafe.version
 
-import scala.language.implicitConversions
-
-
 /**
  * @author Hippo
  * @version 1.0.0, 8/1/20
  * @since 1.0.0
  */
-object MajorClassFileVersion extends Enumeration {
-  private implicit def toValue(version: Int): Value = Value(version)
+enum MajorClassFileVersion(val version: Int) {
+  case JDK1_1 extends MajorClassFileVersion(45)
+  case JDK1_2 extends MajorClassFileVersion(46)
+  case JDK1_3 extends MajorClassFileVersion(47)
+  case JDK1_4 extends MajorClassFileVersion(48)
+  case SE5_0 extends MajorClassFileVersion(49)
+  case SE6 extends MajorClassFileVersion(50)
+  case SE7 extends MajorClassFileVersion(51)
+  case SE8 extends MajorClassFileVersion(52)
+  case SE9 extends MajorClassFileVersion(53)
+  case SE10 extends MajorClassFileVersion(54)
+  case SE11 extends MajorClassFileVersion(55)
+  case SE12 extends MajorClassFileVersion(56)
+  case SE13 extends MajorClassFileVersion(57)
+  case SE14 extends MajorClassFileVersion(58)
+  case SE15 extends MajorClassFileVersion(59)
+  case SE16 extends MajorClassFileVersion(60)
+  case SE17 extends MajorClassFileVersion(61)
+}
 
-  type MajorClassFileVersion = Value
-  
-  val JDK1_1: MajorClassFileVersion = 45
-  val JDK1_2: MajorClassFileVersion = 46
-  val JDK1_3: MajorClassFileVersion = 47
-  val JDK1_4: MajorClassFileVersion = 48
-  val SE5_0: MajorClassFileVersion = 49
-  val SE6: MajorClassFileVersion = 50
-  val SE7: MajorClassFileVersion = 51
-  val SE8: MajorClassFileVersion = 52
-  val SE9: MajorClassFileVersion = 53
-  val SE10: MajorClassFileVersion = 54
-  val SE11: MajorClassFileVersion = 55
-  val SE12: MajorClassFileVersion = 56
-  val SE13: MajorClassFileVersion = 57
-  val SE14: MajorClassFileVersion = 58
-  val JDK15: MajorClassFileVersion = 59
-  val JDK16: MajorClassFileVersion = 60
-
+object MajorClassFileVersion {
   def fromVersion(version: Int): Option[MajorClassFileVersion] =
-    MajorClassFileVersion.values.find(_.id == version)
+    MajorClassFileVersion.values.find(_.version == version)
 }

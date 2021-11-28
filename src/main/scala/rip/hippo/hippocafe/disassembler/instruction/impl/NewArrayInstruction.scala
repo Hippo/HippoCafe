@@ -24,7 +24,7 @@
 
 package rip.hippo.hippocafe.disassembler.instruction.impl
 
-import rip.hippo.hippocafe.disassembler.instruction.array.ArrayType.ArrayType
+import rip.hippo.hippocafe.disassembler.instruction.array.ArrayType
 import rip.hippo.hippocafe.constantpool.ConstantPool
 import rip.hippo.hippocafe.disassembler.context.{AssemblerContext, UniqueByte}
 import rip.hippo.hippocafe.disassembler.instruction.{BytecodeOpcode, Instruction}
@@ -43,7 +43,7 @@ final case class NewArrayInstruction(var arrayType: ArrayType) extends Instructi
     assemblerContext.labelQueue.clear()
 
     assemblerContext.code += uniqueByte
-    assemblerContext.code += UniqueByte(arrayType.id.toByte)
+    assemblerContext.code += UniqueByte(arrayType.`type`.toByte)
   }
 
   override def getOpcode: Option[BytecodeOpcode] = Option(BytecodeOpcode.NEWARRAY)

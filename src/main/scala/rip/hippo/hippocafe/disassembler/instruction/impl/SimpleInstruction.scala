@@ -46,14 +46,14 @@ final case class SimpleInstruction(var bytecodeOpcode: BytecodeOpcode) extends I
 
     if (assemblerContext.calculateMaxes) {
       bytecodeOpcode match {
-        case ALOAD_0 | ILOAD_0 | FLOAD_0 => assemblerContext.setMaxLocals(1)
-        case ALOAD_1 | ILOAD_1 | FLOAD_1 => assemblerContext.setMaxLocals(2)
-        case ALOAD_2 | ILOAD_2 | FLOAD_2 => assemblerContext.setMaxLocals(3)
-        case ALOAD_3 | ILOAD_3 | FLOAD_3 => assemblerContext.setMaxLocals(4)
-        case LLOAD_0 | DLOAD_0 => assemblerContext.setMaxLocals(2)
-        case LLOAD_1 | DLOAD_1 => assemblerContext.setMaxLocals(3)
-        case LLOAD_2 | DLOAD_2 => assemblerContext.setMaxLocals(4)
-        case LLOAD_3 | DLOAD_3 => assemblerContext.setMaxLocals(5)
+        case ALOAD_0 | ILOAD_0 | FLOAD_0 | ASTORE_0 | ISTORE_0 | FSTORE_0 => assemblerContext.setMaxLocals(1)
+        case ALOAD_1 | ILOAD_1 | FLOAD_1 | ASTORE_1 | ISTORE_1 | FSTORE_1 => assemblerContext.setMaxLocals(2)
+        case ALOAD_2 | ILOAD_2 | FLOAD_2 | ASTORE_2 | ISTORE_2 | FSTORE_2 => assemblerContext.setMaxLocals(3)
+        case ALOAD_3 | ILOAD_3 | FLOAD_3 | ASTORE_3 | ISTORE_3 | FSTORE_3 => assemblerContext.setMaxLocals(4)
+        case LLOAD_0 | DLOAD_0 | LSTORE_0 | DSTORE_0 => assemblerContext.setMaxLocals(2)
+        case LLOAD_1 | DLOAD_1 | LSTORE_1 | DSTORE_1 => assemblerContext.setMaxLocals(3)
+        case LLOAD_2 | DLOAD_2 | LSTORE_2 | DSTORE_2 => assemblerContext.setMaxLocals(4)
+        case LLOAD_3 | DLOAD_3 | LSTORE_3 | DSTORE_3 => assemblerContext.setMaxLocals(5)
         case _ =>
       }
     }

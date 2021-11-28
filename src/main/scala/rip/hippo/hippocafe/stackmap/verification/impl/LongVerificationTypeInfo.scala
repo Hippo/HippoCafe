@@ -31,8 +31,6 @@ import rip.hippo.hippocafe.stackmap.verification.VerificationTypeInfo
  * @version 1.0.0, 8/2/20
  * @since 1.0.0
  */
-final class LongVerificationTypeInfo extends VerificationTypeInfo {
+final case class LongVerificationTypeInfo() extends VerificationTypeInfo {
   override val tag: Int = 4
-
-  override def toString: String = "LongVerificationTypeInfo()"
 }

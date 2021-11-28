@@ -26,7 +26,7 @@ package rip.hippo.hippocafe.builder
 
 import rip.hippo.hippocafe.MethodInfo
 import rip.hippo.hippocafe.access.AccessFlag.AccessFlag
-import rip.hippo.hippocafe.version.MajorClassFileVersion.MajorClassFileVersion
+import rip.hippo.hippocafe.version.MajorClassFileVersion
 import rip.hippo.hippocafe.{ClassFile, FieldInfo, MethodInfo}
 import rip.hippo.hippocafe.disassembler.instruction.Instruction
 

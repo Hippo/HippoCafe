@@ -24,8 +24,6 @@
 
 package rip.hippo.hippocafe.disassembler.instruction
 
-import scala.language.implicitConversions
-
 /**
  * @author Hippo
  * @version 1.0.0, 8/4/20

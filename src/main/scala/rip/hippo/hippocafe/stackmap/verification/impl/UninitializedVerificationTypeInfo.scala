@@ -35,7 +35,7 @@ import rip.hippo.hippocafe.stackmap.verification.VerificationTypeInfo
  * @version 1.0.0, 8/2/20
  * @since 1.0.0
  */
-final class UninitializedVerificationTypeInfo(var offset: Int) extends VerificationTypeInfo {
+final case class UninitializedVerificationTypeInfo(var offset: Int) extends VerificationTypeInfo {
   override val tag: Int = 8
 
   var typeInstruction: Option[TypeInstruction] = Option.empty

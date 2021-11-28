@@ -25,6 +25,7 @@
 package rip.hippo.testing.hippocafe.assemble
 
 import org.scalatest.funsuite.AnyFunSuite
+import rip.hippo.hippocafe.disassembler.instruction.FrameInstruction
 import rip.hippo.hippocafe.version.MajorClassFileVersion
 import rip.hippo.hippocafe.{ClassReader, ClassWriter}
 import rip.hippo.testing.hippocafe.CustomClassLoader
@@ -40,7 +41,7 @@ import scala.util.{Failure, Using}
  */
 final class ReadAssembleWriteSuite extends AnyFunSuite {
 
-  private val className = "InvokeDynamicTest"
+  private val className = "TcbTest"
 
 
   test("assemble.readThenLoad") {
@@ -48,6 +49,16 @@ final class ReadAssembleWriteSuite extends AnyFunSuite {
       case Some(value) =>
         val test = Using(new ClassReader(value)) {
           classReader =>
+
+            /*println("-- FULL INSTRUCTIONS START --")
+            classReader.classFile.methods.filter(_.name.equals("<init>")).foreach(_.instructions.foreach(println))
+            println("-- FULL INSTRUCTIONS END --")
+
+            classReader.classFile.methods.foreach(info => {
+              info.instructions.filter(_.isInstanceOf[FrameInstruction]).foreach(frame => {
+                println(s"${info.name} -> $frame")
+              })
+            })*/
 
             val writerTest = Using(new ClassWriter(classReader.classFile).calculateMaxes.generateFrames) {
               classWriter =>

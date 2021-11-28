@@ -35,10 +35,9 @@ import java.io.DataOutputStream
  * @version 1.0.0, 8/2/20
  * @since 1.0.0
  */
-final class ObjectVerificationTypeInfo(val name: String) extends VerificationTypeInfo {
+final case class ObjectVerificationTypeInfo(name: String) extends VerificationTypeInfo {
   override val tag: Int = 7
-
-
+  
   override def write(out: DataOutputStream, constantPool: ConstantPool): Unit = {
     super.write(out, constantPool)
     out.writeShort(constantPool.info
@@ -51,6 +50,4 @@ final class ObjectVerificationTypeInfo(val name: String) extends VerificationTyp
 
   override def buildConstantPool(constantPool: ConstantPool): Unit =
     constantPool.insertStringIfAbsent(name, ConstantPoolKind.CLASS)
-
-  override def toString: String = s"ObjectVerificationTypeInfo($name)"
 }

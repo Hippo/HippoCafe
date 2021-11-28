@@ -15,6 +15,6 @@ final case class StandardClassHeaderWriter() extends ClassHeaderWriter {
     out.writeInt(0xCAFEBABE)
 
     out.writeShort(classFile.minorVersion)
-    out.writeShort(classFile.majorClassFileVersion.id)
+    out.writeShort(classFile.majorClassFileVersion.version)
   }
 }

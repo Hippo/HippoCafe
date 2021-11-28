@@ -25,8 +25,8 @@
 package rip.hippo.hippocafe
 
 import rip.hippo.hippocafe.access.AccessFlag
-import rip.hippo.hippocafe.analaysis.MaxStackDepthCalculator
-import rip.hippo.hippocafe.analaysis.impl.StandardMaxStackDepthCalculator
+import rip.hippo.hippocafe.verification.MethodVerificationService
+import rip.hippo.hippocafe.verification.impl.StandardMethodVerificationService
 import rip.hippo.hippocafe.attribute.impl.data.BootstrapMethodsAttributeData
 import rip.hippo.hippocafe.attribute.impl.{BootstrapMethodsAttribute, CodeAttribute}
 import rip.hippo.hippocafe.attribute.{Attribute, AttributeInfo}
@@ -64,7 +64,7 @@ final class ClassWriter(classFile: ClassFile,
   private val flags = mutable.Set[AssemblerFlag]()
   private val byteOut = new ByteArrayOutputStream()
   private val out = new DataOutputStream(byteOut)
-  private var maxStackDepthCalculator: MaxStackDepthCalculator = new StandardMaxStackDepthCalculator
+  private var maxStackDepthCalculator: MethodVerificationService = new StandardMethodVerificationService
 
   def write: Array[Byte] = {
     classHeaderWriter.write(classFile, out)
@@ -101,12 +101,16 @@ final class ClassWriter(classFile: ClassFile,
 
         if (assemblerContext.calculateMaxes) {
           val defaultSize = Type.getMethodParameterTypes(method.descriptor).map(_.getSize).sum + (if (method.accessFlags.contains(AccessFlag.ACC_STATIC)) 0 else 1)
-          val maxStack = maxStackDepthCalculator.calculateMaxStack(method)
+          val maxStack = maxStackDepthCalculator.calculateMaxStack(classFile, method)
           assemblerContext.setMaxLocals(defaultSize)
           assemblerContext.setMaxStack(maxStack)
         } else {
           assemblerContext.setMaxLocals(method.maxLocals)
           assemblerContext.setMaxStack(method.maxStack)
+        }
+
+        if (assemblerContext.generateFrames) {
+          maxStackDepthCalculator.generateFrames(classFile, method)
         }
 
 
@@ -132,6 +136,7 @@ final class ClassWriter(classFile: ClassFile,
 
         val methodBytecode = assemblerContext.code
         removedCodeAttribute += method
+
 
         val codeAttribute = CodeAttribute(
           classFile.isOak,
@@ -281,7 +286,7 @@ final class ClassWriter(classFile: ClassFile,
     this
   }
 
-  def setMaxStackDepthCalculator(maxStackDepthCalculator: MaxStackDepthCalculator): ClassWriter = {
+  def setMaxStackDepthCalculator(maxStackDepthCalculator: MethodVerificationService): ClassWriter = {
     this.maxStackDepthCalculator = maxStackDepthCalculator
     this
   }

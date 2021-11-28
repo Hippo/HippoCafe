@@ -72,6 +72,25 @@ object CodeDisassembler {
           labels(offset) += instruction
         }
 
+        def createLabel(offset: Int): LabelInstruction = {
+          labels.get(offset) match {
+            case Some(value) =>
+              value.find(_.isInstanceOf[LabelInstruction]) match {
+                case Some(value: LabelInstruction) => value
+                case _ =>
+                  val label = LabelInstruction(labelDebugId)
+                  labelDebugId += 1
+                  value += label
+                  label
+              }
+            case None =>
+              val label = LabelInstruction(labelDebugId)
+              labelDebugId += 1
+              addLabel(offset, label)
+              label
+          }
+        }
+
         codeAttribute.attributes.foreach {
           case lineNumberTableAttribute: LineNumberTableAttribute =>
             lineNumberTableAttribute.lineNumberTable.foreach(data => addLabel(data.startPc, LineNumberInstruction(data.lineNumber)))
@@ -82,10 +101,8 @@ object CodeDisassembler {
                 case Some(value) =>
                   value.descriptor = data.descriptor
                 case None =>
-                  val start = LabelInstruction()
-                  val end = LabelInstruction()
-                  addLabel(data.startPc, start)
-                  addLabel(data.startPc + data.length, end)
+                  val start = createLabel(data.startPc)
+                  val end = createLabel(data.startPc + data.length)
                   val info = LocalVariableInfo(data.name, data.descriptor, Option.empty, start, end, data.index)
                   localLookupMap += (lookup -> info)
               }
@@ -97,10 +114,8 @@ object CodeDisassembler {
                 case Some(value) =>
                   value.signature = Option(data.signature)
                 case None =>
-                  val start = LabelInstruction()
-                  val end = LabelInstruction()
-                  addLabel(data.startPc, start)
-                  addLabel(data.startPc + data.length, end)
+                  val start = createLabel(data.startPc)
+                  val end = createLabel(data.startPc + data.length)
                   val info = LocalVariableInfo(data.name, null /*this will be changed when it reads a `LocalVariableTableAttribute`*/, Option(data.signature), start, end, data.index)
                   localLookupMap += (lookup -> info)
               }
@@ -231,6 +246,7 @@ object CodeDisassembler {
                      FCONST_2 |
                      FDIV |
                      FLOAD_0 |
+                     FLOAD_1 |
                      FLOAD_2 |
                      FLOAD_3 |
                      FMUL |
@@ -397,9 +413,7 @@ object CodeDisassembler {
                      IF_ICMPLT |
                      IF_ICMPNE =>
                   val branchOffset: Int = if (opcode == GOTO_W || opcode == JSR_W) u4 else s2
-                  val label = LabelInstruction(labelDebugId)
-                  labelDebugId += 1
-                  addLabel(instructionOffset + branchOffset, label)
+                  val label = createLabel(instructionOffset + branchOffset)
                   instructions += (instructionOffset -> BranchInstruction(opcode, label))
 
                 case LDC | LDC_W | LDC2_W =>
@@ -407,33 +421,25 @@ object CodeDisassembler {
 
                 case LOOKUPSWITCH =>
                   offset += -offset & 3
-                  val default = LabelInstruction(labelDebugId)
-                  labelDebugId += 1
-                  addLabel(instructionOffset + u4, default)
+                  val default = createLabel(instructionOffset + u4)
                   val lookupSwitch = LookupSwitchInstruction(default)
                   val cases = u4
                   (0 until cases).foreach(_ => {
                     val key = u4
-                    val branch = LabelInstruction(labelDebugId)
-                    labelDebugId += 1
-                    addLabel(instructionOffset + u4, branch)
+                    val branch = createLabel(instructionOffset + u4)
                     lookupSwitch.pairs += (key -> branch)
                   })
                   instructions += (instructionOffset -> lookupSwitch)
 
                 case TABLESWITCH =>
                   offset += -offset & 3
-                  val default = LabelInstruction(labelDebugId)
-                  labelDebugId += 1
-                  addLabel(instructionOffset + u4, default)
+                  val default = createLabel(instructionOffset + u4)
                   val low = u4
                   val high = u4
                   val cases = high - low + 1
                   val tableSwitch = TableSwitchInstruction(default, low, high)
                   (0 until cases).foreach(_ => {
-                    val branch = LabelInstruction(labelDebugId)
-                    labelDebugId += 1
-                    addLabel(instructionOffset + u4, branch)
+                    val branch = createLabel(instructionOffset + u4)
                     tableSwitch.table += branch
                   })
                   instructions += (instructionOffset -> tableSwitch)
@@ -457,17 +463,10 @@ object CodeDisassembler {
 
 
         exceptions.foreach(exception => {
-          val start = LabelInstruction(labelDebugId)
-          labelDebugId += 1
-          val end = LabelInstruction(labelDebugId)
-          labelDebugId += 1
-          val handler = LabelInstruction(labelDebugId)
-          labelDebugId += 1
+          val start = createLabel(exception.startPc)
+          val end = createLabel(exception.endPc)
+          val handler = createLabel(exception.handlerPc)
 
-
-          addLabel(exception.startPc, start)
-          addLabel(exception.endPc, end)
-          addLabel(exception.handlerPc, handler)
           tryCatchBlocks += TryCatchBlock(start, end, handler, exception.catchType)
         })
 

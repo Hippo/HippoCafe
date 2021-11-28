@@ -24,29 +24,24 @@
 
 package rip.hippo.hippocafe.disassembler.instruction.array
 
-import scala.language.implicitConversions
-
 /**
  * @author Hippo
  * @version 1.0.0, 8/4/20
  * @since 1.0.0
  */
-object ArrayType extends Enumeration {
+enum ArrayType(val `type`: Int) {
 
-  implicit def toValue(`type`: Int): Value = Value(`type`)
+  case BOOLEAN extends ArrayType(4)
+  case CHAR extends ArrayType(5)
+  case FLOAT extends ArrayType(6)
+  case DOUBLE extends ArrayType(7)
+  case BYTE extends ArrayType(8)
+  case SHORT extends ArrayType(9)
+  case INT extends ArrayType(10)
+  case LONG extends ArrayType(11)
+}
 
-  type ArrayType = Value
-
-  val BOOLEAN: ArrayType = 4
-  val CHAR: ArrayType = 5
-  val FLOAT: ArrayType = 6
-  val DOUBLE: ArrayType = 7
-  val BYTE: ArrayType = 8
-  val SHORT: ArrayType = 9
-  val INT: ArrayType = 10
-  val LONG: ArrayType = 11
-
+object ArrayType {
   def fromType(`type`: Int): Option[ArrayType] =
-    ArrayType.values.find(_.id == `type`)
-
+    ArrayType.values.find(_.`type` == `type`)
 }

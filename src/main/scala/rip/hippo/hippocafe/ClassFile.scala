@@ -26,10 +26,9 @@ package rip.hippo.hippocafe
 
 import rip.hippo.hippocafe.access.AccessFlag.AccessFlag
 import rip.hippo.hippocafe.access.AccessFlag
-import rip.hippo.hippocafe.version.MajorClassFileVersion.MajorClassFileVersion
+import rip.hippo.hippocafe.version.MajorClassFileVersion
 import rip.hippo.hippocafe.attribute.AttributeInfo
 import rip.hippo.hippocafe.constantpool.ConstantPool
-import rip.hippo.hippocafe.version.MajorClassFileVersion
 
 import scala.collection.mutable.ListBuffer
 
@@ -55,8 +54,8 @@ final case class ClassFile(var majorClassFileVersion: MajorClassFileVersion, var
     this(majorClassFileVersion, name, superName, AccessFlag.fromMask(accessMask): _*)
 
   def isOak: Boolean = {
-    val version = MajorClassFileVersion.JDK1_1.id
-    majorClassFileVersion.id < version || (majorClassFileVersion.id == version && minorVersion < 3)
+    val version = MajorClassFileVersion.JDK1_1.version
+    majorClassFileVersion.version < version || (majorClassFileVersion.version == version && minorVersion < 3)
   }
 
 }

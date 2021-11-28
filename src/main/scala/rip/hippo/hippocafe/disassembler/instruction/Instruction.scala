@@ -37,16 +37,18 @@ import scala.collection.mutable.ListBuffer
  */
 trait Instruction {
 
-  private var uniqueId: UUID = _
+  private var uniqueId: Option[UUID] = Option.empty
 
   def assemble(assemblerContext: AssemblerContext, constantPool: ConstantPool): Unit
   
   def getOpcode: Option[BytecodeOpcode]
 
-  def getUniqueId: UUID = {
-    if (uniqueId == null) {
-      uniqueId = UUID.randomUUID()
+  def getUniqueId: UUID =
+    uniqueId match {
+      case Some(value) => value
+      case None =>
+        val uuid = UUID.randomUUID()
+        uniqueId = Option(uuid)
+        uuid
     }
-    uniqueId
-  }
 }

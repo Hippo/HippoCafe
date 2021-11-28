@@ -29,4 +29,4 @@ package rip.hippo.hippocafe.exception
  * @version 1.0.0, 8/1/20
  * @since 1.0.0
  */
-final class HippoCafeException(message: String) extends Exception(message)
+final class HippoCafeException(message: String) extends RuntimeException(message)

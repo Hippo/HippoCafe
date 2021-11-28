@@ -63,6 +63,13 @@ final case class LookupSwitchInstruction(var default: LabelInstruction) extends 
     })
   }
 
+  def getLabels: ListBuffer[LabelInstruction] = {
+    val buffer = ListBuffer[LabelInstruction]()
+    buffer += default
+    buffer ++= pairs.values
+    buffer
+  }
+  
   override def getOpcode: Option[BytecodeOpcode] = Option(BytecodeOpcode.LOOKUPSWITCH)
 
   override def toString: String = s"LookupSwitchInstruction($default, $pairs)"

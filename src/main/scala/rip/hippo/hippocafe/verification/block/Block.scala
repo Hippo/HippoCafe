@@ -1,11 +1,19 @@
-package rip.hippo.hippocafe.analaysis.block
+package rip.hippo.hippocafe.verification.block
 
-import rip.hippo.hippocafe.disassembler.instruction.BytecodeOpcode._
-import rip.hippo.hippocafe.disassembler.instruction.Instruction
+import rip.hippo.hippocafe.{ClassFile, MethodInfo}
+import rip.hippo.hippocafe.access.AccessFlag
+import rip.hippo.hippocafe.disassembler.instruction.BytecodeOpcode.*
+import rip.hippo.hippocafe.disassembler.instruction.{BytecodeOpcode, Instruction}
 import rip.hippo.hippocafe.disassembler.instruction.constant.impl.{DoubleConstant, LongConstant}
 import rip.hippo.hippocafe.disassembler.instruction.impl.{ANewArrayInstruction, BranchInstruction, ConstantInstruction, InvokeDynamicInstruction, LabelInstruction, LookupSwitchInstruction, MultiANewArrayInstruction, PushInstruction, ReferenceInstruction, SimpleInstruction, TableSwitchInstruction, TypeInstruction, VariableInstruction}
+import rip.hippo.hippocafe.disassembler.tcb.TryCatchBlock
+import rip.hippo.hippocafe.stackmap.verification.VerificationTypeInfo
+import rip.hippo.hippocafe.stackmap.verification.impl.{DoubleVerificationTypeInfo, FloatVerificationTypeInfo, IntegerVerificationTypeInfo, LongVerificationTypeInfo, ObjectVerificationTypeInfo}
 import rip.hippo.hippocafe.util.Type
+import rip.hippo.hippocafe.util.Type.*
+import rip.hippo.hippocafe.verification.frame.VirtualFrame
 
+import scala.collection.mutable
 import scala.collection.mutable.ListBuffer
 
 /**
@@ -13,24 +21,96 @@ import scala.collection.mutable.ListBuffer
  * @version 1.0.0, 8/17/21
  * @since 2.0.2
  */
-final case class Block() {
+final case class Block(classFile: ClassFile, methodInfo: MethodInfo) {
   val instructions: ListBuffer[Instruction] = ListBuffer[Instruction]()
-  private var inherit = 0
+  val inheritBlocks: ListBuffer[Block] = ListBuffer[Block]()
+  /*private val locals = mutable.Map[Int, VerificationTypeInfo]()
+  
+  var index = 0
+  if (!methodInfo.accessFlags.contains(AccessFlag.ACC_STATIC)) {
+    locals += (index -> ObjectVerificationTypeInfo(classFile.name))
+    index += 1
+  }
+  Type.getMethodParameterTypes(methodInfo.descriptor).foreach {
+    case BOOLEAN | BYTE | CHAR | SHORT | INT =>
+      locals += (index -> new IntegerVerificationTypeInfo)
+      index += 1
+    case FLOAT =>
+      locals += (index -> new FloatVerificationTypeInfo)
+      index += 1
+    case LONG =>
+      locals += (index -> new LongVerificationTypeInfo)
+      index += 2
+    case DOUBLE =>
+      locals += (index -> new DoubleVerificationTypeInfo)
+      index += 2
+    case x =>
+      locals += (index -> ObjectVerificationTypeInfo(x.descriptor))
+      index += 1
+  }
+  
+  var virtualFrame: VirtualFrame = VirtualFrame(locals)*/
+  
+  private var inheritStack = 0
 
   def getBlockDepth: (Int, Int) = {
     var maxDepth = 0
     var depth = 0
 
     instructions.foreach(instruction => {
+
+      instruction match {
+        case labelInstruction: LabelInstruction =>
+          if (methodInfo.tryCatchBlocks.map(_.handler).contains(labelInstruction)) {
+            depth = 1
+          }
+        case _ =>
+      }
+
       depth += getInstructionDepth(instruction)
       maxDepth = Math.max(maxDepth, depth)
     })
 
-    (maxDepth + inherit, depth)
+    (maxDepth + inheritStack, depth)
   }
+  
+  def findParentBlock(blockService: BlockService): Option[Block] =
+    getStartingLabel match {
+      case Some(label) =>
+        blockService.blocks.find(block => {
+          block.getEndingBranch match {
+            case Some(value) => value.getLabels.exists(_.equals(label))
+            case None => false
+          }
+        })
+      case None => Option.empty
+    }
 
-  def setInherit(inherit: Int): Unit =
-    this.inherit = Math.max(this.inherit, inherit)
+  def requiresFrame(): Boolean =
+    getStartingLabel match {
+      case Some(value) =>
+        methodInfo.instructions.exists {
+          case branchInstruction: BranchInstruction => branchInstruction.label == value
+          case tableSwitchInstruction: TableSwitchInstruction => tableSwitchInstruction.getLabels.contains(value)
+          case lookupSwitchInstruction: LookupSwitchInstruction => lookupSwitchInstruction.getLabels.contains(value)
+          case _ => false
+        } || methodInfo.tryCatchBlocks.exists(_.handler == value)
+      case None => false
+    }
+
+  def isTcbHandler: Boolean =
+    getStartingLabel match {
+      case Some(value) => methodInfo.tryCatchBlocks.exists(_.handler == value)
+      case None => false
+    }
+
+  def getAssociatedTcb: Option[TryCatchBlock] =
+    methodInfo.tryCatchBlocks.find(tcb => getStartingLabel.contains(tcb.handler) || getStartingLabel.contains(tcb.start) || getStartingLabel.contains(tcb.end))
+
+  def addInherit(inherit: Block): Unit = {
+    this.inheritStack = Math.max(this.inheritStack, inherit.inheritStack)
+    this.inheritBlocks += inherit
+  }
 
   def getStartingLabel: Option[LabelInstruction] =
     instructions.head match {
@@ -44,6 +124,12 @@ final case class Block() {
       case lookupSwitchInstruction: LookupSwitchInstruction => Option(LookupSwitchBranchingOperation(lookupSwitchInstruction))
       case tableSwitchInstruction: TableSwitchInstruction => Option(TableSwitchBranchingOperation(tableSwitchInstruction))
       case _ => Option.empty
+    }
+
+  def isGoto: Boolean =
+    instructions.last match {
+      case branch: BranchInstruction => branch.bytecodeOpcode == BytecodeOpcode.GOTO
+      case _ => false
     }
 
   def getInstructionDepth(instruction: Instruction): Int =

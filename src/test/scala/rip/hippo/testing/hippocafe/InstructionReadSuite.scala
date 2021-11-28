@@ -45,16 +45,18 @@ final class InstructionReadSuite extends AnyFunSuite {
         val test = Using(new ClassReader(value)) {
           classReader =>
             val classFile = classReader.classFile
+            println(classFile)
+            println()
 
             classFile.constantPool.get.info.foreach(println)
 
             classFile.methods.foreach(info => {
+              println(info.name)
 
               info.attributes.foreach(println)
               info.instructions.foreach(println(_))
               info.tryCatchBlocks.foreach(println(_))
               info.attributes.foreach(println)
-              println(info.name)
               println()
             })
         }

@@ -82,7 +82,7 @@ final class ClassReader(bytecode: InputStream | Array[Byte],
   private val minorVersion = headerData.minorVersion
   private val majorVersion = headerData.majorVersion
   private val oak = {
-    val version = MajorClassFileVersion.JDK1_1.id
+    val version = MajorClassFileVersion.JDK1_1.version
     majorVersion < version || (majorVersion == version && minorVersion < 3)
   }
 
