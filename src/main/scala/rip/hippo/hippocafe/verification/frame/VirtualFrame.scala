@@ -272,6 +272,7 @@ final case class VirtualFrame(localVariables: mutable.Map[Int, VerificationTypeI
             push(pop4)
             push(pop3)
             push(pop2)
+            push(pop1)
           case SWAP =>
             val pop1 = pop()
             val pop2 = pop()
@@ -442,7 +443,7 @@ final case class VirtualFrame(localVariables: mutable.Map[Int, VerificationTypeI
   def getActualStack: mutable.Stack[VerificationTypeInfo] = {
     stack.zipWithIndex.filter {
       case (topVerificationTypeInfo: TopVerificationTypeInfo, index) if index > 0 => {
-        val item = stack(index)
+        val item = stack(index - 1)
         item match {
           case _: DoubleVerificationTypeInfo => false
           case _: LongVerificationTypeInfo => false
