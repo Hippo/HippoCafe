@@ -27,7 +27,7 @@ Or using Scala SBT
 ```scala
 resolvers += "jitpack" at "https://jitpack.io"
 
-libraryDependencies += "com.github.Hippo" % "HippoCafe" % "2.0.2"
+libraryDependencies += "com.github.Hippo" % "HippoCafe" % "2.1.0"
 ```
 
 # Reading class files
