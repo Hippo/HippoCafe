@@ -41,7 +41,7 @@ import scala.util.{Failure, Using}
  */
 final class ReadAssembleWriteSuite extends AnyFunSuite {
 
-  private val className = "TcbTest"
+  private val className = "ForLoopTestLong"
 
 
   test("assemble.readThenLoad") {
@@ -52,13 +52,13 @@ final class ReadAssembleWriteSuite extends AnyFunSuite {
 
             /*println("-- FULL INSTRUCTIONS START --")
             classReader.classFile.methods.filter(_.name.equals("<init>")).foreach(_.instructions.foreach(println))
-            println("-- FULL INSTRUCTIONS END --")
+            println("-- FULL INSTRUCTIONS END --")*/
 
             classReader.classFile.methods.foreach(info => {
               info.instructions.filter(_.isInstanceOf[FrameInstruction]).foreach(frame => {
                 println(s"${info.name} -> $frame")
               })
-            })*/
+            })
 
             val writerTest = Using(new ClassWriter(classReader.classFile).calculateMaxes.generateFrames) {
               classWriter =>

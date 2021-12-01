@@ -54,16 +54,18 @@ final class StandardMethodVerificationService extends MethodVerificationService 
         }
         Type.getMethodParameterTypes(methodInfo.descriptor).foreach {
           case BOOLEAN | BYTE | CHAR | SHORT | INT =>
-            locals += (index -> new IntegerVerificationTypeInfo)
+            locals += (index -> IntegerVerificationTypeInfo())
             index += 1
           case FLOAT =>
-            locals += (index -> new FloatVerificationTypeInfo)
+            locals += (index -> FloatVerificationTypeInfo())
             index += 1
           case LONG =>
-            locals += (index -> new LongVerificationTypeInfo)
+            locals += (index -> LongVerificationTypeInfo())
+            locals += (index + 1 -> TopVerificationTypeInfo())
             index += 2
           case DOUBLE =>
-            locals += (index -> new DoubleVerificationTypeInfo)
+            locals += (index -> DoubleVerificationTypeInfo())
+            locals += (index + 1 -> TopVerificationTypeInfo())
             index += 2
           case x =>
             locals += (index -> ObjectVerificationTypeInfo(x.descriptor))
@@ -126,11 +128,11 @@ final class StandardMethodVerificationService extends MethodVerificationService 
           val sameLocals = lastFrame.sameLocals(frame)
 
           if (sameStack && !sameLocals) {
-            val lastLocals = lastFrame.localVariables.values.toList
-            val currentLocals = frame.localVariables.values.toList
+            val lastLocals = lastFrame.getActualLocals.values.toList
+            val currentLocals = frame.getActualLocals.values.toList
 
             val minLength = Math.min(lastLocals.size, currentLocals.size)
-            val maxLength = Math.max(lastLocals.size, frame.localVariables.size)
+            val maxLength = Math.max(lastLocals.size, currentLocals.size)
             if (minLength != maxLength) {
               if (minLength != maxLength) {
                 var equalLocal = true
@@ -155,15 +157,15 @@ final class StandardMethodVerificationService extends MethodVerificationService 
               }
             }
           } else if (!sameStack && sameLocals) {
-            if (frame.stack.size == 1) {
-              methodInfo.instructions.insert(index + 1, SameLocalsFrameInstruction(frame.stack.last))
+            if (frame.getActualStack.size == 1) {
+              methodInfo.instructions.insert(index + 1, SameLocalsFrameInstruction(frame.getActualStack.last))
               inserted = true
             }
           }
 
 
           if (!inserted) {
-            methodInfo.instructions.insert(index + 1, FullFrameInstruction(frame.localVariables.values.toArray, frame.stack.toArray))
+            methodInfo.instructions.insert(index + 1, FullFrameInstruction(frame.getActualLocals.values.toArray, frame.getActualStack.toArray))
           }
 
           lastFrame = frame

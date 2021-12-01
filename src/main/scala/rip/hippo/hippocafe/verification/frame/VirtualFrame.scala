@@ -155,7 +155,7 @@ final case class VirtualFrame(localVariables: mutable.Map[Int, VerificationTypeI
                       case Some(value) =>
                         pop()
                         push(ObjectVerificationTypeInfo(value.typeName))
-                      case None => 
+                      case None =>
                     }
                   case _ =>
                 }
@@ -415,9 +415,41 @@ final case class VirtualFrame(localVariables: mutable.Map[Int, VerificationTypeI
     }
 
   def sameStack(virtualFrame: VirtualFrame): Boolean =
-    virtualFrame.stack.size == this.stack.size && virtualFrame.stack.equals(this.stack)
+    virtualFrame.getActualStack.size == this.getActualStack.size && virtualFrame.getActualStack.equals(this.getActualStack)
 
 
   def sameLocals(virtualFrame: VirtualFrame): Boolean =
-    virtualFrame.localVariables.size == this.localVariables.size && virtualFrame.localVariables.equals(this.localVariables)
+    virtualFrame.getActualLocals.size == this.getActualLocals.size && virtualFrame.getActualLocals.equals(this.getActualLocals)
+
+
+  def getActualLocals: Map[Int, VerificationTypeInfo] = {
+    val locals = mutable.Map[Int, VerificationTypeInfo]()
+
+    val maxLocalIndex = localVariables.keys.max
+    var index = 0
+    while (index <= maxLocalIndex) {
+      val info = localVariables(index)
+      locals += (index -> info)
+      info match {
+        case _: DoubleVerificationTypeInfo => index += 2
+        case _: LongVerificationTypeInfo => index += 2
+        case _ => index += 1
+      }
+    }
+    locals.toMap
+  }
+
+  def getActualStack: mutable.Stack[VerificationTypeInfo] = {
+    stack.zipWithIndex.filter {
+      case (topVerificationTypeInfo: TopVerificationTypeInfo, index) if index > 0 => {
+        val item = stack(index)
+        item match {
+          case _: DoubleVerificationTypeInfo => false
+          case _: LongVerificationTypeInfo => false
+          case _ => true
+        }
+      }
+      case _ => true
+    }.map(_._1)
+  }
 }
