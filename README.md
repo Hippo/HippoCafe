@@ -18,7 +18,7 @@ repositories {
 
 ```groovy
 dependencies {
-    implementation group: 'com.github.Hippo', name: 'HippoCafe', version: '2.1.1'
+    implementation group: 'com.github.Hippo', name: 'HippoCafe', version: '2.1.2'
 }
 ```
 
@@ -27,7 +27,7 @@ Or using Scala SBT
 ```scala
 resolvers += "jitpack" at "https://jitpack.io"
 
-libraryDependencies += "com.github.Hippo" % "HippoCafe" % "2.1.1"
+libraryDependencies += "com.github.Hippo" % "HippoCafe" % "2.1.2"
 ```
 
 # Reading class files

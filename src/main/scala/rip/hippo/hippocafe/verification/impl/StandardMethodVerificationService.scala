@@ -34,10 +34,6 @@ final class StandardMethodVerificationService extends MethodVerificationService 
     // remove existing frames
     methodInfo.instructions.filter(_.isInstanceOf[FrameInstruction]).foreach(methodInfo.instructions.-=)
 
-    // generate a unique id for all instructions
-    methodInfo.instructions.foreach(_.getUniqueId)
-
-
     val service = ControlFlowGraphService(classFile, methodInfo)
 
     if (service.blockNodes.size > 1) {
@@ -115,8 +111,7 @@ final class StandardMethodVerificationService extends MethodVerificationService 
         val frame = frames.foldLeft(frames.head)((f1, f2) => f1.merge(f2))
 
 
-        val idMirror = methodInfo.instructions.map(_.getUniqueId)
-        val index = idMirror.indexOf(label.getUniqueId)
+        val index = methodInfo.instructions.indexOf(label)
         var inserted = false
 
 
