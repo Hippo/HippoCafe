@@ -18,7 +18,7 @@ repositories {
 
 ```groovy
 dependencies {
-    implementation group: 'com.github.Hippo', name: 'HippoCafe', version: '2.0.2'
+    implementation group: 'com.github.Hippo', name: 'HippoCafe', version: '2.1.0'
 }
 ```
 
