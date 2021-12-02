@@ -250,7 +250,7 @@ final class ClassWriter(classFile: ClassFile,
           }
         case _ =>
       }
-      methodInfo.tryCatchBlocks.map(_.catchType).foreach(catchType => {
+      methodInfo.tryCatchBlocks.map(_.safeCatchType).foreach(catchType => {
         add(UTF8Info(catchType))
         add(new StringInfo(catchType, ConstantPoolKind.CLASS))
       })

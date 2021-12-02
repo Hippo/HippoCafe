@@ -358,7 +358,7 @@ final case class VirtualFrame(localVariables: mutable.Map[Int, VerificationTypeI
           case _ =>
         }
       case labelInstruction: LabelInstruction =>
-        val tcbTypes = methodInfo.tryCatchBlocks.filter(_.handler == labelInstruction).map(_.catchType)
+        val tcbTypes = methodInfo.tryCatchBlocks.filter(_.handler == labelInstruction).map(_.safeCatchType)
         if (tcbTypes.nonEmpty) {
           stack.clear()
           val commonType = tcbTypes.foldLeft(tcbTypes.head)((t1, t2) => methodVerificationService.getCommonSuperType(t1, t2))

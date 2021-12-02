@@ -64,7 +64,7 @@ final case class CodeAttribute(oak: Boolean,
       out.writeShort(table.startPc)
       out.writeShort(table.endPc)
       out.writeShort(table.handlerPc)
-      out.writeShort(constantPool.findString(table.catchType, ConstantPoolKind.CLASS))
+      out.writeShort(constantPool.findString(table.safeCatchType, ConstantPoolKind.CLASS))
     })
     out.writeShort(attributes.size)
     attributes.foreach(attribute => {

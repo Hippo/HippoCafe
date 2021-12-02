@@ -73,11 +73,13 @@ final class StandardMethodVerificationService extends MethodVerificationService 
 
       var lastFrame = newFrame
 
+
       service.blockNodes.filter(_.block.requiresFrame()).foreach(blockNode => {
         val block = blockNode.block
         val label = block.getStartingLabel.get
         val frames = ListBuffer[VirtualFrame]()
         val copiedList = blockNode.previousBlocks.toList
+
 
         (0 until blockNode.previousBlocks.size).foreach(i => {
           val jumpTargets = ListBuffer[BlockNode]()
@@ -93,12 +95,11 @@ final class StandardMethodVerificationService extends MethodVerificationService 
             current = node
           }
 
-
-
           val frame = newFrame
           jumpTargets.reverse.foreach(_.block.instructions.foreach(instruction => frame.execute(classFile, methodInfo, instruction)))
 
-          val tcbTypes = methodInfo.tryCatchBlocks.filter(_.handler == label).map(_.catchType)
+          val tcbTypes = methodInfo.tryCatchBlocks.filter(_.handler == label).map(_.safeCatchType)
+
           if (tcbTypes.nonEmpty) {
             frame.stack.clear()
             val commonType = tcbTypes.foldLeft(tcbTypes.head)((t1, t2) => getCommonSuperType(t1, t2))
@@ -107,6 +108,17 @@ final class StandardMethodVerificationService extends MethodVerificationService 
 
           frames += frame
         })
+
+        if (frames.isEmpty) {
+          val frame = newFrame
+          val tcbTypes = methodInfo.tryCatchBlocks.filter(_.handler == label).map(_.safeCatchType)
+          if (tcbTypes.nonEmpty) {
+            frame.stack.clear()
+            val commonType = tcbTypes.foldLeft(tcbTypes.head)((t1, t2) => getCommonSuperType(t1, t2))
+            frame.push(ObjectVerificationTypeInfo(commonType))
+          }
+          frames += frame
+        }
 
         val frame = frames.foldLeft(frames.head)((f1, f2) => f1.merge(f2))
 

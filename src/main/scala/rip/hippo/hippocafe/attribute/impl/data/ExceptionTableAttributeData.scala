@@ -37,6 +37,8 @@ final case class ExceptionTableAttributeData(startPc: Int,
                                              handlerPc: Int,
                                              catchType: String) {
 
+  val safeCatchType: String = if (catchType == null) "java/lang/Throwable" else catchType
+
   def buildConstantPool(constantPool: ConstantPool): Unit =
-    constantPool.insertStringIfAbsent(catchType, ConstantPoolKind.CLASS)
+    constantPool.insertStringIfAbsent(safeCatchType, ConstantPoolKind.CLASS)
 }

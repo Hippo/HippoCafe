@@ -33,12 +33,15 @@ import scala.collection.mutable.ListBuffer
  */
 final case class StandardAttributeReader() extends AttributeReader {
   override def read(parentStream: DataInputStream, inputStream: DataInputStream, constantPool: ConstantPool, oak: Boolean): AttributeInfo = {
-    try {
-      val attributeNameIndex = parentStream.readUnsignedShort()
-      val attributeLength = parentStream.readInt()
+    val attributeNameIndex = parentStream.readUnsignedShort()
+    val attributeLength = parentStream.readInt()
+    val name = constantPool.readUTF8(attributeNameIndex)
 
-      val buffer = new Array[Byte](attributeLength)
-      parentStream.readFully(buffer)
+
+    val buffer = new Array[Byte](attributeLength)
+    parentStream.readFully(buffer)
+
+    try {
 
       val bufferStream = new DataInputStream(new ByteArrayInputStream(buffer))
 
@@ -56,7 +59,7 @@ final case class StandardAttributeReader() extends AttributeReader {
           case 5 => new NullVerificationTypeInfo
           case 6 => new UninitializedThisVerificationTypeInfo
           case 7 => ObjectVerificationTypeInfo(constantPool.readString(u2))
-          case 8 => new UninitializedVerificationTypeInfo(u2)
+          case 8 => UninitializedVerificationTypeInfo(u2)
           case x => throw new HippoCafeException(s"Unable to find type info for tag $x")
         }
       }
@@ -135,7 +138,6 @@ final case class StandardAttributeReader() extends AttributeReader {
         annotation.TypeAnnotationData(targetType, targetInfo, typePath, typeIndex, elementValuePairs.toIndexedSeq)
       }
 
-      val name = constantPool.readUTF8(attributeNameIndex)
       Attribute.fromName(name) match {
         case Some(attribute) =>
           import Attribute._
@@ -149,7 +151,10 @@ final case class StandardAttributeReader() extends AttributeReader {
               bufferStream.readFully(code)
               val exceptionTableLength = u2
               val exceptionTable = new Array[ExceptionTableAttributeData](exceptionTableLength)
-              (0 until exceptionTableLength).foreach(i => exceptionTable(i) = ExceptionTableAttributeData(u2, u2, u2, constantPool.readString(u2)))
+              (0 until exceptionTableLength).foreach(i => exceptionTable(i) = ExceptionTableAttributeData(u2, u2, u2, {
+                val index = u2
+                if (index == 0) null else constantPool.readString(index)
+              }))
               val attributesCount = u2
               val attributes = new Array[AttributeInfo](attributesCount)
               (0 until attributesCount).foreach(i => attributes(i) = read(bufferStream, inputStream, constantPool, oak))
@@ -360,6 +365,8 @@ final case class StandardAttributeReader() extends AttributeReader {
           }
         case None => UnknownAttribute(name, buffer.toIndexedSeq)
       }
+    } catch {
+      case _: Throwable => UnknownAttribute(name, buffer.toIndexedSeq)
     } finally if (parentStream != null && parentStream != inputStream) parentStream.close()
   }
 }

@@ -31,4 +31,6 @@ import rip.hippo.hippocafe.disassembler.instruction.impl.LabelInstruction
  * @version 1.0.0, 8/7/20
  * @since 1.0.0
  */
-final case class TryCatchBlock(start: LabelInstruction, end: LabelInstruction, handler: LabelInstruction, catchType: String)
+final case class TryCatchBlock(start: LabelInstruction, end: LabelInstruction, handler: LabelInstruction, catchType: String) {
+  val safeCatchType: String = if (catchType == null) "java/lang/Throwable" else catchType
+}

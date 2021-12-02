@@ -41,7 +41,7 @@ import scala.util.{Failure, Using}
  */
 final class ReadAssembleWriteSuite extends AnyFunSuite {
 
-  private val className = "TcbTest"
+  private val className = "FinallyTest"
 
 
   test("assemble.readThenLoad") {
