@@ -149,7 +149,7 @@ final class StandardMethodVerificationService extends MethodVerificationService 
                   }
                 })
 
-                if (equalLocal) {
+                if (equalLocal && maxLength - minLength < 4) {
                   val append = maxLength == currentLocals.size
                   if (append) {
                     val buffer = ArrayBuffer[VerificationTypeInfo]()

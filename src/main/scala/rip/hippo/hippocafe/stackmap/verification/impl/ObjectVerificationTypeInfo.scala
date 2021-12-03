@@ -29,6 +29,7 @@ import rip.hippo.hippocafe.constantpool.{ConstantPool, ConstantPoolKind}
 import rip.hippo.hippocafe.stackmap.verification.VerificationTypeInfo
 
 import java.io.DataOutputStream
+import scala.annotation.tailrec
 
 /**
  * @author Hippo

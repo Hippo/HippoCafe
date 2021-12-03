@@ -26,6 +26,7 @@ package rip.hippo.testing.hippocafe.assemble
 
 import org.scalatest.funsuite.AnyFunSuite
 import rip.hippo.hippocafe.disassembler.instruction.FrameInstruction
+import rip.hippo.hippocafe.disassembler.instruction.impl.{ANewArrayInstruction, AppendFrameInstruction, BranchInstruction, ChopFrameInstruction, ConstantInstruction, FullFrameInstruction, IncrementInstruction, InvokeDynamicInstruction, LabelInstruction, LineNumberInstruction, LookupSwitchInstruction, MultiANewArrayInstruction, NewArrayInstruction, PushInstruction, ReferenceInstruction, SameFrameInstruction, SameLocalsFrameInstruction, SimpleInstruction, TableSwitchInstruction, TypeInstruction, VariableInstruction}
 import rip.hippo.hippocafe.version.MajorClassFileVersion
 import rip.hippo.hippocafe.{ClassReader, ClassWriter}
 import rip.hippo.testing.hippocafe.CustomClassLoader
@@ -41,7 +42,7 @@ import scala.util.{Failure, Using}
  */
 final class ReadAssembleWriteSuite extends AnyFunSuite {
 
-  private val className = "FinallyTest"
+  private val className = "ArrayTest"
 
 
   test("assemble.readThenLoad") {
@@ -50,15 +51,18 @@ final class ReadAssembleWriteSuite extends AnyFunSuite {
         val test = Using(new ClassReader(value)) {
           classReader =>
 
-            /*println("-- FULL INSTRUCTIONS START --")
-            classReader.classFile.methods.filter(_.name.equals("<init>")).foreach(_.instructions.foreach(println))
-            println("-- FULL INSTRUCTIONS END --")*/
+            /*classReader.classFile.constantPool.foreach(_.info.foreach(println))
+
+            println("-- FULL INSTRUCTIONS START --")
+            classReader.classFile.methods.filter(_.name.equals("main")).foreach(_.instructions.foreach(println))
+            println("-- FULL INSTRUCTIONS END --")
 
             classReader.classFile.methods.foreach(info => {
               info.instructions.filter(_.isInstanceOf[FrameInstruction]).foreach(frame => {
                 println(s"${info.name} -> $frame")
               })
-            })
+            })*/
+
 
             val writerTest = Using(new ClassWriter(classReader.classFile).calculateMaxes.generateFrames) {
               classWriter =>

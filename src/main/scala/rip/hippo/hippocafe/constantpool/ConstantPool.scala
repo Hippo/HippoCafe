@@ -133,4 +133,6 @@ final class ConstantPool {
         value.wide
       case None => false
     }
+
+  override def toString = s"ConstantPool($info)"
 }

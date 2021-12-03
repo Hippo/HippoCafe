@@ -64,7 +64,12 @@ final case class VirtualFrame(localVariables: mutable.Map[Int, VerificationTypeI
     instruction match {
       case ANewArrayInstruction(descriptor) =>
         pop()
-        push(ObjectVerificationTypeInfo("[".concat(descriptor)))
+        val arrayDescriptor = if (descriptor.charAt(0) == '[') {
+          "[".concat(descriptor)
+        } else {
+          "[L".concat(descriptor).concat(";")
+        }
+        push(ObjectVerificationTypeInfo(arrayDescriptor))
       case BranchInstruction(bytecodeOpcode, label) =>
         bytecodeOpcode match {
           case IFEQ | IFNE | IFLT | IFGE | IFGT | IFLE | IFNULL | IFNONNULL =>
