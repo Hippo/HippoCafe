@@ -95,7 +95,7 @@ final class ClassReader(bytecode: InputStream | Array[Byte],
 
   private val accessMask = classMetaData.accessMask
   private val className = constantPool.readString(classMetaData.classNameIndex)
-  private val superName = constantPool.readString(classMetaData.superNameIndex)
+  private val superName = if (classMetaData.superNameIndex == 0) null else constantPool.readString(classMetaData.superNameIndex)
 
   val classFile: ClassFile = new ClassFile(MajorClassFileVersion.fromVersion(majorVersion).get, className, superName, accessMask)
 

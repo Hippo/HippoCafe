@@ -209,8 +209,10 @@ final class ClassWriter(classFile: ClassFile,
 
     add(new StringInfo(classFile.name, ConstantPoolKind.CLASS))
     add(UTF8Info(classFile.name))
-    add(new StringInfo(classFile.superName, ConstantPoolKind.CLASS))
-    add(UTF8Info(classFile.superName))
+    if (classFile.superName != null) {
+      add(new StringInfo(classFile.superName, ConstantPoolKind.CLASS))
+      add(UTF8Info(classFile.superName))
+    }
 
     classFile.attributes.foreach(attribute => {
       add(UTF8Info(attribute.kind.toString))
