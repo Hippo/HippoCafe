@@ -118,7 +118,17 @@ final class ClassReader(bytecode: InputStream | Array[Byte],
         Option(value.asInstanceOf[BootstrapMethodsAttribute])
       case None => Option.empty[BootstrapMethodsAttribute]
     }
-    classFile.methods.foreach(methodInfo => CodeDisassembler.disassemble(methodInfo, constantPool, bootstrapMethodsAttribute))
+    classFile.methods.foreach(methodInfo => {
+      val copyMethodAttributes = ListBuffer[AttributeInfo]()
+      copyMethodAttributes ++= methodInfo.attributes
+      try {
+        CodeDisassembler.disassemble(methodInfo, constantPool, bootstrapMethodsAttribute)
+      } catch {
+        case _: Throwable =>
+          methodInfo.attributes.clear()
+          methodInfo.attributes ++= copyMethodAttributes
+      }
+    })
   }
 
   override def close(): Unit = inputStream.close()
