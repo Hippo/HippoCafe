@@ -134,17 +134,16 @@ final case class VirtualFrame(localVariables: mutable.Map[Int, VerificationTypeI
         push(IntegerVerificationTypeInfo())
       case ReferenceInstruction(bytecodeOpcode, owner, name, descriptor) =>
         bytecodeOpcode match {
-          case GETSTATIC => convertAndPush(descriptor)
+          case GETSTATIC =>
+            convertAndPush(descriptor)
           case PUTSTATIC =>
             if (isWideInfo(pop())) pop()
-            convertAndPush(descriptor)
           case GETFIELD =>
             pop()
             convertAndPush(descriptor)
           case PUTFIELD =>
             if (isWideInfo(pop())) pop()
             pop()
-            convertAndPush(descriptor)
           case INVOKEVIRTUAL | INVOKESPECIAL | INVOKESTATIC | INVOKEINTERFACE =>
             val value = Type.getMethodParameterTypes(descriptor)
             value.foreach(t => pop(if (t.isWide) 2 else 1))
