@@ -370,7 +370,7 @@ object CodeDisassembler {
                      LLOAD |
                      LSTORE |
                      RET =>
-                  instructions += (instructionOffset -> impl.VariableInstruction(opcode, u1))
+                  instructions += (instructionOffset -> VariableInstruction(opcode, u1))
 
                 case SIPUSH | BIPUSH =>
                   val value: Int = if (opcode == SIPUSH) s2 else s1
