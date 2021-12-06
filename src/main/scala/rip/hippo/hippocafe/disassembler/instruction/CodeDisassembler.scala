@@ -45,23 +45,24 @@ import scala.collection.mutable.ListBuffer
 
 /**
  * @author Hippo
- * @version 1.0.0, 8/4/20
+ * @version 1.0.1, 8/4/20
  * @since 1.0.0
  */
 object CodeDisassembler {
 
   sealed case class LocalLookup(name: String, startPc: Int, length: Int, index: Int)
 
+  // TODO: Make faster??
   def disassemble(methodInfo: MethodInfo, constantPool: ConstantPool, bootstrapMethods: Option[BootstrapMethodsAttribute]): Unit = {
     methodInfo.attributes.find(_.kind == Attribute.CODE) match {
       case Some(codeAttribute: CodeAttribute) =>
-        val instructions = mutable.SortedMap[Int, Instruction]()
+        val instructions = mutable.Map[Int, Instruction]()
         val tryCatchBlocks = ListBuffer[TryCatchBlock]()
         var offset = 0
         val code = codeAttribute.code
         val exceptions = codeAttribute.exceptionTable
         val codeLength = code.length
-        val labels = mutable.SortedMap[Int, ListBuffer[Instruction]]()
+        val labels = mutable.Map[Int, ListBuffer[Instruction]]()
         var labelDebugId = 0
         val localLookupMap = mutable.Map[LocalLookup, LocalVariableInfo]()
 
@@ -497,31 +498,24 @@ object CodeDisassembler {
           case _ =>
         })
 
-        var push = 0
-        labels.foreach(entry => {
-          val offset = entry._1 + push
-          val labels = entry._2
-          labels.foreach(label => {
-            if (instructions.contains(offset)) {
-              val newInstructions = mutable.SortedMap[Int, Instruction]()
-              var copy = 0
-              instructions.foreach(entry => {
-                if (entry._1 == offset) {
-                  copy += 1
-                  push += 1
-                  newInstructions += (entry._1 -> label)
-                }
-                newInstructions += (entry._1 + copy -> entry._2)
-              })
-              instructions.clear()
-              instructions ++= newInstructions
-            } else {
-              instructions += (offset -> label)
-            }
-          })
+        val max = Math.max(labels.keys.max, instructions.keys.max)
+
+        val instructionBuffer = ListBuffer[Instruction]()
+
+        (0 to max).foreach(i => {
+          labels.get(i) match {
+            case Some(value) =>
+              instructionBuffer ++= value.reverse
+            case None =>
+          }
+          instructions.get(i) match {
+            case Some(value) =>
+              instructionBuffer += value
+            case None =>
+          }
         })
 
-        methodInfo.instructions ++= instructions.values.toList
+        methodInfo.instructions ++= instructionBuffer.toList
         methodInfo.tryCatchBlocks ++= tryCatchBlocks.result()
         methodInfo.maxLocals = codeAttribute.maxLocals
         methodInfo.maxStack = codeAttribute.maxStack

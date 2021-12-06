@@ -45,11 +45,12 @@ import rip.hippo.hippocafe.disassembler.instruction.CodeDisassembler
 import rip.hippo.hippocafe.disassembler.instruction.constant.Constant
 import rip.hippo.hippocafe.exception.HippoCafeException
 import rip.hippo.hippocafe.io.reader.*
-import rip.hippo.hippocafe.io.reader.impl._
+import rip.hippo.hippocafe.io.reader.impl.*
 import rip.hippo.hippocafe.stackmap.StackMapFrame
 import rip.hippo.hippocafe.stackmap.impl.{AppendStackMapFrame, ChopStackMapFrame, FullStackMapFrame, SameExtendedStackMapFrame, SameLocalsExtendedStackMapFrame, SameLocalsStackMapFrame, SameStackMapFrame}
 import rip.hippo.hippocafe.stackmap.verification.VerificationTypeInfo
 import rip.hippo.hippocafe.stackmap.verification.impl.{DoubleVerificationTypeInfo, FloatVerificationTypeInfo, IntegerVerificationTypeInfo, LongVerificationTypeInfo, NullVerificationTypeInfo, ObjectVerificationTypeInfo, TopVerificationTypeInfo, UninitializedThisVerificationTypeInfo, UninitializedVerificationTypeInfo}
+import rip.hippo.hippocafe.util.IOUtil
 import rip.hippo.hippocafe.version.MajorClassFileVersion
 
 import scala.collection.mutable.{ArrayBuffer, ListBuffer}
@@ -57,7 +58,7 @@ import scala.collection.mutable.{ArrayBuffer, ListBuffer}
 
 /**
  * @author Hippo
- * @version 1.1.0, 8/1/20
+ * @version 1.1.1, 8/1/20
  * @since 1.0.0
  */
 final class ClassReader(bytecode: InputStream | Array[Byte],
@@ -73,7 +74,7 @@ final class ClassReader(bytecode: InputStream | Array[Byte],
 
 
   private val inputStream = bytecode match {
-    case parentStream: InputStream => new DataInputStream(parentStream)
+    case parentStream: InputStream => new DataInputStream(new ByteArrayInputStream(IOUtil.toByteArray(parentStream)))
     case byteArray: Array[Byte] => new DataInputStream(new ByteArrayInputStream(byteArray))
   }
 
