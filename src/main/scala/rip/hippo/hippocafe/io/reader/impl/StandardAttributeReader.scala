@@ -7,7 +7,7 @@ import rip.hippo.hippocafe.attribute.impl.data.annotation.target.AnnotationTarge
 import rip.hippo.hippocafe.attribute.impl.data.annotation.target.impl.data.LocalVariableTargetData
 import rip.hippo.hippocafe.attribute.{Attribute, AttributeInfo}
 import rip.hippo.hippocafe.attribute.impl.data.annotation.target.impl.{CatchTarget, EmptyTarget, FormalParameterTarget, LocalVariableTarget, OffsetTarget, SuperTypeTarget, ThrowsTarget, TypeArgumentTarget, TypeParameterBoundTarget, TypeParameterTarget}
-import rip.hippo.hippocafe.attribute.impl.{AnnotationDefaultAttribute, BootstrapMethodsAttribute, CodeAttribute, ConstantValueAttribute, DeprecatedAttribute, EnclosingMethodAttribute, ExceptionsAttribute, InnerClassesAttribute, LineNumberTableAttribute, LocalVariableTableAttribute, LocalVariableTypeTableAttribute, MethodParametersAttribute, ModuleAttribute, ModuleMainClassAttribute, ModulePackagesAttribute, NestHostAttribute, NestMembersAttribute, RecordAttribute, RuntimeInvisibleAnnotationsAttribute, RuntimeInvisibleParameterAnnotationsAttribute, RuntimeInvisibleTypeAnnotationsAttribute, RuntimeVisibleAnnotationsAttribute, RuntimeVisibleParameterAnnotationsAttribute, RuntimeVisibleTypeAnnotationsAttribute, SignatureAttribute, SourceDebugExtensionAttribute, SourceFileAttribute, StackMapTableAttribute, SyntheticAttribute, UnknownAttribute}
+import rip.hippo.hippocafe.attribute.impl.{AnnotationDefaultAttribute, BootstrapMethodsAttribute, CodeAttribute, ConstantValueAttribute, DeprecatedAttribute, EnclosingMethodAttribute, ExceptionsAttribute, InnerClassesAttribute, LineNumberTableAttribute, LocalVariableTableAttribute, LocalVariableTypeTableAttribute, MethodParametersAttribute, ModuleAttribute, ModuleMainClassAttribute, ModulePackagesAttribute, NestHostAttribute, NestMembersAttribute, PermittedSubclassesAttribute, RecordAttribute, RuntimeInvisibleAnnotationsAttribute, RuntimeInvisibleParameterAnnotationsAttribute, RuntimeInvisibleTypeAnnotationsAttribute, RuntimeVisibleAnnotationsAttribute, RuntimeVisibleParameterAnnotationsAttribute, RuntimeVisibleTypeAnnotationsAttribute, SignatureAttribute, SourceDebugExtensionAttribute, SourceFileAttribute, StackMapTableAttribute, SyntheticAttribute, UnknownAttribute}
 import rip.hippo.hippocafe.attribute.impl.data.{BootstrapMethodsAttributeData, ClassesAttributeData, ExceptionTableAttributeData, LineNumberTableAttributeData, LocalVariableTableAttributeData, LocalVariableTypeTableAttributeData, MethodParametersAttributeData, RecordComponentInfo, annotation}
 import rip.hippo.hippocafe.attribute.impl.data.annotation.{AnnotationAttributeData, ElementValuePairAnnotationData, ParameterAnnotationsData, TypeAnnotationData}
 import rip.hippo.hippocafe.attribute.impl.data.annotation.value.AnnotationAttributeValue
@@ -361,6 +361,13 @@ final case class StandardAttributeReader() extends AttributeReader {
                 components(i) = RecordComponentInfo(name, descriptor, attributes.toIndexedSeq)
               })
               RecordAttribute(components.toIndexedSeq)
+            case PERMITTED_SUBCLASSES =>
+              val numberOfClasses = u2
+              val classes = new Array[String](numberOfClasses)
+              (0 until numberOfClasses).foreach(i => {
+                classes(i) = constantPool.readString(u2)
+              })
+              PermittedSubclassesAttribute(classes.toIndexedSeq)
             case _ => UnknownAttribute(name, buffer.toIndexedSeq)
           }
         case None => UnknownAttribute(name, buffer.toIndexedSeq)

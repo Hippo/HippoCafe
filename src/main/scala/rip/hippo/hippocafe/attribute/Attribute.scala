@@ -66,6 +66,7 @@ object Attribute extends Enumeration {
   val NEST_HOST: Attribute = "NestHost"
   val NEST_MEMBERS: Attribute = "NestMembers"
   val RECORD: Attribute = "Record"
+  val PERMITTED_SUBCLASSES: Attribute = "PermittedSubclasses"
 
 
   def unknown(name: String): Value = Value(name)
