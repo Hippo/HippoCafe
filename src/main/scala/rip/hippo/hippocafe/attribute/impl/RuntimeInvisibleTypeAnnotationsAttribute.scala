@@ -46,7 +46,6 @@ final case class RuntimeInvisibleTypeAnnotationsAttribute(annotations: Seq[TypeA
     annotations.foreach(annotation => annotation.write(out, constantPool))
   }
 
-  override def buildConstantPool(constantPool: ConstantPool): Unit = {
-
-  }
+  override def buildConstantPool(constantPool: ConstantPool): Unit =
+    annotations.foreach(_.buildConstantPool(constantPool))
 }

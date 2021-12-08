@@ -49,7 +49,6 @@ final case class RuntimeInvisibleParameterAnnotationsAttribute(parameterAnnotati
     })
   }
 
-  override def buildConstantPool(constantPool: ConstantPool): Unit = {
-
-  }
+  override def buildConstantPool(constantPool: ConstantPool): Unit =
+    parameterAnnotations.foreach(_.annotations.foreach(_.buildConstantPool(constantPool)))
 }

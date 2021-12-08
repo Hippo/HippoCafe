@@ -36,6 +36,7 @@ import rip.hippo.hippocafe.constantpool.ConstantPool
  */
 final case class EnumConstantAnnotationValue(typeName: String, constName: String) extends AnnotationAttributeValue {
   override def write(out: DataOutputStream, constantPool: ConstantPool): Unit = {
+    out.writeByte('e'.toInt)
     out.writeShort(constantPool.findUTF8(typeName))
     out.writeShort(constantPool.findUTF8(constName))
   }

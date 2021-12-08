@@ -203,7 +203,11 @@ final class AssemblerContext(flags: Set[AssemblerFlag]) {
 
     methodInfo.localVariables.foreach(localVariable => {
       val startOffset = code.indexOf(labelToByte(localVariable.start))
-      val endOffset = code.indexOf(labelToByte(localVariable.end))
+      //val endOffset = code.indexOf()
+      val endOffset = labelToByte.get(localVariable.end) match {
+        case Some(value) => code.indexOf(value)
+        case None => code.length
+      }
       val length = endOffset - startOffset
 
       localVariableTable += LocalVariableTableAttributeData(startOffset, length, localVariable.name, localVariable.descriptor, localVariable.index)

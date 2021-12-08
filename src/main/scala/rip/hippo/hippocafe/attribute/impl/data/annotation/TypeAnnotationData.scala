@@ -37,15 +37,20 @@ import rip.hippo.hippocafe.constantpool.ConstantPool
 final case class TypeAnnotationData(targetType: Int,
                                     targetInfo: AnnotationTargetType,
                                     typePath: AnnotationTypePath,
-                                    typeIndex: Int,
+                                    typeName: String,
                                     elementValuePairs: Seq[ElementValuePairAnnotationData]) {
 
   def write(out: DataOutputStream, constantPool: ConstantPool): Unit =  {
     out.writeShort(targetType)
     targetInfo.write(out)
     typePath.write(out)
-    out.writeShort(typeIndex)
+    out.writeShort(constantPool.findUTF8(typeName))
     out.writeShort(elementValuePairs.size)
     elementValuePairs.foreach(pair => pair.write(out, constantPool))
+  }
+
+  def buildConstantPool(constantPool: ConstantPool): Unit = {
+    constantPool.insertUTF8IfAbsent(typeName)
+    elementValuePairs.foreach(_.buildConstantPool(constantPool))
   }
 }

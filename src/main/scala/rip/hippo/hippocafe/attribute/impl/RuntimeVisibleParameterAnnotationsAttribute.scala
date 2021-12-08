@@ -48,7 +48,6 @@ final case class RuntimeVisibleParameterAnnotationsAttribute(parameterAnnotation
     })
   }
 
-  override def buildConstantPool(constantPool: ConstantPool): Unit = {
-
-  }
+  override def buildConstantPool(constantPool: ConstantPool): Unit =
+    parameterAnnotations.foreach(_.annotations.foreach(_.buildConstantPool(constantPool)))
 }

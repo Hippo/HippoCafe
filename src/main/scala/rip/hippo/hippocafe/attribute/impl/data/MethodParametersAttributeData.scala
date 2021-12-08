@@ -24,9 +24,19 @@
 
 package rip.hippo.hippocafe.attribute.impl.data
 
+import rip.hippo.hippocafe.constantpool.ConstantPool
+
 /**
  * @author Hippo
  * @version 1.0.0, 8/2/20
  * @since 1.0.0
  */
-final case class MethodParametersAttributeData(nameIndex: Int, accessFlags: Int)
+final case class MethodParametersAttributeData(name: Option[String], accessFlags: Int) {
+
+  def buildConstantPool(constantPool: ConstantPool): Unit = {
+    name match {
+      case Some(value) => constantPool.insertUTF8IfAbsent(value)
+      case None =>
+    }
+  }
+}

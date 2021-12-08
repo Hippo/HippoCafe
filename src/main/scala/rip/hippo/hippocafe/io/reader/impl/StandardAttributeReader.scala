@@ -11,10 +11,11 @@ import rip.hippo.hippocafe.attribute.impl.{AnnotationDefaultAttribute, Bootstrap
 import rip.hippo.hippocafe.attribute.impl.data.{BootstrapMethodsAttributeData, ClassesAttributeData, ExceptionTableAttributeData, LineNumberTableAttributeData, LocalVariableTableAttributeData, LocalVariableTypeTableAttributeData, MethodParametersAttributeData, RecordComponentInfo, annotation}
 import rip.hippo.hippocafe.attribute.impl.data.annotation.{AnnotationAttributeData, ElementValuePairAnnotationData, ParameterAnnotationsData, TypeAnnotationData}
 import rip.hippo.hippocafe.attribute.impl.data.annotation.value.AnnotationAttributeValue
+import rip.hippo.hippocafe.attribute.impl.data.annotation.value.impl.data.ConstantAnnotationValueType
 import rip.hippo.hippocafe.attribute.impl.data.annotation.value.impl.{AnnotationAnnotationValue, ArrayValueAnnotationValue, ClassInfoIndexAnnotationValue, ConstantAnnotationValue, EnumConstantAnnotationValue}
 import rip.hippo.hippocafe.attribute.impl.data.module.{ExportsModuleData, OpensModuleData, ProvidesModuleData, RequiresModuleData}
 import rip.hippo.hippocafe.constantpool.ConstantPool
-import rip.hippo.hippocafe.constantpool.info.impl.{DynamicInfo, MethodHandleInfo}
+import rip.hippo.hippocafe.constantpool.info.impl.{DynamicInfo, MethodHandleInfo, NameAndTypeInfo}
 import rip.hippo.hippocafe.disassembler.instruction.constant.Constant
 import rip.hippo.hippocafe.exception.HippoCafeException
 import rip.hippo.hippocafe.io.reader.AttributeReader
@@ -73,7 +74,8 @@ final case class StandardAttributeReader() extends AttributeReader {
       }
 
       def readAnnotationAttributeValue: AnnotationAttributeValue = {
-        u1.toChar match {
+        val tag = u1.toChar
+        tag match {
           case 'B' |
                'C' |
                'D' |
@@ -82,7 +84,8 @@ final case class StandardAttributeReader() extends AttributeReader {
                'J' |
                'S' |
                'Z' |
-               's' => ConstantAnnotationValue(Constant.fromInfo(constantPool.info(u2)))
+               's' =>
+            ConstantAnnotationValue(ConstantAnnotationValueType.fromTag(tag).get, Constant.fromInfo(constantPool.info(u2)))
           case 'e' => EnumConstantAnnotationValue(constantPool.readUTF8(u2), constantPool.readUTF8(u2))
           case 'c' => ClassInfoIndexAnnotationValue(constantPool.readUTF8(u2))
           case '@' => AnnotationAnnotationValue(readAnnotationData)
@@ -131,11 +134,11 @@ final case class StandardAttributeReader() extends AttributeReader {
           case None => throw new HippoCafeException("Could not parse annotation type path kind")
         }, u1))
         val typePath = AnnotationTypePath(path.toIndexedSeq)
-        val typeIndex = u2
+        val typeName = constantPool.readUTF8(u2)
         val numberOfElementValuePairs = u2
         val elementValuePairs = new Array[ElementValuePairAnnotationData](numberOfElementValuePairs)
         (0 until numberOfElementValuePairs).foreach(i => elementValuePairs(i) = ElementValuePairAnnotationData(constantPool.readUTF8(u2), readAnnotationAttributeValue))
-        annotation.TypeAnnotationData(targetType, targetInfo, typePath, typeIndex, elementValuePairs.toIndexedSeq)
+        annotation.TypeAnnotationData(targetType, targetInfo, typePath, typeName, elementValuePairs.toIndexedSeq)
       }
 
       Attribute.fromName(name) match {
@@ -189,8 +192,8 @@ final case class StandardAttributeReader() extends AttributeReader {
               StackMapTableAttribute(entries.toIndexedSeq)
             case EXCEPTIONS =>
               val numberOfExceptions = u2
-              val exceptionIndexTable = new Array[Int](numberOfExceptions)
-              (0 until numberOfExceptions).foreach(i => exceptionIndexTable(i) = u2)
+              val exceptionIndexTable = new Array[String](numberOfExceptions)
+              (0 until numberOfExceptions).foreach(i => exceptionIndexTable(i) = constantPool.readString(u2))
               ExceptionsAttribute(exceptionIndexTable.toIndexedSeq)
             case INNER_CLASSES =>
               val numberOfClasses = u2
@@ -206,9 +209,19 @@ final case class StandardAttributeReader() extends AttributeReader {
                   u2)
               })
               InnerClassesAttribute(classes.toIndexedSeq)
-            case ENCLOSING_METHOD => EnclosingMethodAttribute(u2, u2)
+            case ENCLOSING_METHOD =>
+              val className = constantPool.readString(u2)
+              val methodIndex = u2
+              var methodName = Option.empty[String]
+              var methodType = Option.empty[String]
+              if (methodIndex != 0) {
+                val nameAndTypeInfo = constantPool.info(methodIndex).asInstanceOf[NameAndTypeInfo]
+                methodName = Option(nameAndTypeInfo.name)
+                methodType = Option(nameAndTypeInfo.descriptor)
+              }
+              EnclosingMethodAttribute(className, methodName, methodType)
             case SYNTHETIC => SyntheticAttribute()
-            case SIGNATURE => SignatureAttribute(u2)
+            case SIGNATURE => SignatureAttribute(constantPool.readUTF8(u2))
             case SOURCE_FILE => SourceFileAttribute(constantPool.readUTF8(u2))
             case SOURCE_DEBUG_EXTENSION => SourceDebugExtensionAttribute(buffer.toIndexedSeq)
             case LINE_NUMBER_TABLE =>
@@ -290,7 +303,13 @@ final case class StandardAttributeReader() extends AttributeReader {
             case METHOD_PARAMETERS =>
               val parametersCount = u1
               val parameters = new Array[MethodParametersAttributeData](parametersCount)
-              (0 until parametersCount).foreach(i => parameters(i) = MethodParametersAttributeData(u2, u2))
+              val nameIndex = u2
+              val access = u2
+              var name = Option.empty[String]
+              if (nameIndex != 0) {
+                name = Option(constantPool.readUTF8(nameIndex))
+              }
+              (0 until parametersCount).foreach(i => parameters(i) = MethodParametersAttributeData(name, access))
               MethodParametersAttribute(parameters.toIndexedSeq)
             case MODULE =>
               val moduleNameIndex = u2
@@ -373,7 +392,9 @@ final case class StandardAttributeReader() extends AttributeReader {
         case None => UnknownAttribute(name, buffer.toIndexedSeq)
       }
     } catch {
-      case _: Throwable => UnknownAttribute(name, buffer.toIndexedSeq)
+      case e: Throwable =>
+        e.printStackTrace()
+        UnknownAttribute(name, buffer.toIndexedSeq)
     } finally if (parentStream != null && parentStream != inputStream) parentStream.close()
   }
 }

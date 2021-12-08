@@ -36,6 +36,7 @@ import java.io.DataOutputStream
  */
 final case class ArrayValueAnnotationValue(values: Seq[AnnotationAttributeValue]) extends AnnotationAttributeValue {
   override def write(out: DataOutputStream, constantPool: ConstantPool): Unit = {
+    out.writeByte('['.toInt)
     out.writeShort(values.size)
     values.foreach(value => value.write(out, constantPool))
   }

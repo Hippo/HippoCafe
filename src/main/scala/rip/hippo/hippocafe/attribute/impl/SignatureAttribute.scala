@@ -35,14 +35,13 @@ import rip.hippo.hippocafe.constantpool.ConstantPool
  * @version 1.0.0, 8/2/20
  * @since 1.0.0
  */
-final case class SignatureAttribute(signatureIndex: Int) extends AttributeInfo {
+final case class SignatureAttribute(signature: String) extends AttributeInfo {
 
   override val kind: Attribute = Attribute.SIGNATURE
 
 
-  override def write(out: DataOutputStream, constantPool: ConstantPool): Unit = out.writeShort(signatureIndex)
+  override def write(out: DataOutputStream, constantPool: ConstantPool): Unit = out.writeShort(constantPool.findUTF8(signature))
 
-  override def buildConstantPool(constantPool: ConstantPool): Unit = {
-
-  }
+  override def buildConstantPool(constantPool: ConstantPool): Unit =
+    constantPool.insertUTF8IfAbsent(signature)
 }

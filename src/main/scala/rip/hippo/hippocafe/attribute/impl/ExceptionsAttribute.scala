@@ -28,23 +28,22 @@ import java.io.DataOutputStream
 import rip.hippo.hippocafe.attribute.Attribute.Attribute
 import rip.hippo.hippocafe.attribute.AttributeInfo
 import rip.hippo.hippocafe.attribute.{Attribute, AttributeInfo}
-import rip.hippo.hippocafe.constantpool.ConstantPool
+import rip.hippo.hippocafe.constantpool.{ConstantPool, ConstantPoolKind}
 
 /**
  * @author Hippo
  * @version 1.0.0, 8/2/20
  * @since 1.0.0
  */
-final case class ExceptionsAttribute(exceptionIndexTable: Seq[Int]) extends AttributeInfo {
+final case class ExceptionsAttribute(exceptionTable: Seq[String]) extends AttributeInfo {
 
   override val kind: Attribute = Attribute.EXCEPTIONS
 
   override def write(out: DataOutputStream, constantPool: ConstantPool): Unit = {
-    out.writeShort(exceptionIndexTable.size)
-    exceptionIndexTable.foreach(index => out.writeShort(index))
+    out.writeShort(exceptionTable.size)
+    exceptionTable.foreach(exception => out.writeShort(constantPool.findString(exception, ConstantPoolKind.CLASS)))
   }
 
-  override def buildConstantPool(constantPool: ConstantPool): Unit = {
-
-  }
+  override def buildConstantPool(constantPool: ConstantPool): Unit =
+    exceptionTable.foreach(exception => constantPool.insertStringIfAbsent(exception, ConstantPoolKind.CLASS))
 }

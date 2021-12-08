@@ -25,7 +25,8 @@ final class CrasherSuite extends AnyFunSuite {
         case Failure(exception) =>
           println("Failed to read -> " + crasher.getName)
             exception.printStackTrace()
-        case Success(value) => println(s"Successfully read -> ${value.name} (${crasher.getName})" )
+        case Success(value) =>
+          println(s"Successfully read -> ${value.name} (${crasher.getName})" )
       }
     })
 

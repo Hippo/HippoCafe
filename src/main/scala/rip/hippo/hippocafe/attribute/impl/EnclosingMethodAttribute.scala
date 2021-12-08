@@ -28,23 +28,46 @@ import java.io.DataOutputStream
 import rip.hippo.hippocafe.attribute.Attribute.Attribute
 import rip.hippo.hippocafe.attribute.AttributeInfo
 import rip.hippo.hippocafe.attribute.{Attribute, AttributeInfo}
-import rip.hippo.hippocafe.constantpool.ConstantPool
+import rip.hippo.hippocafe.constantpool.info.impl.NameAndTypeInfo
+import rip.hippo.hippocafe.constantpool.{ConstantPool, ConstantPoolKind}
 
 /**
  * @author Hippo
  * @version 1.0.0, 8/2/20
  * @since 1.0.0
  */
-final case class EnclosingMethodAttribute(classIndex: Int, methodIndex: Int) extends AttributeInfo {
+final case class EnclosingMethodAttribute(className: String, methodName: Option[String], methodType: Option[String]) extends AttributeInfo {
 
   override val kind: Attribute = Attribute.ENCLOSING_METHOD
 
   override def write(out: DataOutputStream, constantPool: ConstantPool): Unit = {
-    out.writeShort(classIndex)
-    out.writeShort(methodIndex)
+    out.writeShort(constantPool.findString(className, ConstantPoolKind.CLASS))
+    var flag = false
+    methodName match {
+      case Some(name) =>
+        methodType match {
+          case Some(value) =>
+            flag = true
+            out.writeShort(constantPool.findInfo(new NameAndTypeInfo(name, value)))
+          case None =>
+        }
+      case None =>
+    }
+    if (!flag) {
+      out.writeShort(0)
+    }
   }
 
   override def buildConstantPool(constantPool: ConstantPool): Unit = {
-
+    constantPool.insertStringIfAbsent(className, ConstantPoolKind.CLASS)
+    methodName match {
+      case Some(name) =>
+        methodType match {
+          case Some(value) =>
+            constantPool.insertIfAbsent(new NameAndTypeInfo(name, value))
+          case None =>
+        }
+      case None =>
+    }
   }
 }

@@ -85,4 +85,30 @@ final case class DynamicInfo(inputKind: ConstantPoolKind, var bsmAttributeIndex:
         case None => nameAndTypeIndex
       }) + ")"
   }
+
+  override def equals(obj: Any): Boolean = {
+    obj match {
+      case other: DynamicInfo =>
+        val bsmData = Option(bootstrapMethodsAttributeData) match {
+          case Some(value) => value
+          case None => return false
+        }
+        val nameAndType = Option(nameAndTypeInfo) match {
+          case Some(value) => value
+          case None => return false
+        }
+
+        val otherBsmData = Option(other.bootstrapMethodsAttributeData) match {
+          case Some(value) => value
+          case None => return false
+        }
+        val otherNameAndType = Option(other.nameAndTypeInfo) match {
+          case Some(value) => value
+          case None => return false
+        }
+
+        inputKind.equals(other.inputKind) && bsmData.equals(otherBsmData) && nameAndType.equals(otherNameAndType)
+      case _ => false
+    }
+  }
 }

@@ -87,7 +87,7 @@ final case class ReferenceInstruction(var bytecodeOpcode: BytecodeOpcode, var ow
       add(new ReferenceInfo(
         new StringInfo(owner, ConstantPoolKind.CLASS),
         new NameAndTypeInfo(name, descriptor),
-        if (isMethod) ConstantPoolKind.METHOD_REF else ConstantPoolKind.FIELD_REF))
+        if (isMethod) if (bytecodeOpcode == INVOKEINTERFACE) ConstantPoolKind.INTERFACE_METHOD_REF else ConstantPoolKind.METHOD_REF else ConstantPoolKind.FIELD_REF))
       
     } else refIndex = index
     val uniqueByte = UniqueByte(bytecodeOpcode.opcode.toByte)

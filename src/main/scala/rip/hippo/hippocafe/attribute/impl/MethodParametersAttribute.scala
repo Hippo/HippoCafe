@@ -43,12 +43,16 @@ final case class MethodParametersAttribute(parameters: Seq[MethodParametersAttri
   override def write(out: DataOutputStream, constantPool: ConstantPool): Unit = {
     out.writeByte(parameters.size)
     parameters.foreach(parameter => {
-      out.writeShort(parameter.nameIndex)
+      parameter.name match {
+        case Some(value) =>
+          out.writeShort(constantPool.findUTF8(value))
+        case None =>
+          out.writeShort(0)
+      }
       out.writeShort(parameter.accessFlags)
     })
   }
 
-  override def buildConstantPool(constantPool: ConstantPool): Unit = {
-
-  }
+  override def buildConstantPool(constantPool: ConstantPool): Unit =
+    parameters.foreach(_.buildConstantPool(constantPool))
 }

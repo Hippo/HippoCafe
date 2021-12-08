@@ -175,7 +175,6 @@ final class ClassWriter(classFile: ClassFile,
     // ensure that cp info dependencies are added
     constantPool.info.values.foreach(info => info.insertIfAbsent(constantPool))
 
-
     constantPoolWriter.write(constantPool, out)
     classMetaWriter.write(classFile, constantPool, out)
     interfaceWriter.write(classFile, constantPool, out)
@@ -213,7 +212,10 @@ final class ClassWriter(classFile: ClassFile,
       add(new StringInfo(classFile.superName, ConstantPoolKind.CLASS))
       add(UTF8Info(classFile.superName))
     }
-
+    classFile.interfaces.foreach(interface => {
+      add(new StringInfo(interface, ConstantPoolKind.CLASS))
+      add(UTF8Info(interface))
+    })
     classFile.attributes.foreach(attribute => {
       add(UTF8Info(attribute.kind.toString))
       attribute.buildConstantPool(constantPool)

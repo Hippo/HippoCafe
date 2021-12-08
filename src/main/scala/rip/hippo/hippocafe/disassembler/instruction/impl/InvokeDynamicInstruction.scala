@@ -16,7 +16,7 @@ final case class InvokeDynamicInstruction(invokeDynamicConstant: InvokeDynamicCo
     invokeDynamicConstant.insertIfAbsent(constantPool)
     val code = assemblerContext.code
     val index = invokeDynamicConstant.getConstantPoolIndex(constantPool)
-
+    
     val uniqueByte = UniqueByte(BytecodeOpcode.INVOKEDYNAMIC.opcode.toByte)
     assemblerContext.labelQueue.foreach(label => assemblerContext.labelToByte += (label -> uniqueByte))
     assemblerContext.labelQueue.clear()

@@ -2,6 +2,7 @@ package rip.hippo.hippocafe.disassembler.instruction.constant
 
 import rip.hippo.hippocafe.constantpool.ConstantPool
 import rip.hippo.hippocafe.constantpool.ConstantPoolKind.{CLASS, DOUBLE, DYNAMIC, FIELD_REF, FLOAT, INTEGER, INTERFACE_METHOD_REF, INVOKE_DYNAMIC, LONG, METHOD_HANDLE, METHOD_REF, METHOD_TYPE, MODULE, NAME_AND_TYPE, PACKAGE, STRING, UTF8}
+import rip.hippo.hippocafe.constantpool.info.impl.data.ReferenceKind
 import rip.hippo.hippocafe.constantpool.info.impl.{DynamicInfo, MethodHandleInfo, StringInfo}
 import rip.hippo.hippocafe.constantpool.info.{ConstantPoolInfo, ValueAwareness}
 import rip.hippo.hippocafe.disassembler.instruction.constant.impl.{ClassConstant, DoubleConstant, DynamicConstant, FloatConstant, IntegerConstant, InvokeDynamicConstant, LongConstant, MethodHandleConstant, MethodTypeConstant, ModuleConstant, PackageConstant, StringConstant, UTF8Constant}
@@ -48,7 +49,11 @@ object Constant {
         }
       case methodHandleInfo: MethodHandleInfo =>
         val referenceInfo = methodHandleInfo.referenceInfo
-        MethodHandleConstant(methodHandleInfo.referenceKind, referenceInfo.classInfo.value, referenceInfo.nameAndTypeInfo.name, referenceInfo.nameAndTypeInfo.descriptor)
+        MethodHandleConstant(methodHandleInfo.referenceKind,
+          referenceInfo.classInfo.value,
+          referenceInfo.nameAndTypeInfo.name,
+          referenceInfo.nameAndTypeInfo.descriptor,
+          methodHandleInfo.referenceKind == ReferenceKind.REF_INVOKE_INTERFACE)
 
       case dynamicInfo: DynamicInfo =>
         val nameAndType = dynamicInfo.nameAndTypeInfo

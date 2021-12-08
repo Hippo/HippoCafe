@@ -59,7 +59,8 @@ final case class PushInstruction(var value: Int) extends Instruction {
         assemblerContext.labelQueue.clear()
 
         assemblerContext.code += uniqueByte
-        code += UniqueByte((x << 8).toByte)
+
+        code += UniqueByte(((x >>> 8) & 0xFF).toByte)
         code += UniqueByte((x & 0xFF).toByte)
       case _ => ConstantInstruction(IntegerConstant(value)).assemble(assemblerContext, constantPool)
     }

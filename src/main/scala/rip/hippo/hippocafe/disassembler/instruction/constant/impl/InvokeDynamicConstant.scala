@@ -26,8 +26,8 @@ final case class InvokeDynamicConstant(name: String,
   override def insertIfAbsent(constantPool: ConstantPool): Unit = {
     val info = makeInfo
     val ref = info.bootstrapMethodsAttributeData.bootstrapMethodRef
-
     info.insertIfAbsent(constantPool)
+    ref.insertIfAbsent(constantPool)
   }
 
   override def getConstantPoolIndex(constantPool: ConstantPool): Int =

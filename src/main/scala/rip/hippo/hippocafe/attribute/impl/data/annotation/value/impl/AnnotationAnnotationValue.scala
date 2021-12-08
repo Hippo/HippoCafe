@@ -36,6 +36,7 @@ import rip.hippo.hippocafe.constantpool.ConstantPool
  */
 final case class AnnotationAnnotationValue(annotationValue: AnnotationAttributeData) extends AnnotationAttributeValue {
   override def write(out: DataOutputStream, constantPool: ConstantPool): Unit = {
+    out.writeByte('@'.toInt)
     annotationValue.write(out, constantPool)
   }
 

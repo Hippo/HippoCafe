@@ -37,13 +37,12 @@ import rip.hippo.hippocafe.constantpool.ConstantPool
  * @since 1.0.0
  */
 final case class AnnotationDefaultAttribute(defaultValue: AnnotationAttributeValue) extends AttributeInfo {
-
+ 
   override val kind: Attribute = Attribute.ANNOTATION_DEFAULT
 
   override def write(out: DataOutputStream, constantPool: ConstantPool): Unit = defaultValue.write(out, constantPool)
 
 
-  override def buildConstantPool(constantPool: ConstantPool): Unit = {
-
-  }
+  override def buildConstantPool(constantPool: ConstantPool): Unit =
+    defaultValue.buildConstantPool(constantPool)
 }

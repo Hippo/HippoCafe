@@ -34,8 +34,10 @@ import rip.hippo.hippocafe.constantpool.ConstantPool
  * @since 1.0.0
  */
 final case class ClassInfoIndexAnnotationValue(classInfo: String) extends AnnotationAttributeValue {
-  override def write(out: DataOutputStream, constantPool: ConstantPool): Unit =
+  override def write(out: DataOutputStream, constantPool: ConstantPool): Unit = {
+    out.writeByte('c'.toInt)
     out.writeShort(constantPool.findUTF8(classInfo))
+  }
 
   override def buildConstantPool(constantPool: ConstantPool): Unit =
     constantPool.insertUTF8IfAbsent(classInfo)

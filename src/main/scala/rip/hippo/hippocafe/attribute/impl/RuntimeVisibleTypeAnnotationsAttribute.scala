@@ -45,7 +45,6 @@ final case class RuntimeVisibleTypeAnnotationsAttribute(annotations: Seq[TypeAnn
     annotations.foreach(annotation => annotation.write(out, constantPool))
   }
 
-  override def buildConstantPool(constantPool: ConstantPool): Unit = {
-
-  }
+  override def buildConstantPool(constantPool: ConstantPool): Unit =
+    annotations.foreach(_.buildConstantPool(constantPool))
 }

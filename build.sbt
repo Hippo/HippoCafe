@@ -3,7 +3,7 @@ lazy val root = project
   .settings(
     name := "HippoCafe",
     description := "A Java Class File library written in Scala 3.",
-    version := "2.2.0",
+    version := "2.2.1",
     scalaVersion := "3.1.0",
 
     libraryDependencies += "org.scalatest" %% "scalatest" % "3.2.9" % Test
