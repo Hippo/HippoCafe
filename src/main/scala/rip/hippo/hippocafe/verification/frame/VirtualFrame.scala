@@ -96,7 +96,7 @@ final case class VirtualFrame(localVariables: mutable.Map[Int, VerificationTypeI
           case LongConstant(value) =>
             push(LongVerificationTypeInfo())
             push(TopVerificationTypeInfo())
-          case MethodHandleConstant(referenceKind, owner, name, descriptor) =>
+          case MethodHandleConstant(referenceKind, owner, name, descriptor, isInterface) =>
             push(ObjectVerificationTypeInfo("java/lang/invoke/MethodHandle"))
           case MethodTypeConstant(value) =>
             push(ObjectVerificationTypeInfo("java/lang/invoke/MethodType"))
