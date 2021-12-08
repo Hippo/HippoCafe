@@ -498,7 +498,7 @@ object CodeDisassembler {
           case _ =>
         })
 
-        val max = Math.max(labels.keys.max, instructions.keys.max)
+        val max = Math.max(if (labels.keys.isEmpty) 0 else labels.keys.max, if (instructions.keys.isEmpty) 0 else instructions.keys.max)
 
         val instructionBuffer = ListBuffer[Instruction]()
 
