@@ -145,7 +145,7 @@ final case class StandardAttributeReader() extends AttributeReader {
         case Some(attribute) =>
           import Attribute._
           attribute match {
-            case CONSTANT_VALUE => ConstantValueAttribute(u2)
+            case CONSTANT_VALUE => ConstantValueAttribute(Constant.fromInfo(constantPool.info(u2)))
             case CODE =>
               val maxStack = if (oak) u1 else u2
               val maxLocals = if (oak) u1 else u2
@@ -392,7 +392,10 @@ final case class StandardAttributeReader() extends AttributeReader {
         case None => UnknownAttribute(name, buffer.toIndexedSeq)
       }
     } catch {
-      case _: Throwable => UnknownAttribute(name, buffer.toIndexedSeq)
+      case e: Throwable =>
+        println(name)
+        e.printStackTrace()
+        UnknownAttribute(name, buffer.toIndexedSeq)
     } finally if (parentStream != null && parentStream != inputStream) parentStream.close()
   }
 }

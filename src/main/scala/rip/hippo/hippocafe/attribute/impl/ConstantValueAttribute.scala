@@ -29,19 +29,19 @@ import rip.hippo.hippocafe.attribute.Attribute.Attribute
 import rip.hippo.hippocafe.attribute.AttributeInfo
 import rip.hippo.hippocafe.attribute.{Attribute, AttributeInfo}
 import rip.hippo.hippocafe.constantpool.ConstantPool
+import rip.hippo.hippocafe.disassembler.instruction.constant.Constant
 
 /**
  * @author Hippo
  * @version 1.0.0, 8/2/20
  * @since 1.0.0
  */
-final case class ConstantValueAttribute(index: Int) extends AttributeInfo {
+final case class ConstantValueAttribute(constant: Constant[?]) extends AttributeInfo {
 
   override val kind: Attribute = Attribute.CONSTANT_VALUE
 
-  override def write(out: DataOutputStream, constantPool: ConstantPool): Unit = out.writeShort(index)
+  override def write(out: DataOutputStream, constantPool: ConstantPool): Unit = out.writeShort(constant.getConstantPoolIndex(constantPool))
 
-  override def buildConstantPool(constantPool: ConstantPool): Unit = {
-
-  }
+  override def buildConstantPool(constantPool: ConstantPool): Unit =
+    constant.insertIfAbsent(constantPool)
 }

@@ -15,7 +15,7 @@ import scala.util.{Failure, Success, Using}
 final class CrasherSuite extends AnyFunSuite {
 
   test("crashers") {
-    val crashersDirectory = new File(Thread.currentThread().getContextClassLoader.getResource("crasher").getFile)
+    val crashersDirectory = new File(Thread.currentThread().getContextClassLoader.getResource("crasher/sub").getFile)
     crashersDirectory.listFiles().filter(_.getName.endsWith(".class")).foreach(crasher => {
       val test = Using(new ClassReader(new FileInputStream(crasher))) {
         classReader =>
@@ -26,6 +26,11 @@ final class CrasherSuite extends AnyFunSuite {
           println("Failed to read -> " + crasher.getName)
             exception.printStackTrace()
         case Success(value) =>
+          value.attributes.foreach(println)
+          println()
+          value.fields.foreach(_.attributes.foreach(println))
+          println()
+          value.methods.foreach(_.attributes.foreach(println))
           println(s"Successfully read -> ${value.name} (${crasher.getName})" )
       }
     })
