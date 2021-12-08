@@ -392,9 +392,7 @@ final case class StandardAttributeReader() extends AttributeReader {
         case None => UnknownAttribute(name, buffer.toIndexedSeq)
       }
     } catch {
-      case e: Throwable =>
-        e.printStackTrace()
-        UnknownAttribute(name, buffer.toIndexedSeq)
+      case _: Throwable => UnknownAttribute(name, buffer.toIndexedSeq)
     } finally if (parentStream != null && parentStream != inputStream) parentStream.close()
   }
 }
