@@ -14,7 +14,7 @@ import scala.collection.mutable.{ArrayBuffer, ListBuffer}
 
 /**
  * @author Hippo
- * @version 1.1.0, 2/19/21
+ * @version 1.1.1, 2/19/21
  * @since 1.0.0
  */
 final class AssemblerContext(flags: Set[AssemblerFlag]) {
@@ -40,7 +40,7 @@ final class AssemblerContext(flags: Set[AssemblerFlag]) {
     preprocessedBranches.foreach(preprocessedBranch => {
       val label = preprocessedBranch.label
       val opcodeIndex = code.indexOf(preprocessedBranch.indexToBranch)
-      val labelOffset = code.indexOf(labelToByte(label))
+      val labelOffset = getLabelByte(label)
       preprocessedBranch.offset = labelOffset - opcodeIndex
 
       if (preprocessedBranch.getSize == 4) {
@@ -65,7 +65,7 @@ final class AssemblerContext(flags: Set[AssemblerFlag]) {
       })
       preprocessedBranches.foreach(preprocessedBranch => {
         val startingSize = preprocessedBranch.getSize
-        val labelOffset = code.indexOf(labelToByte(preprocessedBranch.label))
+        val labelOffset = getLabelByte(preprocessedBranch.label)
         val branchIndex = code.indexOf(preprocessedBranch.indexToBranch)
         preprocessedBranch.offset = labelOffset - branchIndex
         val padExtend = switchPadding.filter(pair => {
@@ -130,14 +130,14 @@ final class AssemblerContext(flags: Set[AssemblerFlag]) {
       }
 
       var indexToPairs = indexToPad + 12
-      val defaultBranch = code.indexOf(labelToByte(instruction.default))
+      val defaultBranch = getLabelByte(instruction.default)
       val defaultOffset = defaultBranch - indexToInstruction
       code(indexToPad).byte = shift(defaultOffset, 24)
       code(indexToPad + 1).byte = shift(defaultOffset, 16)
       code(indexToPad + 2).byte = shift(defaultOffset, 8)
       code(indexToPad + 3).byte = shift(defaultOffset, 0)
       instruction.table.foreach(label => {
-        val labelOffset = code.indexOf(labelToByte(label))
+        val labelOffset = getLabelByte(label)
         val offset = labelOffset - indexToInstruction
         code(indexToPairs).byte =  shift(offset, 24)
         code(indexToPairs + 1).byte = shift(offset, 16)
@@ -160,14 +160,14 @@ final class AssemblerContext(flags: Set[AssemblerFlag]) {
       }
 
       var indexToPairs = indexToPad + 12
-      val defaultBranch = code.indexOf(labelToByte(instruction.default))
+      val defaultBranch = getLabelByte(instruction.default)
       val defaultOffset = defaultBranch - indexToInstruction
       code(indexToPad).byte = shift(defaultOffset, 24)
       code(indexToPad + 1).byte = shift(defaultOffset, 16)
       code(indexToPad + 2).byte = shift(defaultOffset, 8)
       code(indexToPad + 3).byte = shift(defaultOffset, 0)
       instruction.pairs.values.foreach(label => {
-        val labelOffset = code.indexOf(labelToByte(label))
+        val labelOffset = getLabelByte(label)
         val offset = labelOffset - indexToInstruction
         code(indexToPairs).byte =  shift(offset, 24)
         code(indexToPairs + 1).byte = shift(offset, 16)
@@ -202,12 +202,8 @@ final class AssemblerContext(flags: Set[AssemblerFlag]) {
     val localVariableTypeTable = ArrayBuffer[LocalVariableTypeTableAttributeData]()
 
     methodInfo.localVariables.foreach(localVariable => {
-      val startOffset = code.indexOf(labelToByte(localVariable.start))
-      //val endOffset = code.indexOf()
-      val endOffset = labelToByte.get(localVariable.end) match {
-        case Some(value) => code.indexOf(value)
-        case None => code.length
-      }
+      val startOffset = getLabelByte(localVariable.start)
+      val endOffset = getLabelByte(localVariable.end)
       val length = endOffset - startOffset
 
       localVariableTable += LocalVariableTableAttributeData(startOffset, length, localVariable.name, localVariable.descriptor, localVariable.index)
@@ -230,11 +226,12 @@ final class AssemblerContext(flags: Set[AssemblerFlag]) {
 
   def assembleTryCatchBlocks(methodInfo: MethodInfo): Array[ExceptionTableAttributeData] = {
     methodInfo.tryCatchBlocks.map(tcb => ExceptionTableAttributeData(
-      code.indexOf(labelToByte(tcb.start)),
-      code.indexOf(labelToByte(tcb.end)),
-      code.indexOf(labelToByte(tcb.handler)),
+      getLabelByte(tcb.start),
+      getLabelByte(tcb.end),
+      getLabelByte(tcb.handler),
       tcb.catchType)).toArray
   }
+
 
   def setMaxStack(size: Int): Unit = maxStack = Math.max(maxStack, size)
   def setMaxLocals(size: Int): Unit = maxLocals = Math.max(maxLocals, size)
@@ -242,6 +239,12 @@ final class AssemblerContext(flags: Set[AssemblerFlag]) {
   def calculateMaxes: Boolean = flags.contains(AssemblerFlag.CALCULATE_MAXES)
   def generateFrames: Boolean = flags.contains(AssemblerFlag.GENERATE_FRAMES)
 
+
+  private def getLabelByte(labelInstruction: LabelInstruction): Int =
+    labelToByte.get(labelInstruction) match {
+      case Some(value) => code.indexOf(value)
+      case None => code.length
+    }
 
   def nextDelta(frameInstruction: FrameInstruction): Int = {
     deltaChanges += 1
