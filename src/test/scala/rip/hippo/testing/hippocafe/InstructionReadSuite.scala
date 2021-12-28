@@ -28,6 +28,7 @@ import org.scalatest.funsuite.AnyFunSuite
 import rip.hippo.hippocafe.ClassReader
 import rip.hippo.hippocafe.access.AccessFlag
 
+import java.io.{FileOutputStream, PrintStream}
 import scala.util.{Failure, Success, Using}
 
 /**
@@ -37,14 +38,16 @@ import scala.util.{Failure, Success, Using}
  */
 final class InstructionReadSuite extends AnyFunSuite {
 
-  private val className = "OakTest"
+  private val className = "ArrowDump"
 
   test("CodeDisassembler.disassemble") {
+
     Option(Thread.currentThread.getContextClassLoader.getResourceAsStream(s"$className.class")) match {
       case Some(value) =>
         val test = Using(new ClassReader(value)) {
           classReader =>
             val classFile = classReader.classFile
+
             println(classFile)
             println()
 

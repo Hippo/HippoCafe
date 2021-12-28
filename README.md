@@ -18,7 +18,7 @@ repositories {
 
 ```groovy
 dependencies {
-    implementation group: 'com.github.Hippo', name: 'HippoCafe', version: '2.2.7'
+    implementation group: 'com.github.Hippo', name: 'HippoCafe', version: '2.2.8'
 }
 ```
 
@@ -27,7 +27,7 @@ Or using Scala SBT
 ```scala
 resolvers += "jitpack" at "https://jitpack.io"
 
-libraryDependencies += "com.github.Hippo" % "HippoCafe" % "2.2.7"
+libraryDependencies += "com.github.Hippo" % "HippoCafe" % "2.2.8"
 ```
 
 # Reading class files
@@ -68,6 +68,16 @@ Using(new ClassWriter(classFile)) {
   classWriter =>
     val bytecode: Array[Byte] = classWriter.write // class files bytecode
 }
+```
+
+There are optional flags you can pass into the `ClassWriter`
+1) calculateMaxes - Calculate the max stack and max locals of each method
+2) generateFrames - Generates stack map frames for each method
+3) appendConstantPool - Preserves the original classes constant pool, and appends to it if needed.
+
+The options are applied in a builder pattern style fashion, for an example if you wanted a `ClassWriter` to calculateMaxes and generateFrames you would do as such:
+```scala
+new ClassWriter(classFile).calculateMaxes.generateFrames
 ```
 
 # Building class files

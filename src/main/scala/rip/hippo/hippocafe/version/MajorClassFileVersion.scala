@@ -47,6 +47,8 @@ enum MajorClassFileVersion(val version: Int) {
   case SE15 extends MajorClassFileVersion(59)
   case SE16 extends MajorClassFileVersion(60)
   case SE17 extends MajorClassFileVersion(61)
+  case SE18 extends MajorClassFileVersion(62)
+  case SE19 extends MajorClassFileVersion(63)
 }
 
 object MajorClassFileVersion {
