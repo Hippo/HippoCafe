@@ -29,7 +29,7 @@ import scala.collection.mutable.ListBuffer
 
 /**
  * @author Hippo
- * @version 1.0.0, 8/15/21
+ * @version 1.1.0, 8/15/21
  * @since 2.0.0
  */
 final case class StandardAttributeReader() extends AttributeReader {
@@ -161,7 +161,7 @@ final case class StandardAttributeReader() extends AttributeReader {
               val attributesCount = u2
               val attributes = new Array[AttributeInfo](attributesCount)
               (0 until attributesCount).foreach(i => attributes(i) = read(bufferStream, inputStream, constantPool, oak))
-              CodeAttribute(oak, maxStack, maxLocals, code.toIndexedSeq, exceptionTableLength, exceptionTable.toIndexedSeq, attributes.toIndexedSeq)
+              CodeAttribute(oak, maxStack, maxLocals, ListBuffer.from(code), exceptionTableLength, ListBuffer.from(exceptionTable), ListBuffer.from(attributes))
             case STACK_MAP_TABLE =>
               val numberOfEntries = u2
               val entries = new Array[StackMapFrame](numberOfEntries)
@@ -189,12 +189,12 @@ final case class StandardAttributeReader() extends AttributeReader {
                     entries(i) = FullStackMapFrame(offsetDelta, numberOfLocals, locals, numberOfStackItems, stack)
                 }
               })
-              StackMapTableAttribute(entries.toIndexedSeq)
+              StackMapTableAttribute(ListBuffer.from(entries))
             case EXCEPTIONS =>
               val numberOfExceptions = u2
               val exceptionIndexTable = new Array[String](numberOfExceptions)
               (0 until numberOfExceptions).foreach(i => exceptionIndexTable(i) = constantPool.readString(u2))
-              ExceptionsAttribute(exceptionIndexTable.toIndexedSeq)
+              ExceptionsAttribute(ListBuffer.from(exceptionIndexTable))
             case INNER_CLASSES =>
               val numberOfClasses = u2
               val classes = new Array[ClassesAttributeData](numberOfClasses)
@@ -208,7 +208,7 @@ final case class StandardAttributeReader() extends AttributeReader {
                   if (innerNameIndex == 0) Option.empty else Option(constantPool.readUTF8(innerNameIndex)),
                   u2)
               })
-              InnerClassesAttribute(classes.toIndexedSeq)
+              InnerClassesAttribute(ListBuffer.from(classes))
             case ENCLOSING_METHOD =>
               val className = constantPool.readString(u2)
               val methodIndex = u2
@@ -223,33 +223,33 @@ final case class StandardAttributeReader() extends AttributeReader {
             case SYNTHETIC => SyntheticAttribute()
             case SIGNATURE => SignatureAttribute(constantPool.readUTF8(u2))
             case SOURCE_FILE => SourceFileAttribute(constantPool.readUTF8(u2))
-            case SOURCE_DEBUG_EXTENSION => SourceDebugExtensionAttribute(buffer.toIndexedSeq)
+            case SOURCE_DEBUG_EXTENSION => SourceDebugExtensionAttribute(ListBuffer.from(buffer))
             case LINE_NUMBER_TABLE =>
               val lineNumberTableLength = u2
               val lineNumberTable = new Array[LineNumberTableAttributeData](lineNumberTableLength)
               (0 until lineNumberTableLength).foreach(i => lineNumberTable(i) = LineNumberTableAttributeData(u2, u2))
-              LineNumberTableAttribute(lineNumberTable.toIndexedSeq)
+              LineNumberTableAttribute(ListBuffer.from(lineNumberTable))
             case LOCAL_VARIABLE_TABLE =>
               val localVariableTableLength = u2
               val localVariableTable = new Array[LocalVariableTableAttributeData](localVariableTableLength)
               (0 until localVariableTableLength).foreach(i => localVariableTable(i) = LocalVariableTableAttributeData(u2, u2, constantPool.readUTF8(u2), constantPool.readUTF8(u2), u2))
-              LocalVariableTableAttribute(localVariableTable.toIndexedSeq)
+              LocalVariableTableAttribute(ListBuffer.from(localVariableTable))
             case LOCAL_VARIABLE_TYPE_TABLE =>
               val localVariableTypeTableLength = u2
               val localVariableTypeTable = new Array[LocalVariableTypeTableAttributeData](localVariableTypeTableLength)
               (0 until localVariableTypeTableLength).foreach(i => localVariableTypeTable(i) = LocalVariableTypeTableAttributeData(u2, u2, constantPool.readUTF8(u2), constantPool.readUTF8(u2), u2))
-              LocalVariableTypeTableAttribute(localVariableTypeTable.toIndexedSeq)
+              LocalVariableTypeTableAttribute(ListBuffer.from(localVariableTypeTable))
             case DEPRECATED => DeprecatedAttribute()
             case RUNTIME_VISIBLE_ANNOTATIONS =>
               val numberOfAnnotations = u2
               val annotations = new Array[AnnotationAttributeData](numberOfAnnotations)
               (0 until numberOfAnnotations).foreach(i => annotations(i) = readAnnotationData)
-              RuntimeVisibleAnnotationsAttribute(annotations.toIndexedSeq)
+              RuntimeVisibleAnnotationsAttribute(ListBuffer.from(annotations))
             case RUNTIME_INVISIBLE_ANNOTATIONS =>
               val numberOfAnnotations = u2
               val annotations = new Array[AnnotationAttributeData](numberOfAnnotations)
               (0 until numberOfAnnotations).foreach(i => annotations(i) = readAnnotationData)
-              RuntimeInvisibleAnnotationsAttribute(annotations.toIndexedSeq)
+              RuntimeInvisibleAnnotationsAttribute(ListBuffer.from(annotations))
             case RUNTIME_VISIBLE_PARAMETER_ANNOTATIONS =>
               val numberOfParameters = u1
               val parameterAnnotations = new Array[ParameterAnnotationsData](numberOfParameters)
@@ -259,7 +259,7 @@ final case class StandardAttributeReader() extends AttributeReader {
                 (0 until numberOfAnnotations).foreach(k => annotations(k) = readAnnotationData)
                 parameterAnnotations(i) = ParameterAnnotationsData(annotations.toIndexedSeq)
               })
-              RuntimeVisibleParameterAnnotationsAttribute(parameterAnnotations.toIndexedSeq)
+              RuntimeVisibleParameterAnnotationsAttribute(ListBuffer.from(parameterAnnotations))
             case RUNTIME_INVISIBLE_PARAMETER_ANNOTATIONS =>
               val numberOfParameters = u1
               val parameterAnnotations = new Array[ParameterAnnotationsData](numberOfParameters)
@@ -269,17 +269,17 @@ final case class StandardAttributeReader() extends AttributeReader {
                 (0 until numberOfAnnotations).foreach(k => annotations(k) = readAnnotationData)
                 parameterAnnotations(i) = ParameterAnnotationsData(annotations.toIndexedSeq)
               })
-              RuntimeInvisibleParameterAnnotationsAttribute(parameterAnnotations.toIndexedSeq)
+              RuntimeInvisibleParameterAnnotationsAttribute(ListBuffer.from(parameterAnnotations))
             case RUNTIME_VISIBLE_TYPE_ANNOTATIONS =>
               val numberOfAnnotations = u2
               val annotations = new Array[TypeAnnotationData](numberOfAnnotations)
               (0 until numberOfAnnotations).foreach(i => annotations(i) = readTypeAnnotationData)
-              RuntimeVisibleTypeAnnotationsAttribute(annotations.toIndexedSeq)
+              RuntimeVisibleTypeAnnotationsAttribute(ListBuffer.from(annotations))
             case RUNTIME_INVISIBLE_TYPE_ANNOTATIONS =>
               val numberOfAnnotations = u2
               val annotations = new Array[TypeAnnotationData](numberOfAnnotations)
               (0 until numberOfAnnotations).foreach(i => annotations(i) = readTypeAnnotationData)
-              RuntimeInvisibleTypeAnnotationsAttribute(annotations.toIndexedSeq)
+              RuntimeInvisibleTypeAnnotationsAttribute(ListBuffer.from(annotations))
             case ANNOTATION_DEFAULT => AnnotationDefaultAttribute(readAnnotationAttributeValue)
             case BOOTSTRAP_METHODS =>
               val numberOfBootstrapMethods = u2
@@ -291,7 +291,7 @@ final case class StandardAttributeReader() extends AttributeReader {
                 (0 until numberOfBootstrapArguments).foreach(i => bootstrapArguments += Constant.fromInfo(constantPool.info(u2)))
                 bootstrapMethods(i) = BootstrapMethodsAttributeData(bootstrapMethodRef, bootstrapArguments)
               })
-              val bsmAttribute = BootstrapMethodsAttribute(bootstrapMethods.toIndexedSeq)
+              val bsmAttribute = BootstrapMethodsAttribute(ListBuffer.from(bootstrapMethods))
 
               constantPool.info.values.foreach {
                 case dynamicInfo: DynamicInfo =>
@@ -310,64 +310,73 @@ final case class StandardAttributeReader() extends AttributeReader {
                 name = Option(constantPool.readUTF8(nameIndex))
               }
               (0 until parametersCount).foreach(i => parameters(i) = MethodParametersAttributeData(name, access))
-              MethodParametersAttribute(parameters.toIndexedSeq)
+              MethodParametersAttribute(ListBuffer.from(parameters))
             case MODULE =>
               val moduleNameIndex = u2
               val moduleFlags = u2
               val moduleVersionIndex = u2
 
+              val moduleName = constantPool.readString(moduleNameIndex)
+              val moduleVersion = if (moduleVersionIndex == 0) Option.empty else Option(constantPool.readString(moduleVersionIndex))
+
               val requiresCount = u2
               val requires = new Array[RequiresModuleData](requiresCount)
-              (0 until requiresCount).foreach(i => requires(i) = RequiresModuleData(u2, u2, u2))
+              (0 until requiresCount).foreach(i => {
+                val require = constantPool.readString(u2)
+                val flags = u2
+                val index = u2
+                val version = if (index == 0) Option.empty else Option(constantPool.readUTF8(index))
+                requires(i) = RequiresModuleData(require, flags, version)
+              })
 
               val exportsCount = u2
               val exports = new Array[ExportsModuleData](exportsCount)
               (0 until exportsCount).foreach(i => {
-                val exportsIndex = u2
+                val exportsIndex = constantPool.readString(u2)
                 val exportsFlags = u2
                 val exportsToCount = u2
-                val exportsToIndex = new Array[Int](exportsToCount)
-                (0 until exportsToCount).foreach(k => exportsToIndex(k) = u2)
-                exports(i) = ExportsModuleData(exportsIndex, exportsFlags, exportsToIndex.toIndexedSeq)
+                val exportsToIndex = new Array[String](exportsToCount)
+                (0 until exportsToCount).foreach(k => exportsToIndex(k) = constantPool.readString(u2))
+                exports(i) = ExportsModuleData(exportsIndex, exportsFlags, ListBuffer.from(exportsToIndex))
               })
 
               val opensCount = u2
               val opens = new Array[OpensModuleData](opensCount)
               (0 until opensCount).foreach(i => {
-                val opensIndex = u2
+                val opensIndex = constantPool.readString(u2)
                 val opensFlags = u2
                 val opensToCount = u2
-                val opensToIndex = new Array[Int](opensToCount)
-                (0 until opensToCount).foreach(k => opensToIndex(k) = u2)
-                opens(i) = OpensModuleData(opensIndex, opensFlags, opensToIndex.toIndexedSeq)
+                val opensToIndex = new Array[String](opensToCount)
+                (0 until opensToCount).foreach(k => opensToIndex(k) = constantPool.readString(u2))
+                opens(i) = OpensModuleData(opensIndex, opensFlags, ListBuffer.from(opensToIndex))
               })
 
               val usesCount = u2
-              val usesIndex = new Array[Int](usesCount)
-              (0 until usesCount).foreach(i => usesIndex(i) = u2)
+              val usesIndex = new Array[String](usesCount)
+              (0 until usesCount).foreach(i => usesIndex(i) = constantPool.readString(u2))
 
               val providesCount = u2
               val provides = new Array[ProvidesModuleData](providesCount)
               (0 until providesCount).foreach(i => {
-                val providesIndex = u2
+                val providesIndex = constantPool.readString(u2)
                 val providesWithCount = u2
-                val providesWithIndex = new Array[Int](providesWithCount)
-                (0 until providesWithCount).foreach(k => providesWithIndex(k) = u2)
-                provides(i) = ProvidesModuleData(providesIndex, providesWithIndex.toIndexedSeq)
+                val providesWithIndex = new Array[String](providesWithCount)
+                (0 until providesWithCount).foreach(k => providesWithIndex(k) = constantPool.readString(u2))
+                provides(i) = ProvidesModuleData(providesIndex, ListBuffer.from(providesWithIndex))
               })
-              ModuleAttribute(moduleNameIndex, moduleFlags, moduleVersionIndex, requires.toIndexedSeq, exports.toIndexedSeq, opens.toIndexedSeq, usesIndex.toIndexedSeq, provides.toIndexedSeq)
+              ModuleAttribute(moduleName, moduleFlags, moduleVersion, ListBuffer.from(requires), ListBuffer.from(exports), ListBuffer.from(opens), ListBuffer.from(usesIndex), ListBuffer.from(provides))
             case MODULE_PACKAGES =>
               val packageCount = u2
-              val packageIndex = new Array[Int](packageCount)
-              (0 until packageCount).foreach(i => packageIndex(i) = u2)
-              ModulePackagesAttribute(packageIndex.toIndexedSeq)
-            case MODULE_MAIN_CLASS => ModuleMainClassAttribute(u2)
-            case NEST_HOST => NestHostAttribute(u2)
+              val packageIndex = new Array[String](packageCount)
+              (0 until packageCount).foreach(i => packageIndex(i) = constantPool.readString(u2))
+              ModulePackagesAttribute(ListBuffer.from(packageIndex))
+            case MODULE_MAIN_CLASS => ModuleMainClassAttribute(constantPool.readString(u2))
+            case NEST_HOST => NestHostAttribute(constantPool.readString(u2))
             case NEST_MEMBERS =>
               val numberOfClasses = u2
-              val classes = new Array[Int](numberOfClasses)
-              (0 until numberOfClasses).foreach(i => classes(i) = u2)
-              NestMembersAttribute(classes.toIndexedSeq)
+              val classes = new Array[String](numberOfClasses)
+              (0 until numberOfClasses).foreach(i => classes(i) = constantPool.readString(u2))
+              NestMembersAttribute(ListBuffer.from(classes))
             case RECORD =>
               val componentsCount = u2
               val components = new Array[RecordComponentInfo](componentsCount)
@@ -377,23 +386,23 @@ final case class StandardAttributeReader() extends AttributeReader {
                 val attributesCount = u2
                 val attributes = new Array[AttributeInfo](attributesCount)
                 (0 until attributesCount).foreach(i => attributes(i) = read(bufferStream, inputStream, constantPool, oak))
-                components(i) = RecordComponentInfo(name, descriptor, attributes.toIndexedSeq)
+                components(i) = RecordComponentInfo(name, descriptor, ListBuffer.from(attributes))
               })
-              RecordAttribute(components.toIndexedSeq)
+              RecordAttribute(ListBuffer.from(components))
             case PERMITTED_SUBCLASSES =>
               val numberOfClasses = u2
               val classes = new Array[String](numberOfClasses)
               (0 until numberOfClasses).foreach(i => {
                 classes(i) = constantPool.readString(u2)
               })
-              PermittedSubclassesAttribute(classes.toIndexedSeq)
-            case _ => UnknownAttribute(name, buffer.toIndexedSeq)
+              PermittedSubclassesAttribute(ListBuffer.from(classes))
+            case _ => UnknownAttribute(name, ListBuffer.from(buffer))
           }
-        case None => UnknownAttribute(name, buffer.toIndexedSeq)
+        case None => UnknownAttribute(name, ListBuffer.from(buffer))
       }
     } catch {
       case _: Throwable =>
-        UnknownAttribute(name, buffer.toIndexedSeq)
+        UnknownAttribute(name, ListBuffer.from(buffer))
     } finally if (parentStream != null && parentStream != inputStream) parentStream.close()
   }
 }

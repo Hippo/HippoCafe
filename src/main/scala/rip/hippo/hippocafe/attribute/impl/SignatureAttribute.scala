@@ -35,7 +35,7 @@ import rip.hippo.hippocafe.constantpool.ConstantPool
  * @version 1.0.0, 8/2/20
  * @since 1.0.0
  */
-final case class SignatureAttribute(signature: String) extends AttributeInfo {
+final case class SignatureAttribute(var signature: String) extends AttributeInfo {
 
   override val kind: Attribute = Attribute.SIGNATURE
 

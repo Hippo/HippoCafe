@@ -12,10 +12,12 @@ import rip.hippo.hippocafe.disassembler.instruction.constant.Constant
  * @version 1.0.0, 6/18/21
  * @since 1.5.0
  */
-final case class MethodHandleConstant(referenceKind: ReferenceKind, owner: String, name: String, descriptor: String, isInterface: Boolean) extends Constant[Int] {
-
-  override val value: Int = -1
-
+final case class MethodHandleConstant(var referenceKind: ReferenceKind,
+                                      var owner: String,
+                                      var name: String,
+                                      var descriptor: String,
+                                      var isInterface: Boolean) extends Constant[Int] {
+  
   override val constantPoolInfoAssociate: Class[? <: ConstantPoolInfo] = classOf[MethodHandleInfo]
 
   override def insertIfAbsent(constantPool: ConstantPool): Unit =
@@ -36,4 +38,6 @@ final case class MethodHandleConstant(referenceKind: ReferenceKind, owner: Strin
       case _ if isInterface => ConstantPoolKind.INTERFACE_METHOD_REF
       case _ => ConstantPoolKind.METHOD_REF
     }
+
+  override def getValue: Int = -1
 }

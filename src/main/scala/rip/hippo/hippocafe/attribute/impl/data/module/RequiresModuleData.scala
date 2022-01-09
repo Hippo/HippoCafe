@@ -29,4 +29,4 @@ package rip.hippo.hippocafe.attribute.impl.data.module
  * @version 1.0.0, 8/2/20
  * @since 1.0.0
  */
-final case class RequiresModuleData(requiresIndex: Int, requiresFlags: Int, requiresVersionIndex: Int)
+final case class RequiresModuleData(var requires: String, var requiresFlags: Int, var requiresVersion: Option[String])

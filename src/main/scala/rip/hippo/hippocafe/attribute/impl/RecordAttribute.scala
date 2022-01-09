@@ -6,13 +6,14 @@ import rip.hippo.hippocafe.attribute.impl.data.RecordComponentInfo
 import rip.hippo.hippocafe.constantpool.ConstantPool
 
 import java.io.DataOutputStream
+import scala.collection.mutable.ListBuffer
 
 /**
  * @author Hippo
  * @version 1.0.0, 6/18/21
  * @since 1.5.0
  */
-final case class RecordAttribute(components: Seq[RecordComponentInfo]) extends AttributeInfo {
+final case class RecordAttribute(components: ListBuffer[RecordComponentInfo]) extends AttributeInfo {
   override val kind: Attribute = Attribute.RECORD
 
   override def write(out: DataOutputStream, constantPool: ConstantPool): Unit = {

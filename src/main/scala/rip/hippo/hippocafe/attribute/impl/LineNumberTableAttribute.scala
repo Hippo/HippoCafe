@@ -31,12 +31,14 @@ import rip.hippo.hippocafe.attribute.{Attribute, AttributeInfo}
 import rip.hippo.hippocafe.attribute.impl.data.LineNumberTableAttributeData
 import rip.hippo.hippocafe.constantpool.ConstantPool
 
+import scala.collection.mutable.ListBuffer
+
 /**
  * @author Hippo
  * @version 1.0.0, 8/2/20
  * @since 1.0.0
  */
-final case class LineNumberTableAttribute(lineNumberTable: Seq[LineNumberTableAttributeData]) extends AttributeInfo {
+final case class LineNumberTableAttribute(lineNumberTable: ListBuffer[LineNumberTableAttributeData]) extends AttributeInfo {
 
   override val kind: Attribute = Attribute.LINE_NUMBER_TABLE
 

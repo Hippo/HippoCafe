@@ -51,7 +51,6 @@ final case class DynamicInfo(inputKind: ConstantPoolKind, var bsmAttributeIndex:
 
   override def write(out: DataOutputStream, constantPool: ConstantPool): Unit = {
 
-    // todo: find out a way to recompute the index to point to the bootstrap_methods array effectively
     out.writeShort(bsmAttributeIndex)
 
     // recompute name and type info index

@@ -28,24 +28,26 @@ import java.io.DataOutputStream
 import rip.hippo.hippocafe.attribute.Attribute.Attribute
 import rip.hippo.hippocafe.attribute.AttributeInfo
 import rip.hippo.hippocafe.attribute.{Attribute, AttributeInfo}
-import rip.hippo.hippocafe.constantpool.ConstantPool
+import rip.hippo.hippocafe.constantpool.{ConstantPool, ConstantPoolKind}
+
+import scala.collection.mutable.ListBuffer
 
 /**
  * @author Hippo
  * @version 1.0.0, 8/2/20
  * @since 1.0.0
  */
-final case class ModulePackagesAttribute(packageIndex: Seq[Int]) extends AttributeInfo {
+final case class ModulePackagesAttribute(packages: ListBuffer[String]) extends AttributeInfo {
 
   override val kind: Attribute = Attribute.MODULE_PACKAGES
 
 
   override def write(out: DataOutputStream, constantPool: ConstantPool): Unit = {
-    out.writeShort(packageIndex.size)
-    packageIndex.foreach(index => out.writeShort(index))
+    out.writeShort(packages.size)
+    packages.map(pack => constantPool.findString(pack, ConstantPoolKind.PACKAGE)).foreach(index => out.writeShort(index))
   }
 
   override def buildConstantPool(constantPool: ConstantPool): Unit = {
-
+    packages.foreach(pack => constantPool.insertStringIfAbsent(pack, ConstantPoolKind.PACKAGE))
   }
 }

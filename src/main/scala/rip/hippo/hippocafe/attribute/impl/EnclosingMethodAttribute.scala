@@ -36,7 +36,7 @@ import rip.hippo.hippocafe.constantpool.{ConstantPool, ConstantPoolKind}
  * @version 1.0.0, 8/2/20
  * @since 1.0.0
  */
-final case class EnclosingMethodAttribute(className: String, methodName: Option[String], methodType: Option[String]) extends AttributeInfo {
+final case class EnclosingMethodAttribute(var className: String, var methodName: Option[String], var methodType: Option[String]) extends AttributeInfo {
 
   override val kind: Attribute = Attribute.ENCLOSING_METHOD
 

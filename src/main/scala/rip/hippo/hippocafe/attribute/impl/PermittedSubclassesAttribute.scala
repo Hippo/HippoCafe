@@ -5,13 +5,14 @@ import rip.hippo.hippocafe.attribute.AttributeInfo
 import rip.hippo.hippocafe.constantpool.{ConstantPool, ConstantPoolKind}
 
 import java.io.DataOutputStream
+import scala.collection.mutable.ListBuffer
 
 /**
  * @author Hippo
  * @version 1.0.0, 12/7/21
  * @since 2.2.0
  */
-final case class PermittedSubclassesAttribute(classes: Seq[String]) extends AttributeInfo {
+final case class PermittedSubclassesAttribute(classes: ListBuffer[String]) extends AttributeInfo {
   override val kind: Attribute = PERMITTED_SUBCLASSES
 
   override def write(out: DataOutputStream, constantPool: ConstantPool): Unit = {

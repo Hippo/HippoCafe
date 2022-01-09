@@ -38,7 +38,7 @@ import scala.util.{Failure, Success, Using}
  */
 final class InstructionReadSuite extends AnyFunSuite {
 
-  private val className = "ArrowDump"
+  private val className = "InvokeDynamicTest"
 
   test("CodeDisassembler.disassemble") {
 

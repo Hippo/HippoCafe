@@ -10,7 +10,7 @@ import rip.hippo.hippocafe.disassembler.instruction.constant.Constant
  * @version 1.0.0, 3/7/21
  * @since 1.0.1
  */
-final case class UTF8Constant(value: String) extends Constant[String] {
+final case class UTF8Constant(var value: String) extends Constant[String] {
   override val constantPoolInfoAssociate: Class[? <: ConstantPoolInfo] = classOf[StringInfo]
 
   override def insertIfAbsent(constantPool: ConstantPool): Unit =
@@ -18,4 +18,6 @@ final case class UTF8Constant(value: String) extends Constant[String] {
 
   override def getConstantPoolIndex(constantPool: ConstantPool): Int =
     constantPool.findUTF8(value)
+
+  override def getValue: String = value
 }

@@ -24,11 +24,13 @@
 
 package rip.hippo.hippocafe.attribute.impl.data.module
 
+import scala.collection.mutable.ListBuffer
+
 /**
  * @author Hippo
  * @version 1.0.0, 8/2/20
  * @since 1.0.0
  */
-final case class OpensModuleData(opensIndex: Int,
-                                 opensFlags: Int,
-                                 opensToIndex: Seq[Int])
+final case class OpensModuleData(var opens: String,
+                                 var opensFlags: Int,
+                                 opensTo: ListBuffer[String])

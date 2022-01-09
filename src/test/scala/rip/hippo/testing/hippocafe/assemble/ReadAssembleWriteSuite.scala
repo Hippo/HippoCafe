@@ -25,6 +25,7 @@
 package rip.hippo.testing.hippocafe.assemble
 
 import org.scalatest.funsuite.AnyFunSuite
+import rip.hippo.hippocafe.constantpool.info.impl.DynamicInfo
 import rip.hippo.hippocafe.disassembler.instruction.FrameInstruction
 import rip.hippo.hippocafe.disassembler.instruction.impl.{ANewArrayInstruction, AppendFrameInstruction, BranchInstruction, ChopFrameInstruction, ConstantInstruction, FullFrameInstruction, IncrementInstruction, InvokeDynamicInstruction, LabelInstruction, LineNumberInstruction, LookupSwitchInstruction, MultiANewArrayInstruction, NewArrayInstruction, PushInstruction, ReferenceInstruction, SameFrameInstruction, SameLocalsFrameInstruction, SimpleInstruction, TableSwitchInstruction, TypeInstruction, VariableInstruction}
 import rip.hippo.hippocafe.version.MajorClassFileVersion
@@ -42,7 +43,7 @@ import scala.util.{Failure, Using}
  */
 final class ReadAssembleWriteSuite extends AnyFunSuite {
 
-  private val className = "TcbTest"
+  private val className = "InvokeDynamicTest"
 
 
   test("assemble.readThenLoad") {

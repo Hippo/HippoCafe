@@ -28,20 +28,20 @@ import java.io.DataOutputStream
 import rip.hippo.hippocafe.attribute.Attribute.Attribute
 import rip.hippo.hippocafe.attribute.AttributeInfo
 import rip.hippo.hippocafe.attribute.{Attribute, AttributeInfo}
-import rip.hippo.hippocafe.constantpool.ConstantPool
+import rip.hippo.hippocafe.constantpool.{ConstantPool, ConstantPoolKind}
 
 /**
  * @author Hippo
  * @version 1.0.0, 8/2/20
  * @since 1.0.0
  */
-final case class ModuleMainClassAttribute(mainClassIndex: Int) extends AttributeInfo {
+final case class ModuleMainClassAttribute(var mainClass: String) extends AttributeInfo {
 
   override val kind: Attribute = Attribute.MODULE_MAIN_CLASS
 
-  override def write(out: DataOutputStream, constantPool: ConstantPool): Unit = out.writeShort(mainClassIndex)
+  override def write(out: DataOutputStream, constantPool: ConstantPool): Unit = out.writeShort(constantPool.findString(mainClass, ConstantPoolKind.CLASS))
 
   override def buildConstantPool(constantPool: ConstantPool): Unit = {
-
+    constantPool.insertStringIfAbsent(mainClass, ConstantPoolKind.CLASS)
   }
 }

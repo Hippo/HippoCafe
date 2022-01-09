@@ -142,10 +142,10 @@ final class ClassWriter(classFile: ClassFile,
           classFile.isOak,
           assemblerContext.maxStack,
           assemblerContext.maxLocals,
-          methodBytecode.map(_.byte).toSeq,
+          methodBytecode.map(_.byte),
           tryCatchBlocks.length,
-          tryCatchBlocks.toIndexedSeq,
-          attributes.toIndexedSeq
+          tryCatchBlocks,
+          attributes
         )
         codeAttribute.buildConstantPool(constantPool)
         method.attributes += codeAttribute
@@ -167,7 +167,7 @@ final class ClassWriter(classFile: ClassFile,
         case Some(value) => classFile.attributes -= value
         case None =>
       }
-      val attribute = BootstrapMethodsAttribute(bootstrapMethods.toSeq)
+      val attribute = BootstrapMethodsAttribute(bootstrapMethods)
       attribute.buildConstantPool(constantPool)
       classFile.attributes += attribute
     }

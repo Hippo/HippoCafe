@@ -32,12 +32,14 @@ import rip.hippo.hippocafe.constantpool.ConstantPool
 import rip.hippo.hippocafe.stackmap.StackMapFrame
 import rip.hippo.hippocafe.stackmap.impl.{AppendStackMapFrame, FullStackMapFrame, SameLocalsExtendedStackMapFrame, SameLocalsStackMapFrame}
 
+import scala.collection.mutable.ListBuffer
+
 /**
  * @author Hippo
  * @version 1.0.0, 8/2/20
  * @since 1.0.0
  */
-final case class StackMapTableAttribute(entries: Seq[StackMapFrame]) extends AttributeInfo {
+final case class StackMapTableAttribute(entries: ListBuffer[StackMapFrame]) extends AttributeInfo {
 
   override val kind: Attribute = Attribute.STACK_MAP_TABLE
 

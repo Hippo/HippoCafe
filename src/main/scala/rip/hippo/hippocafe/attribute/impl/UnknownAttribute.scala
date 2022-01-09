@@ -30,12 +30,14 @@ import rip.hippo.hippocafe.attribute.AttributeInfo
 import rip.hippo.hippocafe.attribute.{Attribute, AttributeInfo}
 import rip.hippo.hippocafe.constantpool.ConstantPool
 
+import scala.collection.mutable.ListBuffer
+
 /**
  * @author Hippo
  * @version 1.0.0, 8/2/20
  * @since 1.0.0
  */
-final case class UnknownAttribute(name: String, data: Seq[Byte]) extends AttributeInfo {
+final case class UnknownAttribute(var name: String, data: ListBuffer[Byte]) extends AttributeInfo {
 
   override val kind: Attribute = Attribute.unknown(name)
 
@@ -43,6 +45,6 @@ final case class UnknownAttribute(name: String, data: Seq[Byte]) extends Attribu
   override def write(out: DataOutputStream, constantPool: ConstantPool): Unit = out.write(data.toArray)
 
   override def buildConstantPool(constantPool: ConstantPool): Unit = {
-
+    
   }
 }

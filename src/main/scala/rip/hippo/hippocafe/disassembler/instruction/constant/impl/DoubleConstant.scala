@@ -10,7 +10,7 @@ import rip.hippo.hippocafe.disassembler.instruction.constant.Constant
  * @version 1.0.0, 3/7/21
  * @since 1.0.1
  */
-final case class DoubleConstant(value: Double) extends Constant[Double] {
+final case class DoubleConstant(var value: Double) extends Constant[Double] {
   override val constantPoolInfoAssociate: Class[? <: ConstantPoolInfo] = classOf[DoubleInfo]
 
   override def insertIfAbsent(constantPool: ConstantPool): Unit = {
@@ -33,4 +33,6 @@ final case class DoubleConstant(value: Double) extends Constant[Double] {
       .filter(_._2.asInstanceOf[DoubleInfo].value == value)
       .keys
       .head
+
+  override def getValue: Double = value
 }

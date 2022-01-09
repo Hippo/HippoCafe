@@ -179,10 +179,10 @@ final class AssemblerContext(flags: Set[AssemblerFlag]) {
 
   }
 
-  def assembleMethodAttributes(methodInfo: MethodInfo): Array[AttributeInfo] = {
-    val attributes = ArrayBuffer[AttributeInfo]()
+  def assembleMethodAttributes(methodInfo: MethodInfo): ListBuffer[AttributeInfo] = {
+    val attributes = ListBuffer[AttributeInfo]()
 
-    val lineNumberAttributeDataInfo = ArrayBuffer[LineNumberTableAttributeData]()
+    val lineNumberAttributeDataInfo = ListBuffer[LineNumberTableAttributeData]()
 
     labelToByte.filter(_._1.isInstanceOf[LineNumberInstruction]).foreach(entry => {
       val lineNumber = entry._1.asInstanceOf[LineNumberInstruction].number
@@ -195,11 +195,11 @@ final class AssemblerContext(flags: Set[AssemblerFlag]) {
     sortedFrames.foreach(_._1.finalizeVerificationTypes(this))
     sortedFrames.foreach(_._1.assemble(this))
 
-    attributes += LineNumberTableAttribute(lineNumberAttributeDataInfo.toSeq)
-    attributes += StackMapTableAttribute(stackMapFrames.toSeq)
+    attributes += LineNumberTableAttribute(lineNumberAttributeDataInfo)
+    attributes += StackMapTableAttribute(stackMapFrames)
 
-    val localVariableTable = ArrayBuffer[LocalVariableTableAttributeData]()
-    val localVariableTypeTable = ArrayBuffer[LocalVariableTypeTableAttributeData]()
+    val localVariableTable = ListBuffer[LocalVariableTableAttributeData]()
+    val localVariableTypeTable = ListBuffer[LocalVariableTypeTableAttributeData]()
 
     methodInfo.localVariables.foreach(localVariable => {
       val startOffset = getLabelByte(localVariable.start)
@@ -215,21 +215,21 @@ final class AssemblerContext(flags: Set[AssemblerFlag]) {
     })
 
     if (localVariableTable.nonEmpty) {
-      attributes += LocalVariableTableAttribute(localVariableTable.toSeq)
+      attributes += LocalVariableTableAttribute(localVariableTable)
     }
     if (localVariableTypeTable.nonEmpty) {
-      attributes += LocalVariableTypeTableAttribute(localVariableTypeTable.toSeq)
+      attributes += LocalVariableTypeTableAttribute(localVariableTypeTable)
     }
 
-    attributes.toArray
+    attributes
   }
 
-  def assembleTryCatchBlocks(methodInfo: MethodInfo): Array[ExceptionTableAttributeData] = {
+  def assembleTryCatchBlocks(methodInfo: MethodInfo): ListBuffer[ExceptionTableAttributeData] = {
     methodInfo.tryCatchBlocks.map(tcb => ExceptionTableAttributeData(
       getLabelByte(tcb.start),
       getLabelByte(tcb.end),
       getLabelByte(tcb.handler),
-      tcb.catchType)).toArray
+      tcb.catchType))
   }
 
 

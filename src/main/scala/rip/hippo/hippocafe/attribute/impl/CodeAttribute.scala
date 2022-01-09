@@ -32,18 +32,20 @@ import rip.hippo.hippocafe.attribute.impl.data.ExceptionTableAttributeData
 import rip.hippo.hippocafe.constantpool.{ConstantPool, ConstantPoolKind}
 import rip.hippo.hippocafe.constantpool.info.impl.StringInfo
 
+import scala.collection.mutable.ListBuffer
+
 /**
  * @author Hippo
  * @version 1.0.0, 8/2/20
  * @since 1.0.0
  */
-final case class CodeAttribute(oak: Boolean,
-                          maxStack: Int,
-                          maxLocals: Int,
-                          code: Seq[Byte],
-                          exceptionTableLength: Int,
-                          exceptionTable: Seq[ExceptionTableAttributeData],
-                          attributes: Seq[AttributeInfo]) extends AttributeInfo {
+final case class CodeAttribute(var oak: Boolean,
+                               var maxStack: Int,
+                               var maxLocals: Int,
+                               code: ListBuffer[Byte],
+                               var exceptionTableLength: Int,
+                               exceptionTable: ListBuffer[ExceptionTableAttributeData],
+                               attributes: ListBuffer[AttributeInfo]) extends AttributeInfo {
 
   override val kind: Attribute = Attribute.CODE
 

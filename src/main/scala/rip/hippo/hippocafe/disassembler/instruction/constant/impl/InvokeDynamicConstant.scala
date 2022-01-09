@@ -14,13 +14,11 @@ import scala.collection.mutable.ListBuffer
  * @version 1.0.0, 6/18/21
  * @since 1.5.0
  */
-final case class InvokeDynamicConstant(name: String,
-                                       descriptor: String,
-                                       bootstrapMethod: MethodHandleConstant,
-                                       bootstrapArguments: ListBuffer[Constant[?]]) extends Constant[Int] {
-
-  override val value: Int = -1
-
+final case class InvokeDynamicConstant(var name: String,
+                                       var descriptor: String,
+                                       var bootstrapMethod: MethodHandleConstant,
+                                       var bootstrapArguments: ListBuffer[Constant[?]]) extends Constant[Int] {
+  
   override val constantPoolInfoAssociate: Class[? <: ConstantPoolInfo] = classOf[MethodHandleInfo]
 
   override def insertIfAbsent(constantPool: ConstantPool): Unit = {
@@ -38,4 +36,6 @@ final case class InvokeDynamicConstant(name: String,
     new DynamicInfo(ConstantPoolKind.INVOKE_DYNAMIC,
       BootstrapMethodsAttributeData(bootstrapMethod.makeInfo, bootstrapArguments),
       new NameAndTypeInfo(name, descriptor))
+
+  override def getValue: Int = -1
 }

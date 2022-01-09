@@ -36,7 +36,7 @@ import rip.hippo.hippocafe.disassembler.instruction.constant.Constant
  * @version 1.0.0, 8/2/20
  * @since 1.0.0
  */
-final case class ConstantValueAttribute(constant: Constant[?]) extends AttributeInfo {
+final case class ConstantValueAttribute(var constant: Constant[?]) extends AttributeInfo {
 
   override val kind: Attribute = Attribute.CONSTANT_VALUE
 

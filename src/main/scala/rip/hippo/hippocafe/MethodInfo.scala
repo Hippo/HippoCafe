@@ -52,4 +52,11 @@ final case class MethodInfo(var name: String,
   def this(name: String, descriptor: String, accessMask: Int) =
     this(name, descriptor, AccessFlag.fromMask(accessMask): _*)
 
+  def clear(clearAttributes: Boolean = true): Unit = {
+    instructions.clear()
+    tryCatchBlocks.clear()
+    localVariables.clear()
+    if (clearAttributes) attributes.clear()
+  }
+
 }

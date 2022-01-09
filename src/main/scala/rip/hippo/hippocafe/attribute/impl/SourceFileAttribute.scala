@@ -36,7 +36,7 @@ import rip.hippo.hippocafe.constantpool.info.impl.UTF8Info
  * @version 1.0.0, 8/2/20
  * @since 1.0.0
  */
-final case class SourceFileAttribute(sourceFile: String) extends AttributeInfo {
+final case class SourceFileAttribute(var sourceFile: String) extends AttributeInfo {
 
   override val kind: Attribute = Attribute.SOURCE_FILE
 

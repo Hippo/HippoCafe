@@ -31,12 +31,14 @@ import rip.hippo.hippocafe.attribute.{Attribute, AttributeInfo}
 import rip.hippo.hippocafe.attribute.impl.data.ClassesAttributeData
 import rip.hippo.hippocafe.constantpool.{ConstantPool, ConstantPoolKind}
 
+import scala.collection.mutable.ListBuffer
+
 /**
  * @author Hippo
  * @version 1.0.0, 8/2/20
  * @since 1.0.0
  */
-final case class InnerClassesAttribute(classes: Seq[ClassesAttributeData]) extends AttributeInfo {
+final case class InnerClassesAttribute(classes: ListBuffer[ClassesAttributeData]) extends AttributeInfo {
 
   override val kind: Attribute = Attribute.INNER_CLASSES
 

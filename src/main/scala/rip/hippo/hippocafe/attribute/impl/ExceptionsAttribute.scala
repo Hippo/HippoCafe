@@ -30,12 +30,14 @@ import rip.hippo.hippocafe.attribute.AttributeInfo
 import rip.hippo.hippocafe.attribute.{Attribute, AttributeInfo}
 import rip.hippo.hippocafe.constantpool.{ConstantPool, ConstantPoolKind}
 
+import scala.collection.mutable.ListBuffer
+
 /**
  * @author Hippo
  * @version 1.0.0, 8/2/20
  * @since 1.0.0
  */
-final case class ExceptionsAttribute(exceptionTable: Seq[String]) extends AttributeInfo {
+final case class ExceptionsAttribute(exceptionTable: ListBuffer[String]) extends AttributeInfo {
 
   override val kind: Attribute = Attribute.EXCEPTIONS
 

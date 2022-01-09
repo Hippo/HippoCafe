@@ -10,7 +10,7 @@ import rip.hippo.hippocafe.disassembler.instruction.constant.Constant
  * @version 1.0.0, 3/7/21
  * @since 1.5.0
  */
-final case class PackageConstant(value: String) extends Constant[String] {
+final case class PackageConstant(var value: String) extends Constant[String] {
   override val constantPoolInfoAssociate: Class[? <: ConstantPoolInfo] = classOf[StringInfo]
 
   override def insertIfAbsent(constantPool: ConstantPool): Unit =
@@ -18,4 +18,6 @@ final case class PackageConstant(value: String) extends Constant[String] {
 
   override def getConstantPoolIndex(constantPool: ConstantPool): Int =
     constantPool.findString(value, ConstantPoolKind.PACKAGE)
+
+  override def getValue: String = value
 }

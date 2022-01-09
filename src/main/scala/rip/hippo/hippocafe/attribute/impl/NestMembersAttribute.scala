@@ -28,23 +28,25 @@ import java.io.DataOutputStream
 import rip.hippo.hippocafe.attribute.Attribute.Attribute
 import rip.hippo.hippocafe.attribute.AttributeInfo
 import rip.hippo.hippocafe.attribute.{Attribute, AttributeInfo}
-import rip.hippo.hippocafe.constantpool.ConstantPool
+import rip.hippo.hippocafe.constantpool.{ConstantPool, ConstantPoolKind}
+
+import scala.collection.mutable.ListBuffer
 
 /**
  * @author Hippo
  * @version 1.0.0, 8/2/20
  * @since 1.0.0
  */
-final case class NestMembersAttribute(classes: Seq[Int]) extends AttributeInfo {
+final case class NestMembersAttribute(classes: ListBuffer[String]) extends AttributeInfo {
 
   override val kind: Attribute = Attribute.NEST_MEMBERS
 
   override def write(out: DataOutputStream, constantPool: ConstantPool): Unit = {
     out.writeShort(classes.size)
-    classes.foreach(data => out.writeShort(data))
+    classes.map(name => constantPool.findString(name, ConstantPoolKind.CLASS)).foreach(data => out.writeShort(data))
   }
 
   override def buildConstantPool(constantPool: ConstantPool): Unit = {
-
+    classes.foreach(name => constantPool.insertStringIfAbsent(name, ConstantPoolKind.CLASS))
   }
 }

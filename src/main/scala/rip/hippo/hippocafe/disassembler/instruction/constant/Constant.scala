@@ -15,8 +15,8 @@ import rip.hippo.hippocafe.exception.HippoCafeException
  */
 trait Constant[T] {
   val constantPoolInfoAssociate: Class[? <: ConstantPoolInfo]
-  val value: T
-
+  
+  def getValue: T
   def insertIfAbsent(constantPool: ConstantPool): Unit
   def getConstantPoolIndex(constantPool: ConstantPool): Int
 }

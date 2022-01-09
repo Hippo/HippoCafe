@@ -30,12 +30,14 @@ import rip.hippo.hippocafe.attribute.AttributeInfo
 import rip.hippo.hippocafe.attribute.{Attribute, AttributeInfo}
 import rip.hippo.hippocafe.constantpool.ConstantPool
 
+import scala.collection.mutable.ListBuffer
+
 /**
  * @author Hippo
  * @version 1.0.0, 8/2/20
  * @since 1.0.0
  */
-final case class SourceDebugExtensionAttribute(debugExtension: Seq[Byte]) extends AttributeInfo {
+final case class SourceDebugExtensionAttribute(debugExtension: ListBuffer[Byte]) extends AttributeInfo {
 
   override val kind: Attribute = Attribute.SOURCE_DEBUG_EXTENSION
 

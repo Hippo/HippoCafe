@@ -31,12 +31,14 @@ import rip.hippo.hippocafe.attribute.{Attribute, AttributeInfo}
 import rip.hippo.hippocafe.attribute.impl.data.LocalVariableTableAttributeData
 import rip.hippo.hippocafe.constantpool.ConstantPool
 
+import scala.collection.mutable.ListBuffer
+
 /**
  * @author Hippo
  * @version 1.0.0, 8/2/20
  * @since 1.0.0
  */
-final case class LocalVariableTableAttribute(localVariableTable: Seq[LocalVariableTableAttributeData]) extends AttributeInfo {
+final case class LocalVariableTableAttribute(localVariableTable: ListBuffer[LocalVariableTableAttributeData]) extends AttributeInfo {
 
   override val kind: Attribute = Attribute.LOCAL_VARIABLE_TABLE
 

@@ -36,7 +36,7 @@ import rip.hippo.hippocafe.constantpool.ConstantPool
  * @version 1.0.0, 8/2/20
  * @since 1.0.0
  */
-final case class AnnotationDefaultAttribute(defaultValue: AnnotationAttributeValue) extends AttributeInfo {
+final case class AnnotationDefaultAttribute(var defaultValue: AnnotationAttributeValue) extends AttributeInfo {
  
   override val kind: Attribute = Attribute.ANNOTATION_DEFAULT
 
