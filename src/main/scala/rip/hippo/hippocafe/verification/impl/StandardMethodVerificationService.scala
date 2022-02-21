@@ -64,7 +64,7 @@ final class StandardMethodVerificationService extends MethodVerificationService 
             locals += (index + 1 -> TopVerificationTypeInfo())
             index += 2
           case x =>
-            locals += (index -> ObjectVerificationTypeInfo(x.descriptor))
+            locals += (index -> ObjectVerificationTypeInfo(x.getInternalName))
             index += 1
         }
 
@@ -119,6 +119,8 @@ final class StandardMethodVerificationService extends MethodVerificationService 
           }
           frames += frame
         }
+
+
 
         val frame = frames.foldLeft(frames.head)((f1, f2) => f1.merge(f2))
 

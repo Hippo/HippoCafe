@@ -67,4 +67,5 @@ sealed case class Type(descriptor: String) {
   def isArray: Boolean = descriptor.charAt(0) == '['
   def isObject: Boolean = isArray || descriptor.charAt(0) == 'L'
   def getSize: Int = if (isWide) 2 else if (this == VOID) 0 else 1
+  def getInternalName: String = if (descriptor.charAt(0) != 'L') descriptor else descriptor.substring(1, descriptor.length - 1)
 }

@@ -11,7 +11,7 @@ import rip.hippo.hippocafe.util.Type
 final class TypeSuite extends AnyFunSuite {
 
   test("Type.methodParams") {
-    val descriptor = "(Ljava/lang/String;[IIBZLjava/lang/Object;)V"
+    val descriptor = "(Ljava/lang/String;[IIBZLjava/lang/Object;[Ljava/lang/String;[[Ljava/lang/String;)V"
     Type.getMethodParameterTypes(descriptor).foreach(println)
     println(Type.getMethodReturnType(descriptor))
   }

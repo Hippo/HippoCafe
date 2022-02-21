@@ -38,7 +38,7 @@ import scala.util.{Failure, Success, Using}
  */
 final class InstructionReadSuite extends AnyFunSuite {
 
-  private val className = "InvokeDynamicTest"
+  private val className = "OakTest"
 
   test("CodeDisassembler.disassemble") {
 
@@ -54,7 +54,7 @@ final class InstructionReadSuite extends AnyFunSuite {
             classFile.constantPool.get.info.foreach(println)
 
             classFile.methods.foreach(info => {
-              println(info.name)
+              println(info)
 
               info.attributes.foreach(println)
               info.instructions.foreach(println(_))

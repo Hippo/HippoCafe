@@ -32,7 +32,9 @@ final case class VirtualFrame(localVariables: mutable.Map[Int, VerificationTypeI
         case Some(value) =>
           if (value.getClass != info.getClass) throw new HippoCafeException(s"Inconsistent locals, expected ${value.getClass} at $index, got ${info.getClass}")
           value match {
-            case ObjectVerificationTypeInfo(name) => locals += (index -> ObjectVerificationTypeInfo(methodVerificationService.getCommonSuperType(name, info.asInstanceOf[ObjectVerificationTypeInfo].name)))
+            case ObjectVerificationTypeInfo(name) =>
+              locals += (index -> ObjectVerificationTypeInfo(internalizeObjectVerification(methodVerificationService.getCommonSuperType(name, info.asInstanceOf[ObjectVerificationTypeInfo].name))))
+
             case _ => // ignore, we already got it in the locals
           }
         case None =>
@@ -50,7 +52,7 @@ final case class VirtualFrame(localVariables: mutable.Map[Int, VerificationTypeI
       val second = other.stack(i)
       if (first.getClass != second.getClass) throw new HippoCafeException(s"Inconsistent stack, expected ${first.getClass}, got ${second.getClass}")
       val info = (first, second) match {
-        case (obj1: ObjectVerificationTypeInfo, obj2: ObjectVerificationTypeInfo) => ObjectVerificationTypeInfo(methodVerificationService.getCommonSuperType(obj1.name, obj2.name))
+        case (obj1: ObjectVerificationTypeInfo, obj2: ObjectVerificationTypeInfo) => ObjectVerificationTypeInfo(internalizeObjectVerification(methodVerificationService.getCommonSuperType(obj1.name, obj2.name)))
         case _ => first
       }
 
@@ -69,7 +71,7 @@ final case class VirtualFrame(localVariables: mutable.Map[Int, VerificationTypeI
         } else {
           "[L".concat(descriptor).concat(";")
         }
-        push(ObjectVerificationTypeInfo(arrayDescriptor))
+        push(ObjectVerificationTypeInfo(internalizeObjectVerification(arrayDescriptor)))
       case BranchInstruction(bytecodeOpcode, label) =>
         bytecodeOpcode match {
           case IFEQ | IFNE | IFLT | IFGE | IFGT | IFLE | IFNULL | IFNONNULL =>
@@ -81,18 +83,18 @@ final case class VirtualFrame(localVariables: mutable.Map[Int, VerificationTypeI
       case ConstantInstruction(constant) =>
         constant match {
           case ClassConstant(value) =>
-            push(ObjectVerificationTypeInfo("java/lang/Class"))
+            push(ObjectVerificationTypeInfo(internalizeObjectVerification("java/lang/Class")))
           case DoubleConstant(value) =>
             push(DoubleVerificationTypeInfo())
             push(TopVerificationTypeInfo())
           case DynamicConstant(name, descriptor, bootstrapMethod, bootstrapArguments) =>
-            push(ObjectVerificationTypeInfo(descriptor))
+            push(ObjectVerificationTypeInfo(internalizeObjectVerification(descriptor)))
           case FloatConstant(value) =>
             push(FloatVerificationTypeInfo())
           case IntegerConstant(value) =>
             push(IntegerVerificationTypeInfo())
           case InvokeDynamicConstant(name, descriptor, bootstrapMethod, bootstrapArguments) =>
-            push(ObjectVerificationTypeInfo(descriptor))
+            push(ObjectVerificationTypeInfo(internalizeObjectVerification(descriptor)))
           case LongConstant(value) =>
             push(LongVerificationTypeInfo())
             push(TopVerificationTypeInfo())
@@ -101,7 +103,7 @@ final case class VirtualFrame(localVariables: mutable.Map[Int, VerificationTypeI
           case MethodTypeConstant(value) =>
             push(ObjectVerificationTypeInfo("java/lang/invoke/MethodType"))
           case ModuleConstant(value) =>
-            push(ObjectVerificationTypeInfo(value))
+            push(ObjectVerificationTypeInfo(internalizeObjectVerification(value)))
           case StringConstant(value) =>
             push(ObjectVerificationTypeInfo("java/lang/String"))
           case UTF8Constant(value) =>
@@ -116,7 +118,7 @@ final case class VirtualFrame(localVariables: mutable.Map[Int, VerificationTypeI
       case LookupSwitchInstruction(default) => pop()
       case MultiANewArrayInstruction(descriptor, dimensions) =>
         pop(dimensions)
-        push(ObjectVerificationTypeInfo(descriptor))
+        push(ObjectVerificationTypeInfo(internalizeObjectVerification(descriptor)))
       case NewArrayInstruction(arrayType) =>
         pop()
         import ArrayType._
@@ -158,7 +160,7 @@ final case class VirtualFrame(localVariables: mutable.Map[Int, VerificationTypeI
                     uninitializedVerificationTypeInfo.typeInstruction match {
                       case Some(value) =>
                         pop()
-                        push(ObjectVerificationTypeInfo(value.typeName))
+                        push(ObjectVerificationTypeInfo(internalizeObjectVerification(value.typeName)))
                       case None =>
                     }
                   case _ =>
@@ -167,7 +169,7 @@ final case class VirtualFrame(localVariables: mutable.Map[Int, VerificationTypeI
               if (methodInfo.name.equals("<init>")) {
                 localVariables.get(0) match {
                   case Some(value: UninitializedThisVerificationTypeInfo) =>
-                    store(0, ObjectVerificationTypeInfo(classFile.name))
+                    store(0, ObjectVerificationTypeInfo(internalizeObjectVerification(classFile.name)))
                   case _ =>
                 }
               }
@@ -211,7 +213,7 @@ final case class VirtualFrame(localVariables: mutable.Map[Int, VerificationTypeI
             val arrayRef = pop()
             arrayRef match {
               case nullVerificationTypeInfo: NullVerificationTypeInfo => push(nullVerificationTypeInfo)
-              case objectVerificationTypeInfo: ObjectVerificationTypeInfo => push(ObjectVerificationTypeInfo(objectVerificationTypeInfo.name.substring(1)))
+              case objectVerificationTypeInfo: ObjectVerificationTypeInfo => push(ObjectVerificationTypeInfo(internalizeObjectVerification(objectVerificationTypeInfo.name.substring(1))))
               case _ => push(arrayRef) // shouldn't happen
             }
           case ISTORE_0 | ISTORE_1 | ISTORE_2 | ISTORE_3 =>
@@ -366,7 +368,7 @@ final case class VirtualFrame(localVariables: mutable.Map[Int, VerificationTypeI
         if (tcbTypes.nonEmpty) {
           stack.clear()
           val commonType = tcbTypes.foldLeft(tcbTypes.head)((t1, t2) => methodVerificationService.getCommonSuperType(t1, t2))
-          push(ObjectVerificationTypeInfo(commonType))
+          push(ObjectVerificationTypeInfo(internalizeObjectVerification(commonType)))
         }
 
       case _ =>
@@ -387,6 +389,10 @@ final case class VirtualFrame(localVariables: mutable.Map[Int, VerificationTypeI
 
   def load(index: Int): VerificationTypeInfo =
     localVariables(index)
+    
+  def internalizeObjectVerification(descriptor: String): String = {
+    if (descriptor.startsWith("L") && descriptor.endsWith(";")) descriptor.substring(1, descriptor.length - 1) else descriptor
+  }
 
   def convertType(value: Type): VerificationTypeInfo = {
     value match {
@@ -394,7 +400,7 @@ final case class VirtualFrame(localVariables: mutable.Map[Int, VerificationTypeI
       case Type.FLOAT => FloatVerificationTypeInfo()
       case Type.LONG => LongVerificationTypeInfo()
       case Type.DOUBLE => DoubleVerificationTypeInfo()
-      case x => ObjectVerificationTypeInfo(x.descriptor)
+      case x => ObjectVerificationTypeInfo(internalizeObjectVerification(x.descriptor))
     }
   }
 
@@ -430,6 +436,8 @@ final case class VirtualFrame(localVariables: mutable.Map[Int, VerificationTypeI
   def getActualLocals: Map[Int, VerificationTypeInfo] = {
     val locals = mutable.Map[Int, VerificationTypeInfo]()
 
+    if (localVariables.isEmpty) locals.toMap
+    
     val maxLocalIndex = localVariables.keys.max
     var index = 0
     while (index <= maxLocalIndex) {

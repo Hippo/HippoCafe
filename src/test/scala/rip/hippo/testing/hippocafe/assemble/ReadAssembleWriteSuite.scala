@@ -43,7 +43,7 @@ import scala.util.{Failure, Using}
  */
 final class ReadAssembleWriteSuite extends AnyFunSuite {
 
-  private val className = "InvokeDynamicTest"
+  private val className = "ParameterFrameTest"
 
 
   test("assemble.readThenLoad") {
@@ -52,13 +52,17 @@ final class ReadAssembleWriteSuite extends AnyFunSuite {
         val test = Using(new ClassReader(value)) {
           classReader =>
 
-            /*classReader.classFile.constantPool.foreach(_.info.foreach(println))
+            //classReader.classFile.constantPool.foreach(_.info.foreach(println))
 
             println("-- FULL INSTRUCTIONS START --")
-            classReader.classFile.methods.filter(_.name.equals("main")).foreach(_.instructions.foreach(println))
+            classReader.classFile.methods.foreach(m => {
+              println(m.name)
+              m.instructions.foreach(println)
+              println("\n\n")
+            })
             println("-- FULL INSTRUCTIONS END --")
 
-            classReader.classFile.methods.foreach(info => {
+            /*classReader.classFile.methods.foreach(info => {
               info.instructions.filter(_.isInstanceOf[FrameInstruction]).foreach(frame => {
                 println(s"${info.name} -> $frame")
               })
