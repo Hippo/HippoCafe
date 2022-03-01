@@ -8,17 +8,15 @@ This library will attempt to counteract malicious bytecode which will crash othe
 
 Add HippoCafe to your project.
 
-```groovy
+```kotlin
 repositories {
-    maven {
-        url 'https://jitpack.io'
-    }
+    maven("https://jitpack.io")
 }
 ```
 
-```groovy
+```kotlin
 dependencies {
-    implementation group: 'com.github.Hippo', name: 'HippoCafe', version: '2.2.9'
+    implementation("rip.hippo:HippoCafe:2.2.9")
 }
 ```
 
@@ -27,7 +25,7 @@ Or using Scala SBT
 ```scala
 resolvers += "jitpack" at "https://jitpack.io"
 
-libraryDependencies += "com.github.Hippo" % "HippoCafe" % "2.2.9"
+libraryDependencies += "rip.hippo" % "HippoCafe" % "2.2.9"
 ```
 
 # Reading class files

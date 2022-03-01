@@ -38,7 +38,7 @@ import scala.util.{Failure, Success, Using}
  */
 final class InstructionReadSuite extends AnyFunSuite {
 
-  private val className = "OakTest"
+  private val className = "TableSwitchTest"
 
   test("CodeDisassembler.disassemble") {
 
