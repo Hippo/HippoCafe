@@ -38,6 +38,8 @@ import scala.collection.mutable.ListBuffer
  */
 final case class LookupSwitchInstruction(var default: LabelInstruction) extends Instruction {
   val pairs: mutable.Map[Int, LabelInstruction] = mutable.Map[Int, LabelInstruction]()
+  
+  var opcode: BytecodeOpcode = BytecodeOpcode.LOOKUPSWITCH
 
   override def assemble(assemblerContext: AssemblerContext, constantPool: ConstantPool): Unit = {
     val code = assemblerContext.code
@@ -70,7 +72,7 @@ final case class LookupSwitchInstruction(var default: LabelInstruction) extends 
     buffer
   }
   
-  override def getOpcode: Option[BytecodeOpcode] = Option(BytecodeOpcode.LOOKUPSWITCH)
+  override def getOpcode: Option[BytecodeOpcode] = Option(opcode)
 
   override def toString: String = s"LookupSwitchInstruction($default, $pairs)"
 }

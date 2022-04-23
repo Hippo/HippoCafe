@@ -117,7 +117,7 @@ object CodeDisassembler {
                 case None =>
                   val start = createLabel(data.startPc)
                   val end = createLabel(data.startPc + data.length)
-                  val info = LocalVariableInfo(data.name, null /*this will be changed when it reads a `LocalVariableTableAttribute`*/, Option(data.signature), start, end, data.index)
+                  val info = LocalVariableInfo(data.name, null /*this will be changed when it reads a `LocalVariableTableAttribute`*/ , Option(data.signature), start, end, data.index)
                   localLookupMap += (lookup -> info)
               }
             })
@@ -173,9 +173,13 @@ object CodeDisassembler {
           offset += 1
           index
         }) & 0xFF
+
         def u2: Int = (u1 << 8) + u1
+
         def u4: Int = (u1 << 24) + (u1 << 16) + (u1 << 8) + u1
+
         def s1: Byte = u1.toByte
+
         def s2: Short = u2.toShort
 
 
@@ -332,7 +336,14 @@ object CodeDisassembler {
                      RETURN |
                      SALOAD |
                      SASTORE |
-                     SWAP => instructions += (instructionOffset -> SimpleInstruction(opcode))
+                     SWAP |
+                     FAST_ALOAD_0 |
+                     FAST_IACCESS_0 |
+                     FAST_AACCESS_0 |
+                     FAST_FACCESS_0 |
+                     NOFAST_ALOAD_0 |
+                     SHOULD_NOT_REACH_HERE |
+                     RETURN_REGISTER_FINALIZER => instructions += (instructionOffset -> SimpleInstruction(opcode))
 
                 case INVOKEINTERFACE |
                      INVOKESPECIAL |
@@ -341,7 +352,28 @@ object CodeDisassembler {
                      GETSTATIC |
                      GETFIELD |
                      PUTFIELD |
-                     PUTSTATIC =>
+                     PUTSTATIC |
+                     FAST_AGETFIELD |
+                     FAST_BGETFIELD |
+                     FAST_CGETFIELD |
+                     FAST_DGETFIELD |
+                     FAST_FGETFIELD |
+                     FAST_IGETFIELD |
+                     FAST_LGETFIELD |
+                     FAST_SGETFIELD |
+                     FAST_APUTFIELD |
+                     FAST_BPUTFIELD |
+                     FAST_ZPUTFIELD |
+                     FAST_CPUTFIELD |
+                     FAST_DPUTFIELD |
+                     FAST_FPUTFIELD |
+                     FAST_IPUTFIELD |
+                     FAST_LPUTFIELD |
+                     FAST_SPUTFIELD |
+                     NOFAST_GETFIELD |
+                     NOFAST_PUTFIELD |
+                     FAST_INVOKEVFINAL |
+                     INVOKEHANDLE =>
                   constantPool.info(u2) match {
                     case reference: ReferenceInfo => instructions += (instructionOffset -> ReferenceInstruction(opcode, reference.classInfo.value, reference.nameAndTypeInfo.name, reference.nameAndTypeInfo.descriptor))
                     case _ => throw new HippoCafeException(s"Invalid reference instruction at $offset")
@@ -370,7 +402,11 @@ object CodeDisassembler {
                      ISTORE |
                      LLOAD |
                      LSTORE |
-                     RET =>
+                     RET |
+                     FAST_ILOAD |
+                     FAST_ILOAD2 |
+                     FAST_ICALOAD |
+                     NOFAST_ILOAD =>
                   instructions += (instructionOffset -> VariableInstruction(opcode, u1))
 
                 case SIPUSH | BIPUSH =>
@@ -417,13 +453,15 @@ object CodeDisassembler {
                   val label = createLabel(instructionOffset + branchOffset)
                   instructions += (instructionOffset -> BranchInstruction(opcode, label))
 
-                case LDC | LDC_W | LDC2_W =>
-                  instructions += (instructionOffset -> ConstantInstruction(Constant.fromInfo(constantPool.info(if (opcode == LDC) u1 else u2))))
+                case LDC | LDC_W | LDC2_W | FAST_ALDC | FAST_ALDC_W =>
+                  val wide = opcode == LDC2_W || opcode == FAST_ALDC_W
+                  instructions += (instructionOffset -> ConstantInstruction(Constant.fromInfo(constantPool.info(if (wide) u2 else u1))))
 
-                case LOOKUPSWITCH =>
+                case LOOKUPSWITCH | FAST_LINEARSWITCH | FAST_BINARYSWITCH =>
                   offset += -offset & 3
                   val default = createLabel(instructionOffset + u4)
                   val lookupSwitch = LookupSwitchInstruction(default)
+                  lookupSwitch.opcode = opcode
                   val cases = u4
                   (0 until cases).foreach(_ => {
                     val key = u4
