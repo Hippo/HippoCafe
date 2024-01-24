@@ -1,19 +1,12 @@
-# SBT
-/target/
-project/*
-!project/build.properties
-.bsp/
+# CMake
+cmake-build-debug/
+cmake-build-release/
 
 # IDEA
-!.idea/
-.idea/*
-!.idea/codeStyles/
+.idea/
 
-#OSX
+# macOS
 .DS_Store
-
-# Git
-.git/
 
 # Compiled / Testing
 *.jar
