@@ -3,6 +3,7 @@
 
 #include <cstdint>
 #include <vector>
+#include <istream>
 
 #include "attribute.hpp"
 #include "constant_pool.hpp"
@@ -38,6 +39,9 @@ public:
   std::vector<method_info> methods;
   std::vector<attribute::attribute> attributes;
 };
+
+std::istream& operator>>(std::istream& stream, class_file& file);
+
 }
 
 #endif //CAFE_CLASS_FILE_HPP

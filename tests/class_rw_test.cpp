@@ -3,11 +3,12 @@
 
 #include <gtest/gtest.h>
 
-#include <cafe/class_rw.hpp>
+#include <cafe/class_file.hpp>
 
 TEST(class_reader, read) {
   std::ifstream stream("tests/data/HelloWorld.class", std::ios::binary);
-  const auto cf = cafe::read(stream);
+  cafe::class_file cf;
+  stream >> cf;
 
   ASSERT_EQ(cf.magic, 0xCAFEBABE);
 

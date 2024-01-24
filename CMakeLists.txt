@@ -14,13 +14,12 @@ add_library(HippoCafe
         include/cafe/data_rw.hpp
         src/data_rw.cpp
         include/cafe/constant_pool.hpp
-        include/cafe/class_rw.hpp
-        src/class_rw.cpp
         include/cafe/attribute.hpp
         include/cafe/stackmap.hpp
         include/cafe/annotation.hpp
         include/cafe/class_file.hpp
         include/cafe/constants.hpp
+        src/class_file.cpp
 )
 
 target_include_directories(HippoCafe PUBLIC ${PROJECT_SOURCE_DIR}/include)

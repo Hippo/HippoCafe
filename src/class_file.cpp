@@ -1,14 +1,15 @@
-#include "cafe/class_rw.hpp"
+#include "cafe/class_file.hpp"
 
 #include <stdexcept>
 #include <string>
 #include <unordered_map>
 #include <sstream>
 
-#include "cafe/class_file.hpp"
+#include "cafe/data_rw.hpp"
 #include "cafe/constants.hpp"
 
 namespace cafe {
+
 using at = attribute::attribute_type;
 
 static const std::unordered_map<std::string, attribute::attribute_type> g_attribute_map = {
@@ -573,7 +574,8 @@ attribute::attribute read_attribute(data_reader& reader, const cp::constant_pool
   return {attribute::unknown{name_index, std::move(info)}};
 }
 
-class_file read(data_reader& reader) {
+std::istream& operator>>(std::istream& stream, class_file& file) {
+  data_reader reader(stream);
   const auto magic = reader.read_u32();
   const auto minor_version = reader.read_u16();
   const auto major_version = reader.read_u16();
@@ -625,12 +627,17 @@ class_file read(data_reader& reader) {
     attributes.push_back(read_attribute(reader, constant_pool, oak));
   }
 
-  return {
-    magic, minor_version, major_version, std::move(constant_pool), access_flags, this_class, super_class, std::move(interfaces), std::move(fields), std::move(methods), std::move(attributes)
-  };
-}
-
-class_file read(data_reader&& reader) {
-  return read(reader);
+  file.magic = magic;
+  file.minor_version = minor_version;
+  file.major_version = major_version;
+  file.constant_pool = std::move(constant_pool);
+  file.access_flags = access_flags;
+  file.this_class = this_class;
+  file.super_class = super_class;
+  file.interfaces = std::move(interfaces);
+  file.fields = std::move(fields);
+  file.methods = std::move(methods);
+  file.attributes = std::move(attributes);
+  return stream;
 }
 }
