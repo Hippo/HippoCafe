@@ -20,6 +20,8 @@ add_library(HippoCafe
         include/cafe/class_file.hpp
         include/cafe/constants.hpp
         src/class_file.cpp
+        src/visitor.hpp
+        src/visitor.cpp
 )
 
 target_include_directories(HippoCafe PUBLIC ${PROJECT_SOURCE_DIR}/include)

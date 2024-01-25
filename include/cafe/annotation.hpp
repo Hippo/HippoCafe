@@ -1,11 +1,9 @@
-#ifndef CAFE_ANNOTATION_HPP
-#define CAFE_ANNOTATION_HPP
+#pragma once
 
 #include <variant>
 #include <vector>
 
 namespace cafe::attribute {
-
 class element_value;
 struct element_pair;
 
@@ -18,10 +16,12 @@ public:
 class element_value {
 public:
   uint8_t tag;
+
   struct enum_value {
     uint16_t type_name_index;
     uint16_t const_name_index;
   };
+
   std::variant<uint16_t, enum_value, annotation, std::vector<element_value>> value;
 };
 
@@ -65,6 +65,7 @@ public:
     uint16_t length;
     uint16_t index;
   };
+
   std::vector<local> table;
 };
 
@@ -84,7 +85,8 @@ public:
   uint8_t index;
 };
 
-using type_annotation_target = std::variant<type_parameter, supertype, type_parameter_bound, empty, formal_parameter, throws, localvar, catch_target, offset_target, type_argument>;
+using type_annotation_target = std::variant<type_parameter, supertype, type_parameter_bound, empty, formal_parameter,
+  throws, localvar, catch_target, offset_target, type_argument>;
 
 class type_path {
 public:
@@ -92,6 +94,7 @@ public:
     uint8_t kind;
     uint8_t index;
   };
+
   std::vector<path> paths;
 };
 
@@ -103,7 +106,5 @@ public:
   uint16_t type_index;
   std::vector<element_pair> elements;
 };
-
 }
 
-#endif //CAFE_ANNOTATION_HPP

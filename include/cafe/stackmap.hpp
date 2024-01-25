@@ -1,12 +1,10 @@
-#ifndef CAFE_STACKMAP_HPP
-#define CAFE_STACKMAP_HPP
+#pragma once
 
 #include <cstdint>
 #include <vector>
 #include <variant>
 
 namespace cafe::attribute {
-
 template<int tag_value>
 class variable_info {
 public:
@@ -20,18 +18,22 @@ using double_variable_info = variable_info<3>;
 using long_variable_info = variable_info<4>;
 using null_variable_info = variable_info<5>;
 using uninitialized_this_variable_info = variable_info<6>;
+
 class object_variable_info {
 public:
   static constexpr uint8_t tag = 7;
   uint16_t index;
 };
+
 class uninitialized_variable_info {
 public:
   static constexpr uint8_t tag = 8;
   uint16_t offset;
 };
 
-using verification_type_info = std::variant<top_variable_info, integer_variable_info, float_variable_info, double_variable_info, long_variable_info, null_variable_info, uninitialized_this_variable_info, object_variable_info, uninitialized_variable_info>;
+using verification_type_info = std::variant<top_variable_info, integer_variable_info, float_variable_info,
+  double_variable_info, long_variable_info, null_variable_info, uninitialized_this_variable_info, object_variable_info,
+  uninitialized_variable_info>;
 
 class same_frame {
 public:
@@ -78,8 +80,7 @@ public:
   std::vector<verification_type_info> stack;
 };
 
-using stack_map_frame = std::variant<same_frame, same_locals_1_stack_item_frame, same_locals_1_stack_item_frame_extended, chop_frame, same_frame_extended, append_frame, full_frame>;
-
+using stack_map_frame = std::variant<same_frame, same_locals_1_stack_item_frame, same_locals_1_stack_item_frame_extended
+  , chop_frame, same_frame_extended, append_frame, full_frame>;
 }
 
-#endif //CAFE_STACKMAP_HPP

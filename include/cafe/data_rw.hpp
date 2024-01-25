@@ -1,5 +1,4 @@
-#ifndef CAFE_DATA_RW_HPP
-#define CAFE_DATA_RW_HPP
+#pragma once
 
 
 #include <cstdint>
@@ -48,7 +47,9 @@ public:
   std::string read_utf();
 
   void read_bytes(std::vector<uint8_t>& bytes, size_t length);
+
   void read_bytes(std::vector<int8_t>& bytes, size_t length);
+
   void read_shorts(std::vector<uint16_t>& shorts, size_t length);
 
 private:
@@ -92,9 +93,11 @@ public:
 
   void write_utf(const std::string_view& value);
 
+  void write_bytes(const std::vector<uint8_t>& bytes);
+  void write_bytes(const std::string_view& bytes);
+
 private:
   std::ostream& stream_;
 };
 }
 
-#endif //CAFE_DATA_RW_HPP

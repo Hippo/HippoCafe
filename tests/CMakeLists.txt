@@ -13,3 +13,8 @@ add_executable(HippoCafeTest data_rw_test.cpp
 enable_testing()
 add_test(NAME HippoCafeTest COMMAND HippoCafeTest)
 target_link_libraries(HippoCafeTest PUBLIC gtest_main HippoCafe)
+
+add_custom_command(TARGET HippoCafeTest POST_BUILD
+        COMMAND ${CMAKE_COMMAND} -E copy_directory
+        ${CMAKE_CURRENT_SOURCE_DIR}/data
+        ${CMAKE_CURRENT_BINARY_DIR}/data)

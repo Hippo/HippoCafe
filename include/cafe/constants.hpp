@@ -1,5 +1,4 @@
-#ifndef CAFE_CONSTANTS_HPP
-#define CAFE_CONSTANTS_HPP
+#pragma once
 
 #include <cstdint>
 
@@ -55,4 +54,3 @@ constexpr uint16_t v21 = 65;
 }
 }
 
-#endif //CAFE_CONSTANTS_HPP

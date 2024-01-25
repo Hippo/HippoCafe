@@ -1,5 +1,4 @@
-#ifndef CAFE_CLASS_FILE_HPP
-#define CAFE_CLASS_FILE_HPP
+#pragma once
 
 #include <cstdint>
 #include <vector>
@@ -9,7 +8,6 @@
 #include "constant_pool.hpp"
 
 namespace cafe {
-
 class method_info {
 public:
   uint16_t access_flags;
@@ -25,6 +23,7 @@ public:
   uint16_t descriptor_index;
   std::vector<attribute::attribute> attributes;
 };
+
 class class_file {
 public:
   uint32_t magic;
@@ -42,6 +41,6 @@ public:
 
 std::istream& operator>>(std::istream& stream, class_file& file);
 
+std::ostream& operator<<(std::ostream& stream, const class_file& file);
 }
 
-#endif //CAFE_CLASS_FILE_HPP

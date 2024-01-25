@@ -5,8 +5,8 @@
 
 #include <cafe/class_file.hpp>
 
-TEST(class_reader, read) {
-  std::ifstream stream("tests/data/HelloWorld.class", std::ios::binary);
+TEST(class_file, io) {
+  std::ifstream stream("data/HelloWorld.class", std::ios::binary);
   cafe::class_file cf;
   stream >> cf;
 
@@ -21,4 +21,7 @@ TEST(class_reader, read) {
   } else {
     FAIL();
   }
+
+  std::ofstream out_stream("HelloWorld.class", std::ios::binary);
+  out_stream << cf;
 }

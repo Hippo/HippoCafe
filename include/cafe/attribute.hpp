@@ -1,5 +1,4 @@
-#ifndef CAFE_ATTRIBUTE_HPP
-#define CAFE_ATTRIBUTE_HPP
+#pragma once
 
 #include <cstdint>
 #include <vector>
@@ -9,7 +8,6 @@
 #include "stackmap.hpp"
 
 namespace cafe::attribute {
-
 enum class attribute_type : uint8_t {
   constant_value,
   code,
@@ -30,7 +28,7 @@ enum class attribute_type : uint8_t {
   runtime_visible_parameter_annotations,
   runtime_invisible_parameter_annotations,
   runtime_visible_type_annotations,
-runtime_invisible_type_annotations,
+  runtime_invisible_type_annotations,
   annotation_default,
   bootstrap_methods,
   method_parameters,
@@ -61,12 +59,14 @@ public:
   uint16_t max_stack;
   uint16_t max_locals;
   std::vector<uint8_t> bytecode;
+
   struct exception {
     uint16_t start_pc;
     uint16_t end_pc;
     uint16_t handler_pc;
     uint16_t catch_type;
   };
+
   std::vector<exception> exceptions;
   std::vector<attribute> attributes;
 };
@@ -89,6 +89,7 @@ public:
     uint16_t name_index;
     uint16_t access_flags;
   };
+
   std::vector<inner_class> classes;
 };
 
@@ -121,6 +122,7 @@ public:
     uint16_t start_pc;
     uint16_t number;
   };
+
   std::vector<line_number> line_numbers;
 };
 
@@ -133,6 +135,7 @@ public:
     uint16_t descriptor_index;
     uint16_t index;
   };
+
   std::vector<local_variable> local_variables;
 };
 
@@ -145,6 +148,7 @@ public:
     uint16_t signature_index;
     uint16_t index;
   };
+
   std::vector<local_variable> local_variables;
 };
 
@@ -191,6 +195,7 @@ public:
     uint16_t index;
     std::vector<uint16_t> arguments;
   };
+
   std::vector<bootstrap_method> methods;
 };
 
@@ -200,6 +205,7 @@ public:
     uint16_t name_index;
     uint16_t access_flags;
   };
+
   std::vector<parameter> parameters;
 };
 
@@ -214,6 +220,7 @@ public:
     uint16_t require_flags;
     uint16_t require_version_index;
   };
+
   std::vector<require> requires;
 
   struct mod_export {
@@ -221,6 +228,7 @@ public:
     uint16_t exports_flags;
     std::vector<uint16_t> exports_to_index;
   };
+
   std::vector<mod_export> exports;
 
   struct open {
@@ -228,6 +236,7 @@ public:
     uint16_t opens_flags;
     std::vector<uint16_t> opens_to_index;
   };
+
   std::vector<open> opens;
 
   std::vector<uint16_t> uses;
@@ -236,6 +245,7 @@ public:
     uint16_t provides_index;
     std::vector<uint16_t> provides_with_index;
   };
+
   std::vector<provide> provides;
 };
 
@@ -267,6 +277,7 @@ public:
     uint16_t descriptor_index;
     std::vector<attribute> attributes;
   };
+
   std::vector<component> components;
 };
 
@@ -275,8 +286,11 @@ public:
   std::vector<uint16_t> classes;
 };
 
-class attribute : public std::variant<unknown, constant_value, code, stack_map_table, exceptions, inner_classes, enclosing_method, synthetic, signature, source_file, source_debug_extension, line_number_table, local_variable_table, local_variable_type_table, deprecated, runtime_visible_annotations, runtime_invisible_annotations, runtime_visible_parameter_annotations, runtime_invisible_parameter_annotations, runtime_visible_type_annotations, runtime_invisible_type_annotations, annotation_default, bootstrap_methods, method_parameters, module, module_packages, module_main_class, nest_host, nest_members, record, permitted_subclasses> {};
-
+class attribute : public std::variant<unknown, constant_value, code, stack_map_table, exceptions, inner_classes,
+      enclosing_method, synthetic, signature, source_file, source_debug_extension, line_number_table,
+      local_variable_table, local_variable_type_table, deprecated, runtime_visible_annotations,
+      runtime_invisible_annotations, runtime_visible_parameter_annotations, runtime_invisible_parameter_annotations,
+      runtime_visible_type_annotations, runtime_invisible_type_annotations, annotation_default, bootstrap_methods,
+      method_parameters, module, module_packages, module_main_class, nest_host, nest_members, record,
+      permitted_subclasses> {};
 }
-
-#endif //CAFE_ATTRIBUTE_HPP

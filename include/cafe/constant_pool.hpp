@@ -1,5 +1,4 @@
-#ifndef CAFE_CONSTANT_POOL_HPP
-#define CAFE_CONSTANT_POOL_HPP
+#pragma once
 
 #include <cstdint>
 #include <vector>
@@ -114,5 +113,3 @@ using constant_pool_info = std::variant<pad_info, class_info, field_ref_info, me
 
 using constant_pool = std::vector<constant_pool_info>;
 }
-
-#endif //CAFE_CONSTANT_POOL_HPP

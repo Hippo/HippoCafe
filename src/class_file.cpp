@@ -7,9 +7,9 @@
 
 #include "cafe/data_rw.hpp"
 #include "cafe/constants.hpp"
+#include "visitor.hpp"
 
 namespace cafe {
-
 using at = attribute::attribute_type;
 
 static const std::unordered_map<std::string, attribute::attribute_type> g_attribute_map = {
@@ -532,7 +532,12 @@ attribute::attribute read_attribute(data_reader& reader, const cp::constant_pool
             provides.push_back({provides_index, std::move(provides_with)});
           }
 
-          return {attribute::module{module_name_index, module_flags, module_version_index, std::move(requires), std::move(exports), std::move(opens), std::move(uses), std::move(provides)}};
+          return {
+            attribute::module{
+              module_name_index, module_flags, module_version_index, std::move(requires), std::move(exports),
+              std::move(opens), std::move(uses), std::move(provides)
+            }
+          };
         }
         case at::module_package: {
           std::vector<uint16_t> package_indices;
@@ -550,7 +555,7 @@ attribute::attribute read_attribute(data_reader& reader, const cp::constant_pool
           const auto components_count = r.read_u16();
           std::vector<attribute::record::component> components;
           components.reserve(components_count);
-          for (auto i = 0; i  < components_count; i++) {
+          for (auto i = 0; i < components_count; i++) {
             const auto n_index = r.read_u16();
             const auto descriptor_index = r.read_u16();
             const auto num_attributes = r.read_u16();
@@ -638,6 +643,51 @@ std::istream& operator>>(std::istream& stream, class_file& file) {
   file.fields = std::move(fields);
   file.methods = std::move(methods);
   file.attributes = std::move(attributes);
+  return stream;
+}
+
+std::ostream& operator<<(std::ostream& stream, const class_file& file) {
+  data_writer writer(stream);
+  writer.write_u32(file.magic);
+  writer.write_u16(file.minor_version);
+  writer.write_u16(file.major_version);
+  writer.write_u16(file.constant_pool.size());
+  for (const auto& cp_info: file.constant_pool) {
+    std::visit(constant_pool_visitor(writer), cp_info);
+  }
+  writer.write_u16(file.access_flags);
+  writer.write_u16(file.this_class);
+  writer.write_u16(file.super_class);
+  writer.write_u16(file.interfaces.size());
+  for (const auto& index: file.interfaces) {
+    writer.write_u16(index);
+  }
+  const auto oak = file.major_version < class_version::v1_1 || (file.major_version == class_version::v1_1 && file.minor_version < 3);
+  writer.write_u16(file.fields.size());
+  for (const auto& field: file.fields) {
+    writer.write_u16(field.access_flags);
+    writer.write_u16(field.name_index);
+    writer.write_u16(field.descriptor_index);
+    writer.write_u16(field.attributes.size());
+    for (const auto& attribute: field.attributes) {
+      std::visit(attribute_visitor(writer, file.constant_pool, oak), attribute);
+    }
+  }
+  writer.write_u16(file.methods.size());
+  for (const auto& method: file.methods) {
+    writer.write_u16(method.access_flags);
+    writer.write_u16(method.name_index);
+    writer.write_u16(method.descriptor_index);
+    writer.write_u16(method.attributes.size());
+    for (const auto& attribute: method.attributes) {
+      std::visit(attribute_visitor(writer, file.constant_pool, oak), attribute);
+    }
+  }
+  writer.write_u16(file.attributes.size());
+  for (const auto& attribute: file.attributes) {
+    std::visit(attribute_visitor(writer, file.constant_pool, oak), attribute);
+  }
+
   return stream;
 }
 }

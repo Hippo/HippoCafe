@@ -157,6 +157,7 @@ void data_reader::read_bytes(std::vector<uint8_t>& bytes, size_t length) {
     bytes.push_back(read_u8());
   }
 }
+
 void data_reader::read_bytes(std::vector<int8_t>& bytes, size_t length) {
   bytes.reserve(bytes.size() + length);
   for (auto i = 0; i < length; i++) {
@@ -284,6 +285,18 @@ void data_writer::write_utf(const std::string_view& value) {
       write_i8(static_cast<int8_t>(0xB0 + (bits >> 6 & 0x0F)));
       write_i8(static_cast<int8_t>(byte4));
     }
+  }
+}
+
+void data_writer::write_bytes(const std::vector<uint8_t>& bytes) {
+  for (const auto& b : bytes) {
+    write_u8(b);
+  }
+}
+
+void data_writer::write_bytes(const std::string_view& bytes) {
+  for (const auto& b : bytes) {
+    write_i8(b);
   }
 }
 }
