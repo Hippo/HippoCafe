@@ -3,6 +3,7 @@
 #include <cstdint>
 #include <vector>
 #include <istream>
+#include <ostream>
 
 #include "attribute.hpp"
 #include "constant_pool.hpp"

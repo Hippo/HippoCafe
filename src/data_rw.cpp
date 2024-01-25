@@ -1,6 +1,7 @@
 #include "cafe/data_rw.hpp"
 
 #include <stdexcept>
+#include <memory>
 
 namespace cafe {
 inline size_t to_utf8m_len(const std::string_view& input) {
@@ -79,21 +80,17 @@ uint64_t data_reader::read_u64() {
 }
 
 float data_reader::read_f32() {
-  union {
-    int32_t i;
-    float f;
-  } u{};
-  u.i = read_i32();
-  return u.f;
+  const auto i = read_i32();
+  float f;
+  std::memcpy(&f, &i, sizeof(float));
+  return f;
 }
 
 double data_reader::read_f64() {
-  union {
-    int64_t i;
-    double d;
-  } u{};
-  u.i = read_i64();
-  return u.d;
+  const auto i = read_i64();
+  double d;
+  std::memcpy(&d, &i, sizeof(double));
+  return d;
 }
 
 std::string data_reader::read_utf() {
