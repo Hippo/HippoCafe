@@ -229,21 +229,15 @@ void data_writer::write_u64(uint64_t value) {
 }
 
 void data_writer::write_f32(float value) {
-  union {
-    int32_t i;
-    float f;
-  } u{};
-  u.f = value;
-  write_i32(u.i);
+  int32_t i;
+  std::memcpy(&i, &value, sizeof(float));
+  write_u32(i);
 }
 
 void data_writer::write_f64(double value) {
-  union {
-    int64_t i;
-    double d;
-  } u{};
-  u.d = value;
-  write_u64(u.i);
+  int64_t i;
+  std::memcpy(&i, &value, sizeof(double));
+  write_u64(i);
 }
 
 
