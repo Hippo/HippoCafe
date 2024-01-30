@@ -15,7 +15,7 @@ TEST(data_reader, read_utf) {
   std::istringstream stream(str, std::ios::binary);
   cafe::data_reader reader(stream);
   const auto result = reader.read_utf();
-  const std::string test = u8"🦛☕️ is 🔛🔝";
+  const std::string test = "🦛☕️ is 🔛🔝";
   ASSERT_EQ(result, test);
 }
 
@@ -26,7 +26,7 @@ TEST(data_writer, write_utf) {
   };
   std::ostringstream stream(std::ios::binary);
   cafe::data_writer writer(stream);
-  const std::string str = u8"🦛☕️ is 🔛🔝";
+  const std::string str = "🦛☕️ is 🔛🔝";
   writer.write_utf(str);
   const auto stream_str = stream.str();
   const std::vector<int8_t> value(stream_str.begin(), stream_str.end());
