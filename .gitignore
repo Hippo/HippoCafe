@@ -1,9 +1,11 @@
 # CMake
 cmake-build-debug/
 cmake-build-release/
+out/
 
-# IDEA
+# IDE
 .idea/
+.vs/
 
 # macOS
 .DS_Store
