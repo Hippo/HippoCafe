@@ -91,5 +91,4 @@ private:
   const cp::constant_pool& pool_;
   bool oak_;
 };
-}
-
+} // namespace cafe

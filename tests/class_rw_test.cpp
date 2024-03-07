@@ -22,6 +22,7 @@ TEST(class_file, io) {
     FAIL();
   }
 
+
   std::ofstream out_stream("HelloWorld.class", std::ios::binary);
   out_stream << cf;
 }

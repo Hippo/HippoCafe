@@ -8,7 +8,8 @@ set(gtest_force_shared_crt ON CACHE BOOL "" FORCE)
 FetchContent_MakeAvailable(googletest)
 
 add_executable(HippoCafeTest data_rw_test.cpp
-        class_rw_test.cpp)
+        class_rw_test.cpp
+        class_model_test.cpp)
 
 enable_testing()
 add_test(NAME HippoCafeTest COMMAND HippoCafeTest)

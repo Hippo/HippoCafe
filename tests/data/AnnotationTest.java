@@ -1,54 +1,51 @@
+import java.lang.annotation.ElementType;
+import java.lang.annotation.Retention;
+import java.lang.annotation.RetentionPolicy;
+import java.lang.annotation.Target;
+import java.util.*;
+import java.util.function.Supplier;
 
-import java.beans.Transient;
-import java.lang.annotation.*;
-import java.lang.reflect.Field;
-import java.lang.reflect.Method;
+@Retention(RetentionPolicy.RUNTIME)
+@Target({ElementType.TYPE_USE, ElementType.TYPE, ElementType.METHOD, ElementType.CONSTRUCTOR, ElementType.PARAMETER, ElementType.LOCAL_VARIABLE, ElementType.FIELD})
+@interface Anno {
+  String value();
+}
 
-public final class AnnotationTest {
+@Anno("Class Definition")
+public class AnnotationTest<@Anno("Type Parameter") T extends @Anno("Type Parameter Super")ArrayList<@Anno("Type Parameter Type Annotation") String>> implements Cloneable, @Anno("Interface")Supplier<ArrayList<String>> {
 
+  @Anno("Field")
+  private final T example;
 
-    public static enum TestElement {
-        FIRST, SECOND
+  @Anno("Constructor")
+  public AnnotationTest(@Anno("Constructor Argument") T example) {
+    this.example = example;
+  }
+
+  @Anno("Method")
+  @SuppressWarnings("unchecked")
+  public T get(@Anno("Method Argument") int arg) throws @Anno("Throws") Exception {
+    @Anno("Local Variable") ArrayList<String> provided = get();
+    if (provided == null) {
+      throw new @Anno("Exception Type") Exception("Provided string is null");
     }
+    return (@Anno("Local Cast Type") T) provided;
+  }
 
-    @Retention(RetentionPolicy.RUNTIME)
-    @Target(ElementType.METHOD)
-    public static @interface CoolAnnotation {
-        String test();
-        boolean test1();
-        String[] arrayTest();
-        TestElement enumTest();
-    }
+  @Override
+  public ArrayList<String> get() {
+    return new ArrayList<>();
+  }
 
-    @Deprecated
-    private final String depField = "This field is deprecated";
+  @Override
+  public boolean equals(Object o) {
+    if (o instanceof @Anno("Instanceof Type") AnnotationTest)
+      return Objects.equals(example, ((@Anno("Generic Cast Type") AnnotationTest<?>) o).example);
+    return false;
+  }
 
-    public static void main(String[] args) {
-        try {
-            for (Field declaredField : AnnotationTest.class.getDeclaredFields()) {
-                for (Annotation annotation : declaredField.getAnnotations()) {
-                    System.out.println(declaredField + " -> " + annotation);
-                }
-            }
-
-            for (Method declaredMethod : AnnotationTest.class.getDeclaredMethods()) {
-                for (Annotation annotation : declaredMethod.getAnnotations()) {
-                    System.out.println(declaredMethod + " -> " + annotation);
-                }
-                for (Annotation[] parameterAnnotation : declaredMethod.getParameterAnnotations()) {
-                    for (Annotation annotation : parameterAnnotation) {
-                        System.out.println("(parameter) " + declaredMethod + " -> " + annotation);
-                    }
-                }
-            }
-        } catch (Exception e) {
-            e.printStackTrace();
-        }
-    }
-
-    @Transient(value = false)
-    @CoolAnnotation(test = "Wow so cool", test1 = false, arrayTest = {"element1", "element2", "element3"}, enumTest = TestElement.SECOND)
-    public void coolMethod(@Deprecated String param) {
-        System.out.println(param);
-    }
+  @Override
+  public @Anno("Return Type") AnnotationTest<@Anno("Generic Parameter") T> clone() throws @Anno("Clone Throws") CloneNotSupportedException {
+    return (AnnotationTest<@Anno("Local Generic Cast") T>) super.clone();
+  }
 }

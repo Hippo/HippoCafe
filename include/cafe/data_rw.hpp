@@ -2,14 +2,24 @@
 
 
 #include <cstdint>
-#include <vector>
-#include <string>
-#include <string_view>
 #include <istream>
 #include <ostream>
+#include <string>
+#include <string_view>
+#include <vector>
 
 
 namespace cafe {
+
+template<typename CharT, typename TraitsT = std::char_traits<CharT>>
+class vecstreambuf : public std::basic_streambuf<CharT, TraitsT> {
+public:
+  vecstreambuf(std::vector<CharT>& vec) {
+    setg(vec.data(), vec.data(), vec.data() + vec.size());
+  }
+  ~vecstreambuf() override = default;
+};
+
 class data_reader {
 public:
   data_reader(std::istream& stream);
@@ -51,6 +61,8 @@ public:
   void read_bytes(std::vector<int8_t>& bytes, size_t length);
 
   void read_shorts(std::vector<uint16_t>& shorts, size_t length);
+
+  bool eof() const;
 
 private:
   std::istream& stream_;
@@ -99,5 +111,4 @@ public:
 private:
   std::ostream& stream_;
 };
-}
-
+} // namespace cafe

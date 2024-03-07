@@ -1,9 +1,9 @@
 #include "cafe/data_rw.hpp"
 
-#include <stdexcept>
-#include <memory>
-#include <string>
 #include <cstring>
+#include <memory>
+#include <stdexcept>
+#include <string>
 
 namespace cafe {
 inline size_t to_utf8m_len(const std::string_view& input) {
@@ -26,8 +26,8 @@ inline size_t to_utf8m_len(const std::string_view& input) {
       i += 2;
       new_length += 3;
     } else if ((byte & 0xF8) == 0xF0) {
-      if (i + 3 >= length || (input[i + 1] & 0xC0) != 0x80 || (input[i + 2] & 0xC0) != 0x80 || (input[i + 3] & 0xC0) !=
-          0x80) {
+      if (i + 3 >= length || (input[i + 1] & 0xC0) != 0x80 || (input[i + 2] & 0xC0) != 0x80 ||
+          (input[i + 3] & 0xC0) != 0x80) {
         throw std::runtime_error("Unexpected end of input during 4-byte encoding");
       }
       i += 3;
@@ -151,27 +151,34 @@ std::string data_reader::read_utf() {
 }
 
 void data_reader::read_bytes(std::vector<uint8_t>& bytes, size_t length) {
-  bytes.reserve(bytes.size() + length);
-  for (auto i = 0; i < length; i++) {
-    bytes.push_back(read_u8());
+  const auto old_size = bytes.size();
+  bytes.resize(old_size + length);
+  for (auto i = old_size; i < old_size + length; i++) {
+    bytes[i] = read_u8();
   }
 }
 
 void data_reader::read_bytes(std::vector<int8_t>& bytes, size_t length) {
-  bytes.reserve(bytes.size() + length);
-  for (auto i = 0; i < length; i++) {
-    bytes.push_back(read_i8());
+  const auto old_size = bytes.size();
+  bytes.resize(old_size + length);
+  for (auto i = old_size; i < old_size + length; i++) {
+    bytes[i] = read_i8();
   }
 }
 
 void data_reader::read_shorts(std::vector<uint16_t>& shorts, size_t length) {
-  shorts.reserve(shorts.size() + length);
-  for (auto i = 0; i < length; i++) {
-    shorts.push_back(read_u16());
+  const auto old_size = shorts.size();
+  shorts.resize(old_size + length);
+  for (auto i = old_size; i < old_size + length; i++) {
+    shorts[i] = read_u16();
   }
 }
+bool data_reader::eof() const {
+  return stream_.eof();
+}
 
-data_writer::data_writer(std::ostream& stream) : stream_(stream) {}
+data_writer::data_writer(std::ostream& stream) : stream_(stream) {
+}
 
 void data_writer::write_i8(int8_t value) {
   stream_.write(reinterpret_cast<const char*>(&value), 1);
@@ -292,4 +299,4 @@ void data_writer::write_bytes(const std::string_view& bytes) {
     write_i8(b);
   }
 }
-}
+} // namespace cafe

@@ -1,8 +1,11 @@
 #pragma once
 
 #include <cstdint>
-#include <vector>
 #include <string>
+#include <variant>
+#include <vector>
+
+#include "value.hpp"
 
 namespace cafe::cp {
 class class_info {
@@ -104,12 +107,13 @@ public:
 
 class pad_info {};
 
-using constant_pool_info = std::variant<pad_info, class_info, field_ref_info, method_ref_info,
-  interface_method_ref_info, string_info, integer_info,
-  float_info, long_info, double_info, name_and_type_info,
-  utf8_info, method_handle_info, method_type_info,
-  dynamic_info, invoke_dynamic_info, module_info,
-  package_info>;
+using constant_pool_info =
+    std::variant<pad_info, class_info, field_ref_info, method_ref_info, interface_method_ref_info, string_info,
+                 integer_info, float_info, long_info, double_info, name_and_type_info, utf8_info, method_handle_info,
+                 method_type_info, dynamic_info, invoke_dynamic_info, module_info, package_info>;
 
-using constant_pool = std::vector<constant_pool_info>;
-}
+class constant_pool : public std::vector<constant_pool_info> {
+public:
+  [[nodiscard]] std::string get_string(uint16_t index) const;
+};
+} // namespace cafe::cp
