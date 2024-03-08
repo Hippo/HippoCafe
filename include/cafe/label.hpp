@@ -12,9 +12,9 @@ public:
   label& operator=(const label&) = default;
   label& operator=(label&&) = default;
   bool operator==(const label& other) const;
-  [[nodiscard]] uint64_t id() const;
+  [[nodiscard]] uintptr_t id() const;
 
 private:
-  uint64_t id_;
+  uintptr_t id_;
 };
 } // namespace cafe

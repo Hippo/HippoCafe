@@ -1,7 +1,7 @@
 #include "cafe/label.hpp"
 
 namespace cafe {
-label::label() : id_(reinterpret_cast<uint64_t>(this)) {
+label::label() : id_(reinterpret_cast<uintptr_t>(this)) {
 }
 bool label::operator==(const label& other) const {
   return id_ == other.id_;

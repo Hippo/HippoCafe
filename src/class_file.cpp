@@ -1,6 +1,5 @@
 #include "cafe/class_file.hpp"
 
-#include <iostream>
 #include <string>
 
 #include "cafe/constants.hpp"

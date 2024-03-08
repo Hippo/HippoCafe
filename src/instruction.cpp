@@ -4,9 +4,9 @@
 #include "cafe/instruction.hpp"
 
 namespace cafe {
-insn::insn() : id_(reinterpret_cast<uint64_t>(this)) {
+insn::insn() : id_(reinterpret_cast<uintptr_t>(this)) {
 }
-insn::insn(uint8_t opcode) : opcode(opcode), id_(reinterpret_cast<uint64_t>(this)) {
+insn::insn(uint8_t opcode) : opcode(opcode), id_(reinterpret_cast<uintptr_t>(this)) {
 }
 uint64_t insn::id() const {
   return id_;
@@ -19,17 +19,17 @@ ref_insn::ref_insn(uint8_t opcode, const std::string_view& owner, const std::str
                    const std::string_view& descriptor) :
     insn(opcode), owner(owner), name(name), descriptor(descriptor) {
 }
-iinc_insn::iinc_insn() : id_(reinterpret_cast<uint64_t>(this)) {
+iinc_insn::iinc_insn() : id_(reinterpret_cast<uintptr_t>(this)) {
 }
 iinc_insn::iinc_insn(uint16_t index, int16_t value) :
-    index(index), value(value), id_(reinterpret_cast<uint64_t>(this)) {
+    index(index), value(value), id_(reinterpret_cast<uintptr_t>(this)) {
 }
 uint64_t iinc_insn::id() const {
   return id_;
 }
-push_insn::push_insn() : id_(reinterpret_cast<uint64_t>(this)) {
+push_insn::push_insn() : id_(reinterpret_cast<uintptr_t>(this)) {
 }
-push_insn::push_insn(value val) : val(std::move(val)), id_(reinterpret_cast<uint64_t>(this)) {
+push_insn::push_insn(value val) : val(std::move(val)), id_(reinterpret_cast<uintptr_t>(this)) {
 }
 uint64_t push_insn::id() const {
   return id_;
@@ -56,53 +56,53 @@ uint8_t push_insn::opcode() const {
 }
 branch_insn::branch_insn(uint8_t opcode, label target) : insn(opcode), target(std::move(target)) {
 }
-lookup_switch_insn::lookup_switch_insn() : id_(reinterpret_cast<uint64_t>(this)) {
+lookup_switch_insn::lookup_switch_insn() : id_(reinterpret_cast<uintptr_t>(this)) {
 }
 lookup_switch_insn::lookup_switch_insn(label default_target, const std::vector<std::pair<int32_t, label>>& targets) :
-    default_target(std::move(default_target)), targets(targets), id_(reinterpret_cast<uint64_t>(this)) {
+    default_target(std::move(default_target)), targets(targets), id_(reinterpret_cast<uintptr_t>(this)) {
 }
 uint64_t lookup_switch_insn::id() const {
   return id_;
 }
-table_switch_insn::table_switch_insn() : id_(reinterpret_cast<uint64_t>(this)) {
+table_switch_insn::table_switch_insn() : id_(reinterpret_cast<uintptr_t>(this)) {
 }
 table_switch_insn::table_switch_insn(label default_target, int32_t low, int32_t high,
                                      const std::vector<label>& targets) :
     default_target(std::move(default_target)), low(low), high(high), targets(targets),
-    id_(reinterpret_cast<uint64_t>(this)) {
+    id_(reinterpret_cast<uintptr_t>(this)) {
 }
 uint64_t table_switch_insn::id() const {
   return id_;
 }
-multi_array_insn::multi_array_insn() : id_(reinterpret_cast<uint64_t>(this)) {
+multi_array_insn::multi_array_insn() : id_(reinterpret_cast<uintptr_t>(this)) {
 }
 multi_array_insn::multi_array_insn(const std::string_view& descriptor, uint8_t dims) :
-    descriptor(descriptor), dims(dims), id_(reinterpret_cast<uint64_t>(this)) {
+    descriptor(descriptor), dims(dims), id_(reinterpret_cast<uintptr_t>(this)) {
 }
 uint64_t multi_array_insn::id() const {
   return id_;
 }
-array_insn::array_insn() : id_(reinterpret_cast<uint64_t>(this)) {
+array_insn::array_insn() : id_(reinterpret_cast<uintptr_t>(this)) {
 }
 array_insn::array_insn(const std::variant<uint8_t, std::string>& type) :
-    type(type), id_(reinterpret_cast<uint64_t>(this)) {
+    type(type), id_(reinterpret_cast<uintptr_t>(this)) {
 }
 uint64_t array_insn::id() const {
   return id_;
 }
-invoke_dynamic_insn::invoke_dynamic_insn() : id_(reinterpret_cast<uint64_t>(this)) {
+invoke_dynamic_insn::invoke_dynamic_insn() : id_(reinterpret_cast<uintptr_t>(this)) {
 }
 invoke_dynamic_insn::invoke_dynamic_insn(const std::string_view& name, const std::string_view& descriptor,
                                          method_handle handle, const std::vector<value>& args) :
-    name(name), descriptor(descriptor), handle(std::move(handle)), args(args), id_(reinterpret_cast<uint64_t>(this)) {
+    name(name), descriptor(descriptor), handle(std::move(handle)), args(args), id_(reinterpret_cast<uintptr_t>(this)) {
 }
 uint64_t invoke_dynamic_insn::id() const {
   return id_;
 }
-uint64_t id(const instruction& insn) {
+uintptr_t id(const instruction& insn) {
   return std::visit([](const auto& i) { return i.id(); }, insn);
 }
-uint64_t id(instruction&& insn) {
+uintptr_t id(instruction&& insn) {
   return std::visit([](auto&& i) { return i.id(); }, insn);
 }
 static int16_t opcode_impl(const instruction& in) {

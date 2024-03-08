@@ -18,10 +18,10 @@ public:
   insn(insn&&) = default;
   insn& operator=(const insn&) = default;
   insn& operator=(insn&&) = default;
-  [[nodiscard]] uint64_t id() const;
+  [[nodiscard]] uintptr_t id() const;
 
 private:
-  uint64_t id_;
+  uintptr_t id_;
 };
 
 class var_insn : public insn {
@@ -74,10 +74,10 @@ public:
   iinc_insn(iinc_insn&&) = default;
   iinc_insn& operator=(const iinc_insn&) = default;
   iinc_insn& operator=(iinc_insn&&) = default;
-  [[nodiscard]] uint64_t id() const;
+  [[nodiscard]] uintptr_t id() const;
 
 private:
-  uint64_t id_;
+  uintptr_t id_;
 };
 
 class push_insn {
@@ -90,11 +90,11 @@ public:
   push_insn(push_insn&&) = default;
   push_insn& operator=(const push_insn&) = default;
   push_insn& operator=(push_insn&&) = default;
-  [[nodiscard]] uint64_t id() const;
+  [[nodiscard]] uintptr_t id() const;
   [[nodiscard]] uint8_t opcode() const;
 
 private:
-  uint64_t id_;
+  uintptr_t id_;
 };
 
 class branch_insn : public insn {
@@ -120,10 +120,10 @@ public:
   lookup_switch_insn(lookup_switch_insn&&) = default;
   lookup_switch_insn& operator=(const lookup_switch_insn&) = default;
   lookup_switch_insn& operator=(lookup_switch_insn&&) = default;
-  [[nodiscard]] uint64_t id() const;
+  [[nodiscard]] uintptr_t id() const;
 
 private:
-  uint64_t id_;
+  uintptr_t id_;
 };
 
 class table_switch_insn {
@@ -139,10 +139,10 @@ public:
   table_switch_insn(table_switch_insn&&) = default;
   table_switch_insn& operator=(const table_switch_insn&) = default;
   table_switch_insn& operator=(table_switch_insn&&) = default;
-  [[nodiscard]] uint64_t id() const;
+  [[nodiscard]] uintptr_t id() const;
 
 private:
-  uint64_t id_;
+  uintptr_t id_;
 };
 
 class multi_array_insn {
@@ -156,10 +156,10 @@ public:
   multi_array_insn(multi_array_insn&&) = default;
   multi_array_insn& operator=(const multi_array_insn&) = default;
   multi_array_insn& operator=(multi_array_insn&&) = default;
-  [[nodiscard]] uint64_t id() const;
+  [[nodiscard]] uintptr_t id() const;
 
 private:
-  uint64_t id_;
+  uintptr_t id_;
 };
 
 class array_insn {
@@ -172,10 +172,10 @@ public:
   array_insn(array_insn&&) = default;
   array_insn& operator=(const array_insn&) = default;
   array_insn& operator=(array_insn&&) = default;
-  [[nodiscard]] uint64_t id() const;
+  [[nodiscard]] uintptr_t id() const;
 
 private:
-  uint64_t id_;
+  uintptr_t id_;
 };
 
 class invoke_dynamic_insn {
@@ -192,17 +192,17 @@ public:
   invoke_dynamic_insn(invoke_dynamic_insn&&) = default;
   invoke_dynamic_insn& operator=(const invoke_dynamic_insn&) = default;
   invoke_dynamic_insn& operator=(invoke_dynamic_insn&&) = default;
-  [[nodiscard]] uint64_t id() const;
+  [[nodiscard]] uintptr_t id() const;
 
 private:
-  uint64_t id_;
+  uintptr_t id_;
 };
 
 using instruction =
     std::variant<label, insn, var_insn, type_insn, ref_insn, iinc_insn, push_insn, branch_insn, lookup_switch_insn,
                  table_switch_insn, multi_array_insn, array_insn, invoke_dynamic_insn>;
-uint64_t id(const instruction& insn);
-uint64_t id(instruction&& insn);
+uintptr_t id(const instruction& insn);
+uintptr_t id(instruction&& insn);
 int16_t opcode(const instruction& insn);
 int16_t opcode(instruction&& insn);
 
