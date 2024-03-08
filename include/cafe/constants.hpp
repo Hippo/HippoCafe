@@ -62,6 +62,7 @@ constexpr uint8_t nested = 1;
 constexpr uint8_t wildcard = 2;
 constexpr uint8_t type_argument = 3;
 } // namespace typepath
+std::string typepath_name(uint8_t path);
 
 namespace reference_kind {
 constexpr uint8_t get_field = 1;
@@ -74,6 +75,7 @@ constexpr uint8_t invoke_special = 7;
 constexpr uint8_t new_invoke_special = 8;
 constexpr uint8_t invoke_interface = 9;
 } // namespace reference_kind
+std::string reference_kind_name(uint8_t kind);
 
 namespace op {
 constexpr uint8_t aaload = 0x32;
@@ -292,5 +294,6 @@ constexpr uint8_t t_short = 9;
 constexpr uint8_t t_int = 10;
 constexpr uint8_t t_long = 11;
 } // namespace array
+std::string array_name(uint8_t type);
 
 } // namespace cafe

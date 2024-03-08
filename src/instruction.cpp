@@ -1,4 +1,5 @@
 #include <utility>
+#include <sstream>
 
 #include "cafe/constants.hpp"
 #include "cafe/instruction.hpp"
@@ -11,13 +12,34 @@ insn::insn(uint8_t opcode) : opcode(opcode), id_(reinterpret_cast<uintptr_t>(thi
 uint64_t insn::id() const {
   return id_;
 }
+std::string insn::to_string() const {
+  std::ostringstream oss;
+  oss << "insn(" << opcode_name(opcode) << ")";
+  return oss.str();
+}
 var_insn::var_insn(uint8_t opcode, uint16_t index) : insn(opcode), index(index) {
 }
+std::string var_insn::to_string() const {
+  std::ostringstream oss;
+  oss << "var_insn(" << opcode_name(opcode)  << ", "<< index << ")";
+  return oss.str();
+}
 type_insn::type_insn(uint8_t opcode, const std::string_view& type) : insn(opcode), type(type) {
+}
+std::string type_insn::to_string() const {
+  std::ostringstream oss;
+  oss << "type_insn(" << opcode_name(opcode) << ", " << type << ")";
+  return oss.str();
 }
 ref_insn::ref_insn(uint8_t opcode, const std::string_view& owner, const std::string_view& name,
                    const std::string_view& descriptor) :
     insn(opcode), owner(owner), name(name), descriptor(descriptor) {
+}
+std::string ref_insn::to_string() const {
+  std::ostringstream oss;
+  oss << "ref_insn(" << opcode_name(opcode) << ", " << owner << ", " << name << ", " << descriptor
+      << ")";
+  return oss.str();
 }
 iinc_insn::iinc_insn() : id_(reinterpret_cast<uintptr_t>(this)) {
 }
@@ -26,6 +48,11 @@ iinc_insn::iinc_insn(uint16_t index, int16_t value) :
 }
 uint64_t iinc_insn::id() const {
   return id_;
+}
+std::string iinc_insn::to_string() const {
+  std::ostringstream oss;
+  oss << "iinc_insn(" << index << ", " << value << ")";
+  return oss.str();
 }
 push_insn::push_insn() : id_(reinterpret_cast<uintptr_t>(this)) {
 }
@@ -54,7 +81,17 @@ uint8_t push_insn::opcode() const {
   }
   return op::ldc;
 }
+std::string push_insn::to_string() const {
+  std::ostringstream oss;
+  oss << "push_insn(" << cafe::to_string(val) << ")";
+  return oss.str();
+}
 branch_insn::branch_insn(uint8_t opcode, label target) : insn(opcode), target(std::move(target)) {
+}
+std::string branch_insn::to_string() const {
+  std::ostringstream oss;
+  oss << "branch_insn(" << opcode_name(opcode) << ", " << target.to_string() << ")";
+  return oss.str();
 }
 lookup_switch_insn::lookup_switch_insn() : id_(reinterpret_cast<uintptr_t>(this)) {
 }
@@ -63,6 +100,15 @@ lookup_switch_insn::lookup_switch_insn(label default_target, const std::vector<s
 }
 uint64_t lookup_switch_insn::id() const {
   return id_;
+}
+std::string lookup_switch_insn::to_string() const {
+  std::ostringstream oss;
+  oss << "lookup_switch_insn(" << default_target.to_string() << ", [";
+  for (const auto& [key, target] : targets) {
+    oss << key << " -> " << target.to_string() << ", ";
+  }
+  oss << "])";
+  return oss.str();
 }
 table_switch_insn::table_switch_insn() : id_(reinterpret_cast<uintptr_t>(this)) {
 }
@@ -74,6 +120,15 @@ table_switch_insn::table_switch_insn(label default_target, int32_t low, int32_t 
 uint64_t table_switch_insn::id() const {
   return id_;
 }
+std::string table_switch_insn::to_string() const {
+  std::ostringstream oss;
+  oss << "table_switch_insn(" << default_target.to_string() << ", " << low << ", " << high << ", [";
+  for (const auto& target : targets) {
+    oss << target.to_string() << ", ";
+  }
+  oss << "])";
+  return oss.str();
+}
 multi_array_insn::multi_array_insn() : id_(reinterpret_cast<uintptr_t>(this)) {
 }
 multi_array_insn::multi_array_insn(const std::string_view& descriptor, uint8_t dims) :
@@ -81,6 +136,11 @@ multi_array_insn::multi_array_insn(const std::string_view& descriptor, uint8_t d
 }
 uint64_t multi_array_insn::id() const {
   return id_;
+}
+std::string multi_array_insn::to_string() const {
+  std::ostringstream oss;
+  oss << "multi_array_insn(" << descriptor << ", " << static_cast<int>(dims) << ")";
+  return oss.str();
 }
 array_insn::array_insn() : id_(reinterpret_cast<uintptr_t>(this)) {
 }
@@ -90,6 +150,20 @@ array_insn::array_insn(const std::variant<uint8_t, std::string>& type) :
 uint64_t array_insn::id() const {
   return id_;
 }
+std::string array_insn::to_string() const {
+  std::ostringstream oss;
+  oss << "array_insn(";
+  std::visit([&oss](const auto& arg) {
+    using T = std::decay_t<decltype(arg)>;
+    if constexpr (std::is_same_v<T, uint8_t>) {
+      oss << array_name(arg);
+    } else {
+      oss << arg;
+    }
+  }, type);
+  oss << ")";
+  return oss.str();
+}
 invoke_dynamic_insn::invoke_dynamic_insn() : id_(reinterpret_cast<uintptr_t>(this)) {
 }
 invoke_dynamic_insn::invoke_dynamic_insn(const std::string_view& name, const std::string_view& descriptor,
@@ -98,6 +172,15 @@ invoke_dynamic_insn::invoke_dynamic_insn(const std::string_view& name, const std
 }
 uint64_t invoke_dynamic_insn::id() const {
   return id_;
+}
+std::string invoke_dynamic_insn::to_string() const {
+  std::ostringstream oss;
+  oss << "invoke_dynamic_insn(" << name << ", " << descriptor << ", " << cafe::to_string(handle) << ", [";
+  for (const auto& arg : args) {
+    oss << cafe::to_string(arg) << ", ";
+  }
+  oss << "])";
+  return oss.str();
 }
 uintptr_t id(const instruction& insn) {
   return std::visit([](const auto& i) { return i.id(); }, insn);
@@ -140,6 +223,12 @@ int16_t opcode(const instruction& insn) {
 }
 int16_t opcode(instruction&& insn) {
   return opcode_impl(insn);
+}
+std::string to_string(const instruction& insn) {
+  return std::visit([](const auto& i) -> std::string { return i.to_string(); }, insn);
+}
+std::string to_string(instruction&& insn) {
+  return std::visit([](auto&& i) -> std::string { return i.to_string(); }, insn);
 }
 tcb::tcb(label start, label end, label handler, const std::string_view& type) :
     start(std::move(start)), end(std::move(end)), handler(std::move(handler)), type(type) {

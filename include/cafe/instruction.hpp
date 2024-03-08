@@ -13,12 +13,14 @@ public:
   uint8_t opcode{};
   insn();
   explicit insn(uint8_t opcode);
-  ~insn() = default;
+  virtual ~insn() = default;
   insn(const insn&) = default;
   insn(insn&&) = default;
   insn& operator=(const insn&) = default;
   insn& operator=(insn&&) = default;
   [[nodiscard]] uintptr_t id() const;
+
+  virtual [[nodiscard]] std::string to_string() const;
 
 private:
   uintptr_t id_;
@@ -29,11 +31,13 @@ public:
   uint16_t index{};
   var_insn() = default;
   var_insn(uint8_t opcode, uint16_t index);
-  ~var_insn() = default;
+  ~var_insn() override= default;
   var_insn(const var_insn&) = default;
   var_insn(var_insn&&) = default;
   var_insn& operator=(const var_insn&) = default;
   var_insn& operator=(var_insn&&) = default;
+
+  [[nodiscard]] std::string to_string() const override;
 };
 
 class type_insn : public insn {
@@ -41,11 +45,13 @@ public:
   std::string type;
   type_insn() = default;
   type_insn(uint8_t opcode, const std::string_view& type);
-  ~type_insn() = default;
+  ~type_insn() override= default;
   type_insn(const type_insn&) = default;
   type_insn(type_insn&&) = default;
   type_insn& operator=(const type_insn&) = default;
   type_insn& operator=(type_insn&&) = default;
+
+  [[nodiscard]] std::string to_string() const override;
 };
 
 class ref_insn : public insn {
@@ -56,11 +62,13 @@ public:
   ref_insn() = default;
   ref_insn(uint8_t opcode, const std::string_view& owner, const std::string_view& name,
            const std::string_view& descriptor);
-  ~ref_insn() = default;
+  ~ref_insn() override = default;
   ref_insn(const ref_insn&) = default;
   ref_insn(ref_insn&&) = default;
   ref_insn& operator=(const ref_insn&) = default;
   ref_insn& operator=(ref_insn&&) = default;
+
+  [[nodiscard]] std::string to_string() const override;
 };
 
 class iinc_insn {
@@ -75,6 +83,8 @@ public:
   iinc_insn& operator=(const iinc_insn&) = default;
   iinc_insn& operator=(iinc_insn&&) = default;
   [[nodiscard]] uintptr_t id() const;
+
+  [[nodiscard]] std::string to_string() const;
 
 private:
   uintptr_t id_;
@@ -92,6 +102,7 @@ public:
   push_insn& operator=(push_insn&&) = default;
   [[nodiscard]] uintptr_t id() const;
   [[nodiscard]] uint8_t opcode() const;
+  [[nodiscard]] std::string to_string() const;
 
 private:
   uintptr_t id_;
@@ -102,11 +113,12 @@ public:
   label target;
   branch_insn() = default;
   branch_insn(uint8_t opcode, label target);
-  ~branch_insn() = default;
+  ~branch_insn() override = default;
   branch_insn(const branch_insn&) = default;
   branch_insn(branch_insn&&) = default;
   branch_insn& operator=(const branch_insn&) = default;
   branch_insn& operator=(branch_insn&&) = default;
+  [[nodiscard]] std::string to_string() const override;
 };
 
 class lookup_switch_insn {
@@ -121,6 +133,7 @@ public:
   lookup_switch_insn& operator=(const lookup_switch_insn&) = default;
   lookup_switch_insn& operator=(lookup_switch_insn&&) = default;
   [[nodiscard]] uintptr_t id() const;
+  [[nodiscard]] std::string to_string() const;
 
 private:
   uintptr_t id_;
@@ -140,6 +153,7 @@ public:
   table_switch_insn& operator=(const table_switch_insn&) = default;
   table_switch_insn& operator=(table_switch_insn&&) = default;
   [[nodiscard]] uintptr_t id() const;
+  [[nodiscard]] std::string to_string() const;
 
 private:
   uintptr_t id_;
@@ -157,6 +171,7 @@ public:
   multi_array_insn& operator=(const multi_array_insn&) = default;
   multi_array_insn& operator=(multi_array_insn&&) = default;
   [[nodiscard]] uintptr_t id() const;
+  [[nodiscard]] std::string to_string() const;
 
 private:
   uintptr_t id_;
@@ -173,6 +188,7 @@ public:
   array_insn& operator=(const array_insn&) = default;
   array_insn& operator=(array_insn&&) = default;
   [[nodiscard]] uintptr_t id() const;
+  [[nodiscard]] std::string to_string() const;
 
 private:
   uintptr_t id_;
@@ -193,6 +209,7 @@ public:
   invoke_dynamic_insn& operator=(const invoke_dynamic_insn&) = default;
   invoke_dynamic_insn& operator=(invoke_dynamic_insn&&) = default;
   [[nodiscard]] uintptr_t id() const;
+  [[nodiscard]] std::string to_string() const;
 
 private:
   uintptr_t id_;
@@ -205,6 +222,8 @@ uintptr_t id(const instruction& insn);
 uintptr_t id(instruction&& insn);
 int16_t opcode(const instruction& insn);
 int16_t opcode(instruction&& insn);
+std::string to_string(const instruction& insn);
+std::string to_string(instruction&& insn);
 
 
 class tcb {

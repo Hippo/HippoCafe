@@ -91,6 +91,7 @@ private:
   const attribute::code& code_attr_;
   std::vector<std::pair<uint32_t, label>> needed_labels_;
   label get_label(uint32_t pc);
+  int label_count_ = 0;
 };
 
 } // namespace cafe

@@ -1272,7 +1272,17 @@ label code_composer::get_label(uint32_t pc) {
       return label;
     }
   }
+  label_count_++;
+  std::string debug_name;
+  int i = label_count_;
+  while (i > 0) {
+    i--;
+    const auto letter = static_cast<char>('A' + (i % 26));
+    debug_name.insert(0, 1, letter);
+    i /= 26;
+  }
   label l;
+  l.debug_name = debug_name;
   needed_labels_.emplace_back(pc, l);
   return l;
 }

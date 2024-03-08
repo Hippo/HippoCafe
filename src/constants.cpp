@@ -415,4 +415,65 @@ std::string opcode_name(int16_t opcode) {
   }
 }
 
+std::string typepath_name(uint8_t path) {
+  switch (path) {
+    case typepath::array:
+      return "array";
+    case typepath::nested:
+      return "nested";
+    case typepath::wildcard:
+      return "wildcard";
+    case typepath::type_argument:
+      return "type_argument";
+    default:
+      return "unknown(" + std::to_string(path) + ")";
+  }
+}
+std::string reference_kind_name(uint8_t kind) {
+  switch (kind) {
+    case reference_kind::get_field:
+      return "get_field";
+    case reference_kind::get_static:
+      return "get_static";
+    case reference_kind::put_field:
+      return "put_field";
+    case reference_kind::put_static:
+      return "put_static";
+    case reference_kind::invoke_virtual:
+      return "invoke_virtual";
+    case reference_kind::invoke_static:
+      return "invoke_static";
+    case reference_kind::invoke_special:
+      return "invoke_special";
+    case reference_kind::new_invoke_special:
+      return "new_invoke_special";
+    case reference_kind::invoke_interface:
+      return "invoke_interface";
+    default:
+      return "unknown(" + std::to_string(kind) + ")";
+  }
+}
+std::string array_name(uint8_t type) {
+  switch (type) {
+    case array::t_boolean:
+      return "boolean";
+    case array::t_char:
+      return "char";
+    case array::t_float:
+      return "float";
+    case array::t_double:
+      return "double";
+    case array::t_byte:
+      return "byte";
+    case array::t_short:
+      return "short";
+    case array::t_int:
+      return "int";
+    case array::t_long:
+      return "long";
+    default:
+      return "unknown(" + std::to_string(type) + ")";
+  }
+}
+
 } // namespace cafe
