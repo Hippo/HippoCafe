@@ -1261,6 +1261,11 @@ code code_composer::compose() {
     last_loc = loc;
     c.push_back(in);
   }
+  for (const auto& [label_loc, label] : needed_labels_) {
+    if (last_loc < label_loc) {
+      c.push_back(label);
+    }
+  }
 
   return c;
 }
