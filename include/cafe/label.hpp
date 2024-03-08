@@ -2,12 +2,14 @@
 
 #include <cstdint>
 #include <string>
+#include <string_view>
 
 namespace cafe {
 class label {
 public:
   std::string debug_name;
   label();
+  explicit label(const std::string_view& debug_name);
   ~label() = default;
   label(const label& other);
   label(label&&) = default;

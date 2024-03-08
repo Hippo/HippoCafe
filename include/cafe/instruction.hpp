@@ -238,6 +238,7 @@ public:
   tcb(tcb&&) = default;
   tcb& operator=(const tcb&) = default;
   tcb& operator=(tcb&&) = default;
+  [[nodiscard]] std::string to_string() const;
 };
 
 class local_var {

@@ -5,6 +5,8 @@
 namespace cafe {
 label::label() : id_(reinterpret_cast<uintptr_t>(this)) {
 }
+label::label(const std::string_view& debug_name) : debug_name(debug_name), id_(reinterpret_cast<uintptr_t>(this)) {
+}
 bool label::operator==(const label& other) const {
   return id_ == other.id_;
 }

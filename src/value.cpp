@@ -46,7 +46,9 @@ std::string to_string(const value& v) {
     if constexpr (std::is_same_v<T, class_value>) {
       return arg.get();
     } else if constexpr (std::is_same_v<T, std::string>) {
-      return arg;
+      std::ostringstream oss;
+      oss << '"' << arg << '"';
+      return oss.str();
     } else if constexpr (std::is_same_v<T, method_handle>) {
       std::ostringstream oss;
       oss << "method_handle(" << reference_kind_name(arg.kind) << ", " << arg.owner << ", " << arg.name << ", "

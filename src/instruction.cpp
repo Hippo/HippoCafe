@@ -37,8 +37,8 @@ ref_insn::ref_insn(uint8_t opcode, const std::string_view& owner, const std::str
 }
 std::string ref_insn::to_string() const {
   std::ostringstream oss;
-  oss << "ref_insn(" << opcode_name(opcode) << ", " << owner << ", " << name << ", " << descriptor
-      << ")";
+  oss << "ref_insn(" << opcode_name(opcode) << ", " << '"' << owner << '"' << ", " << '"' << name << '"' << ", " << '"' << descriptor
+     << '"' << ")";
   return oss.str();
 }
 iinc_insn::iinc_insn() : id_(reinterpret_cast<uintptr_t>(this)) {
@@ -104,8 +104,13 @@ uint64_t lookup_switch_insn::id() const {
 std::string lookup_switch_insn::to_string() const {
   std::ostringstream oss;
   oss << "lookup_switch_insn(" << default_target.to_string() << ", [";
+  bool first = true;
   for (const auto& [key, target] : targets) {
-    oss << key << " -> " << target.to_string() << ", ";
+    if (!first) {
+      oss << ", ";
+    }
+    oss << key << " -> " << target.to_string();
+    first = false;
   }
   oss << "])";
   return oss.str();
@@ -123,8 +128,13 @@ uint64_t table_switch_insn::id() const {
 std::string table_switch_insn::to_string() const {
   std::ostringstream oss;
   oss << "table_switch_insn(" << default_target.to_string() << ", " << low << ", " << high << ", [";
+  bool first = true;
   for (const auto& target : targets) {
-    oss << target.to_string() << ", ";
+    if (!first) {
+      oss << ", ";
+    }
+    oss << target.to_string();
+    first = false;
   }
   oss << "])";
   return oss.str();
@@ -158,7 +168,7 @@ std::string array_insn::to_string() const {
     if constexpr (std::is_same_v<T, uint8_t>) {
       oss << array_name(arg);
     } else {
-      oss << arg;
+      oss << '"' << arg << '"';
     }
   }, type);
   oss << ")";
@@ -175,9 +185,14 @@ uint64_t invoke_dynamic_insn::id() const {
 }
 std::string invoke_dynamic_insn::to_string() const {
   std::ostringstream oss;
-  oss << "invoke_dynamic_insn(" << name << ", " << descriptor << ", " << cafe::to_string(handle) << ", [";
+  oss << "invoke_dynamic_insn(" << '"' << name << '"' << ", " << '"' << descriptor << '"' << ", " << cafe::to_string(handle) << ", [";
+  bool first = true;
   for (const auto& arg : args) {
-    oss << cafe::to_string(arg) << ", ";
+    if (!first) {
+      oss << ", ";
+    }
+    oss << cafe::to_string(arg);
+    first = false;
   }
   oss << "])";
   return oss.str();
@@ -232,6 +247,11 @@ std::string to_string(instruction&& insn) {
 }
 tcb::tcb(label start, label end, label handler, const std::string_view& type) :
     start(std::move(start)), end(std::move(end)), handler(std::move(handler)), type(type) {
+}
+std::string tcb::to_string() const {
+  std::ostringstream oss;
+  oss << "tcb(" << start.to_string() << ", " << end.to_string() << ", " << handler.to_string() << ", " << '"' << type << '"' << ")";
+  return oss.str();
 }
 object_var::object_var(const std::string_view& type) : type(type) {
 }

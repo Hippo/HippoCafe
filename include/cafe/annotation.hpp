@@ -25,6 +25,7 @@ public:
   annotation& operator=(const annotation&) = default;
   annotation& operator=(annotation&&) = default;
   std::unordered_map<std::string, element_value> values;
+  [[nodiscard]] std::string to_string() const;
 };
 
 class element_value {
@@ -32,6 +33,7 @@ public:
   using type = std::variant<int8_t, uint16_t, double, float, int32_t, int64_t, int16_t, bool, std::string,
                             std::pair<std::string, std::string>, class_value, annotation, std::vector<element_value>>;
   type value;
+  [[nodiscard]] std::string to_string() const;
 };
 
 
@@ -154,7 +156,7 @@ public:
 using type_annotation_target = std::variant<target::type_parameter, target::supertype, target::type_parameter_bound,
                                             target::empty, target::formal_parameter, target::throws, target::localvar,
                                             target::catch_target, target::offset_target, target::type_argument>;
-
+std::string to_string(const type_annotation_target& target);
 class type_path {
 public:
   std::vector<std::pair<uint8_t, uint8_t>> path;
@@ -165,6 +167,7 @@ public:
   type_path(type_path&&) = default;
   type_path& operator=(const type_path&) = default;
   type_path& operator=(type_path&&) = default;
+  [[nodiscard]] std::string to_string() const;
 };
 
 class type_annotation {
@@ -182,6 +185,7 @@ public:
   type_annotation(type_annotation&&) = default;
   type_annotation& operator=(const type_annotation&) = default;
   type_annotation& operator=(type_annotation&&) = default;
+  [[nodiscard]] std::string to_string() const;
 };
 
 namespace attribute {

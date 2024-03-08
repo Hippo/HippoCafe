@@ -1262,7 +1262,6 @@ code code_composer::compose() {
     c.push_back(in);
   }
 
-
   return c;
 }
 
