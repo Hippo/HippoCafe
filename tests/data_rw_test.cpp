@@ -1,7 +1,7 @@
+#include <istream>
 #include <sstream>
 #include <string>
 #include <vector>
-#include <istream>
 
 #include <gtest/gtest.h>
 

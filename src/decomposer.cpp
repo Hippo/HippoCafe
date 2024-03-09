@@ -47,14 +47,18 @@ class_file class_decomposer::decompose(const class_model& class_model) {
     std::vector<attribute::inner_classes::inner_class> inner_classes;
     inner_classes.reserve(class_model.inner_classes.size());
     for (const auto& inner : class_model.inner_classes) {
-      inner_classes.emplace_back(attribute::inner_classes::inner_class{ctx_.pool.get_class(inner.name), ctx_.pool.get_class(inner.outer_name), ctx_.pool.get_utf(inner.inner_name), inner.access_flags});
+      inner_classes.emplace_back(
+          attribute::inner_classes::inner_class{ctx_.pool.get_class(inner.name), ctx_.pool.get_class(inner.outer_name),
+                                                ctx_.pool.get_utf(inner.inner_name), inner.access_flags});
     }
     cf.attributes.emplace_back(attribute::inner_classes{inner_classes});
   }
 
-  if (!class_model.enclosing_owner.empty() && !class_model.enclosing_name.empty() && !class_model.enclosing_descriptor.empty()) {
+  if (!class_model.enclosing_owner.empty() && !class_model.enclosing_name.empty() &&
+      !class_model.enclosing_descriptor.empty()) {
     auto owner_index = ctx_.pool.get_class(class_model.enclosing_owner);
-    auto name_and_type_index = ctx_.pool.get_name_and_type(class_model.enclosing_name, class_model.enclosing_descriptor);
+    auto name_and_type_index =
+        ctx_.pool.get_name_and_type(class_model.enclosing_name, class_model.enclosing_descriptor);
     cf.attributes.emplace_back(attribute::enclosing_method{owner_index, name_and_type_index});
   }
 
@@ -66,7 +70,8 @@ class_file class_decomposer::decompose(const class_model& class_model) {
   if (class_model.module) {
     auto name_index = ctx_.pool.get_utf(class_model.module->name);
     auto version_index = ctx_.pool.get_utf(class_model.module->version);
-    std::vector<attribute::module::require> requires;
+    std::vector<attribute::module::require>
+      requires;
     requires.reserve(class_model.module->requires.size());
     for (const auto& req : class_model.module->requires) {
       auto index = ctx_.pool.get_module(req.name);
@@ -111,7 +116,8 @@ class_file class_decomposer::decompose(const class_model& class_model) {
       }
       provides.emplace_back(attribute::module::provide{index, with_index});
     }
-    cf.attributes.emplace_back(attribute::module{name_index, class_model.module->access_flags, version_index, requires, exports, opens, uses, provides});
+    cf.attributes.emplace_back(attribute::module{name_index, class_model.module->access_flags, version_index, requires,
+                                                 exports, opens, uses, provides});
   }
 
   if (!class_model.module_packages.empty()) {
@@ -196,7 +202,8 @@ field_info field_decomposer::decompose(const field_model& field_model) {
     field.attributes.emplace_back(attribute::deprecated{});
   }
   if (field_model.constant_value) {
-    field.attributes.emplace_back(attribute::constant_value{ctx_.pool.get_value(ctx_.bsm_buffer, *field_model.constant_value)});
+    field.attributes.emplace_back(
+        attribute::constant_value{ctx_.pool.get_value(ctx_.bsm_buffer, *field_model.constant_value)});
   }
   if (!field_model.signature.empty()) {
     field.attributes.emplace_back(attribute::signature{ctx_.pool.get_utf(field_model.signature)});
@@ -237,7 +244,8 @@ field_info field_decomposer::decompose(const field_model& field_model) {
         pairs.emplace_back(attribute::element_pair{name_index, value});
       }
       auto desc_index = ctx_.pool.get_utf(anno.descriptor);
-      annotations.emplace_back(attribute::type_annotation{anno.target_type, attribute::empty{}, path, desc_index, pairs});
+      annotations.emplace_back(
+          attribute::type_annotation{anno.target_type, attribute::empty{}, path, desc_index, pairs});
     }
     field.attributes.emplace_back(attribute::runtime_visible_type_annotations{annotations});
   }
@@ -259,7 +267,8 @@ field_info field_decomposer::decompose(const field_model& field_model) {
         pairs.emplace_back(attribute::element_pair{name_index, value});
       }
       auto desc_index = ctx_.pool.get_utf(anno.descriptor);
-      annotations.emplace_back(attribute::type_annotation{anno.target_type, attribute::empty{}, path, desc_index, pairs});
+      annotations.emplace_back(
+          attribute::type_annotation{anno.target_type, attribute::empty{}, path, desc_index, pairs});
     }
     field.attributes.emplace_back(attribute::runtime_invisible_type_annotations{annotations});
   }
@@ -384,7 +393,8 @@ attribute::record::component record_decomposer::decompose(const record_component
         pairs.emplace_back(attribute::element_pair{name_index, value});
       }
       auto desc_index = ctx_.pool.get_utf(anno.descriptor);
-      annotations.emplace_back(attribute::type_annotation{anno.target_type, attribute::empty{}, path, desc_index, pairs});
+      annotations.emplace_back(
+          attribute::type_annotation{anno.target_type, attribute::empty{}, path, desc_index, pairs});
     }
     attributes.emplace_back(attribute::runtime_visible_type_annotations{annotations});
   }
@@ -406,7 +416,8 @@ attribute::record::component record_decomposer::decompose(const record_component
         pairs.emplace_back(attribute::element_pair{name_index, value});
       }
       auto desc_index = ctx_.pool.get_utf(anno.descriptor);
-      annotations.emplace_back(attribute::type_annotation{anno.target_type, attribute::empty{}, path, desc_index, pairs});
+      annotations.emplace_back(
+          attribute::type_annotation{anno.target_type, attribute::empty{}, path, desc_index, pairs});
     }
     attributes.emplace_back(attribute::runtime_invisible_type_annotations{annotations});
   }

@@ -1,7 +1,7 @@
 #include "cafe/class_file.hpp"
 
-#include <string>
 #include <sstream>
+#include <string>
 
 #include "cafe/constants.hpp"
 #include "cafe/data_rw.hpp"
@@ -121,7 +121,8 @@ std::string method_model::to_string() const {
   for (const auto& in : code) {
     oss << "  " << cafe::to_string(in) << "\n";
   }
-  oss << "access: 0x" << std::hex << access_flags << std::dec << ", max_stack: " << code.max_stack << ", max_locals: " << code.max_locals << "\n";
+  oss << "access: 0x" << std::hex << access_flags << std::dec << ", max_stack: " << code.max_stack
+      << ", max_locals: " << code.max_locals << "\n";
   if (!code.visible_type_annotations.empty()) {
     oss << "  code_visible_type_annotations:\n";
     for (const auto& anno : code.visible_type_annotations) {
@@ -159,7 +160,7 @@ std::string method_model::to_string() const {
     }
   }
   if (synthetic || deprecated) {
-    oss << "  synthetic: " << std::boolalpha << synthetic << ", deprecated: " << deprecated << std::noboolalpha <<  "\n";
+    oss << "  synthetic: " << std::boolalpha << synthetic << ", deprecated: " << deprecated << std::noboolalpha << "\n";
   }
   if (!signature.empty()) {
     oss << "  signature: " << signature << "\n";
@@ -214,7 +215,7 @@ std::string method_model::to_string() const {
     oss << "  annotation_default: " << annotation_default->to_string() << "\n";
   }
   if (!method_parameters.empty()) {
-    oss <<   "method_parameters:\n";
+    oss << "method_parameters:\n";
     for (const auto& [access, name] : method_parameters) {
       oss << "    " << access << " " << name << "\n";
     }
@@ -281,14 +282,15 @@ std::string class_model::to_string() const {
     }
   }
   oss << ":\n";
-  oss << "  version: " << (version >> 16) << '.' << (version & 0xFFFF) << ", access: 0x" << std::hex << access_flags << std::dec << "\n";
+  oss << "  version: " << (version >> 16) << '.' << (version & 0xFFFF) << ", access: 0x" << std::hex << access_flags
+      << std::dec << "\n";
   oss << "  fields:\n";
   for (const auto& field : fields) {
-    oss <<  field.to_string() << "\n";
+    oss << field.to_string() << "\n";
   }
   oss << "  methods:\n";
   for (const auto& method : methods) {
-    oss <<  method.to_string() << "\n";
+    oss << method.to_string() << "\n";
   }
   if (synthetic || deprecated) {
     oss << "  synthetic: " << std::boolalpha << synthetic << ", deprecated: " << deprecated << std::noboolalpha << "\n";
@@ -302,7 +304,8 @@ std::string class_model::to_string() const {
   if (!inner_classes.empty()) {
     oss << "  inner_classes:\n";
     for (const auto& inner : inner_classes) {
-      oss << "    " << inner.name << " " << inner.outer_name << " " << inner.inner_name << " 0x" << std::hex << inner.access_flags << std::dec << "\n";
+      oss << "    " << inner.name << " " << inner.outer_name << " " << inner.inner_name << " 0x" << std::hex
+          << inner.access_flags << std::dec << "\n";
     }
   }
   if (!enclosing_owner.empty() && !enclosing_name.empty() && !enclosing_descriptor.empty()) {
@@ -392,7 +395,6 @@ std::string class_model::to_string() const {
         oss << "      visible_annotations:\n";
         for (const auto& anno : comp.visible_annotations) {
           oss << "        " << anno.to_string() << "\n";
-
         }
       }
       if (!comp.invisible_annotations.empty()) {

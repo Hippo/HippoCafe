@@ -32,7 +32,7 @@ public:
   uint16_t index{};
   var_insn() = default;
   var_insn(uint8_t opcode, uint16_t index);
-  ~var_insn() override= default;
+  ~var_insn() override = default;
   var_insn(const var_insn&) = default;
   var_insn(var_insn&&) = default;
   var_insn& operator=(const var_insn&) = default;
@@ -46,7 +46,7 @@ public:
   std::string type;
   type_insn() = default;
   type_insn(uint8_t opcode, const std::string_view& type);
-  ~type_insn() override= default;
+  ~type_insn() override = default;
   type_insn(const type_insn&) = default;
   type_insn(type_insn&&) = default;
   type_insn& operator=(const type_insn&) = default;

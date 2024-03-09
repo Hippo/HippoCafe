@@ -53,7 +53,6 @@ public:
 };
 
 
-
 class stack_map_table {
 public:
   std::vector<stack_map_frame> entries;
@@ -263,14 +262,14 @@ public:
 class code;
 class record;
 
-using attribute = std::variant<unknown, constant_value, code, stack_map_table, exceptions, inner_classes,
-                                      enclosing_method, synthetic, signature, source_file, source_debug_extension,
-                                      line_number_table, local_variable_table, local_variable_type_table, deprecated,
-                                      runtime_visible_annotations, runtime_invisible_annotations,
-                                      runtime_visible_parameter_annotations, runtime_invisible_parameter_annotations,
-                                      runtime_visible_type_annotations, runtime_invisible_type_annotations,
-                                      annotation_default, bootstrap_methods, method_parameters, module, module_packages,
-                                      module_main_class, nest_host, nest_members, record, permitted_subclasses>;
+using attribute =
+    std::variant<unknown, constant_value, code, stack_map_table, exceptions, inner_classes, enclosing_method, synthetic,
+                 signature, source_file, source_debug_extension, line_number_table, local_variable_table,
+                 local_variable_type_table, deprecated, runtime_visible_annotations, runtime_invisible_annotations,
+                 runtime_visible_parameter_annotations, runtime_invisible_parameter_annotations,
+                 runtime_visible_type_annotations, runtime_invisible_type_annotations, annotation_default,
+                 bootstrap_methods, method_parameters, module, module_packages, module_main_class, nest_host,
+                 nest_members, record, permitted_subclasses>;
 
 class code {
 public:

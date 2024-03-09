@@ -54,7 +54,7 @@ public:
 };
 
 class dynamic;
-using  value =
+using value =
     std::variant<int32_t, float, int64_t, double, class_value, std::string, method_handle, method_type, dynamic>;
 std::string to_string(const value& v);
 

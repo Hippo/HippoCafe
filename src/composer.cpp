@@ -578,7 +578,7 @@ method_model method_composer::compose() {
             try {
               code_composer cc(cf_, *this, arg, error_handler_);
               mm.code = cc.compose();
-            } catch(const std::exception& e) {
+            } catch (const std::exception& e) {
               error_handler_(e);
             }
           }
@@ -892,7 +892,7 @@ code code_composer::compose() {
   while (i < bytecode.size()) {
     auto insn_start = i;
     const auto opcode = bytecode[i++];
-    switch ( opcode) {
+    switch (opcode) {
       case op::aload_0:
       case op::aload_1:
       case op::aload_2:

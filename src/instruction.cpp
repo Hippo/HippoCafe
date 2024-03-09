@@ -1,5 +1,5 @@
-#include <utility>
 #include <sstream>
+#include <utility>
 
 #include "cafe/constants.hpp"
 #include "cafe/instruction.hpp"
@@ -21,7 +21,7 @@ var_insn::var_insn(uint8_t opcode, uint16_t index) : insn(opcode), index(index) 
 }
 std::string var_insn::to_string() const {
   std::ostringstream oss;
-  oss << "var_insn(" << opcode_name(opcode)  << ", "<< index << ")";
+  oss << "var_insn(" << opcode_name(opcode) << ", " << index << ")";
   return oss.str();
 }
 type_insn::type_insn(uint8_t opcode, const std::string_view& type) : insn(opcode), type(type) {
@@ -37,8 +37,8 @@ ref_insn::ref_insn(uint8_t opcode, const std::string_view& owner, const std::str
 }
 std::string ref_insn::to_string() const {
   std::ostringstream oss;
-  oss << "ref_insn(" << opcode_name(opcode) << ", " << '"' << owner << '"' << ", " << '"' << name << '"' << ", " << '"' << descriptor
-     << '"' << ")";
+  oss << "ref_insn(" << opcode_name(opcode) << ", " << '"' << owner << '"' << ", " << '"' << name << '"' << ", " << '"'
+      << descriptor << '"' << ")";
   return oss.str();
 }
 iinc_insn::iinc_insn() : id_(reinterpret_cast<uintptr_t>(this)) {
@@ -163,14 +163,16 @@ uint64_t array_insn::id() const {
 std::string array_insn::to_string() const {
   std::ostringstream oss;
   oss << "array_insn(";
-  std::visit([&oss](const auto& arg) {
-    using T = std::decay_t<decltype(arg)>;
-    if constexpr (std::is_same_v<T, uint8_t>) {
-      oss << array_name(arg);
-    } else {
-      oss << '"' << arg << '"';
-    }
-  }, type);
+  std::visit(
+      [&oss](const auto& arg) {
+        using T = std::decay_t<decltype(arg)>;
+        if constexpr (std::is_same_v<T, uint8_t>) {
+          oss << array_name(arg);
+        } else {
+          oss << '"' << arg << '"';
+        }
+      },
+      type);
   oss << ")";
   return oss.str();
 }
@@ -185,7 +187,8 @@ uint64_t invoke_dynamic_insn::id() const {
 }
 std::string invoke_dynamic_insn::to_string() const {
   std::ostringstream oss;
-  oss << "invoke_dynamic_insn(" << '"' << name << '"' << ", " << '"' << descriptor << '"' << ", " << cafe::to_string(handle) << ", [";
+  oss << "invoke_dynamic_insn(" << '"' << name << '"' << ", " << '"' << descriptor << '"' << ", "
+      << cafe::to_string(handle) << ", [";
   bool first = true;
   for (const auto& arg : args) {
     if (!first) {
@@ -250,7 +253,8 @@ tcb::tcb(label start, label end, label handler, const std::string_view& type) :
 }
 std::string tcb::to_string() const {
   std::ostringstream oss;
-  oss << "tcb(" << start.to_string() << ", " << end.to_string() << ", " << handler.to_string() << ", " << '"' << type << '"' << ")";
+  oss << "tcb(" << start.to_string() << ", " << end.to_string() << ", " << handler.to_string() << ", " << '"' << type
+      << '"' << ")";
   return oss.str();
 }
 object_var::object_var(const std::string_view& type) : type(type) {
@@ -278,80 +282,84 @@ std::string local_var::to_string() const {
   return oss.str();
 }
 std::string to_string(const frame_var& var) {
-  return std::visit([](const auto& arg) -> std::string {
-    using T = std::decay_t<decltype(arg)>;
-    if constexpr (std::is_same_v<T, top_var>) {
-      return "top";
-    } else if constexpr (std::is_same_v<T, int_var>) {
-      return "int";
-    } else if constexpr (std::is_same_v<T, float_var>) {
-      return "float";
-    } else if constexpr (std::is_same_v<T, double_var>) {
-      return "double";
-    } else if constexpr (std::is_same_v<T, long_var>) {
-      return "long";
-    } else if constexpr (std::is_same_v<T, null_var>) {
-      return "null";
-    } else if constexpr (std::is_same_v<T, uninitialized_this_var>) {
-      return "uninitialized_this";
-    } else if constexpr (std::is_same_v<T, object_var>) {
-      return "object(" + arg.type + ")";
-    } else if constexpr (std::is_same_v<T, uninitalized_var>) {
-      return "uninitialized(" + arg.offset.to_string() + ")";
-    }
-  }, var);
+  return std::visit(
+      [](const auto& arg) -> std::string {
+        using T = std::decay_t<decltype(arg)>;
+        if constexpr (std::is_same_v<T, top_var>) {
+          return "top";
+        } else if constexpr (std::is_same_v<T, int_var>) {
+          return "int";
+        } else if constexpr (std::is_same_v<T, float_var>) {
+          return "float";
+        } else if constexpr (std::is_same_v<T, double_var>) {
+          return "double";
+        } else if constexpr (std::is_same_v<T, long_var>) {
+          return "long";
+        } else if constexpr (std::is_same_v<T, null_var>) {
+          return "null";
+        } else if constexpr (std::is_same_v<T, uninitialized_this_var>) {
+          return "uninitialized_this";
+        } else if constexpr (std::is_same_v<T, object_var>) {
+          return "object(" + arg.type + ")";
+        } else if constexpr (std::is_same_v<T, uninitalized_var>) {
+          return "uninitialized(" + arg.offset.to_string() + ")";
+        }
+      },
+      var);
 }
 std::string to_string(const frame& frame) {
-  return std::visit([](const auto& arg) -> std::string {
-    using T = std::decay_t<decltype(arg)>;
-    if constexpr (std::is_same_v<T, same_frame>) {
-      std::ostringstream oss;
-      oss << "same_frame";
-      if (arg.stack) {
-        oss << "(" << cafe::to_string(*arg.stack) << ")";
-      }
-      return oss.str();
-    } else if constexpr (std::is_same_v<T, full_frame>) {
-      std::ostringstream oss;
-      oss << "full_frame([";
-      bool first = true;
-      for (const auto& var : arg.locals) {
-        if (!first) {
-          oss << ", ";
+  return std::visit(
+      [](const auto& arg) -> std::string {
+        using T = std::decay_t<decltype(arg)>;
+        if constexpr (std::is_same_v<T, same_frame>) {
+          std::ostringstream oss;
+          oss << "same_frame";
+          if (arg.stack) {
+            oss << "(" << cafe::to_string(*arg.stack) << ")";
+          }
+          return oss.str();
+        } else if constexpr (std::is_same_v<T, full_frame>) {
+          std::ostringstream oss;
+          oss << "full_frame([";
+          bool first = true;
+          for (const auto& var : arg.locals) {
+            if (!first) {
+              oss << ", ";
+            }
+            oss << cafe::to_string(var);
+            first = false;
+          }
+          oss << "], [";
+          first = true;
+          for (const auto& var : arg.stack) {
+            if (!first) {
+              oss << ", ";
+            }
+            oss << cafe::to_string(var);
+            first = false;
+          }
+          oss << "])";
+          return oss.str();
+        } else if constexpr (std::is_same_v<T, chop_frame>) {
+          std::ostringstream oss;
+          oss << "chop_frame(" << static_cast<int>(arg.size) << ")";
+          return oss.str();
+        } else if constexpr (std::is_same_v<T, append_frame>) {
+          std::ostringstream oss;
+          oss << "append_frame([";
+          bool first = true;
+          for (const auto& var : arg.locals) {
+            if (!first) {
+              oss << ", ";
+            }
+            oss << cafe::to_string(var);
+            first = false;
+          }
+          oss << "])";
+          return oss.str();
         }
-        oss << cafe::to_string(var);
-        first = false;
-      }
-      oss << "], [";
-      first = true;
-      for (const auto& var : arg.stack) {
-        if (!first) {
-          oss << ", ";
-        }
-        oss << cafe::to_string(var);
-        first = false;
-      }
-      oss << "])";
-      return oss.str();
-    } else if constexpr (std::is_same_v<T, chop_frame>) {
-      std::ostringstream oss;
-      oss << "chop_frame(" << static_cast<int>(arg.size) << ")";
-      return oss.str();
-    } else if constexpr (std::is_same_v<T, append_frame>) {
-      std::ostringstream oss;
-      oss << "append_frame([";
-      bool first = true;
-      for (const auto& var : arg.locals) {
-        if (!first) {
-          oss << ", ";
-        }
-        oss << cafe::to_string(var);
-        first = false;
-      }
-      oss << "])";
-      return oss.str();
-    }
-  }, frame);
+      },
+      frame);
 }
 void code::clear() noexcept {
   std::vector<instruction>::clear();

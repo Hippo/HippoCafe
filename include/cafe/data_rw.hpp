@@ -14,10 +14,11 @@ namespace cafe {
 template<typename CharT>
 class vecstreambuf : public std::streambuf {
 public:
-  using int_type =  std::streambuf::int_type;
+  using int_type = std::streambuf::int_type;
   using traits_type = std::streambuf::traits_type;
   vecstreambuf(std::vector<CharT>& vec) : vec_(vec) {
-    setg(reinterpret_cast<char*>(vec.data()), reinterpret_cast<char*>(vec.data()), reinterpret_cast<char*>(vec.data()) + vec.size());
+    setg(reinterpret_cast<char*>(vec.data()), reinterpret_cast<char*>(vec.data()),
+         reinterpret_cast<char*>(vec.data()) + vec.size());
   }
   ~vecstreambuf() override = default;
 
@@ -38,7 +39,7 @@ private:
   std::vector<CharT>& vec_;
 };
 
-template <typename CharT>
+template<typename CharT>
 class imemstreambuf : public std::streambuf {
 public:
   imemstreambuf(const CharT* data, size_t length) {

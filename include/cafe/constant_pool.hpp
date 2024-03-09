@@ -5,8 +5,8 @@
 #include <variant>
 #include <vector>
 
-#include "value.hpp"
 #include "attribute.hpp"
+#include "value.hpp"
 
 namespace cafe::cp {
 class class_info {
@@ -138,6 +138,7 @@ public:
 class bsm_buffer {
 public:
   uint16_t get_bsm_index(constant_pool& pool, const method_handle& handle, const std::vector<value>& args);
+
 private:
   std::vector<attribute::bootstrap_methods::bootstrap_method> bsms_;
 };

@@ -41,37 +41,40 @@ dynamic::dynamic(const std::string_view& name, const std::string_view& descripto
     name(name), descriptor(descriptor), handle(std::move(handle)), args(args) {
 }
 std::string to_string(const value& v) {
-  return std::visit([](const auto& arg) -> std::string {
-    using T = std::decay_t<decltype(arg)>;
-    if constexpr (std::is_same_v<T, class_value>) {
-      return arg.get();
-    } else if constexpr (std::is_same_v<T, std::string>) {
-      std::ostringstream oss;
-      oss << '"' << arg << '"';
-      return oss.str();
-    } else if constexpr (std::is_same_v<T, method_handle>) {
-      std::ostringstream oss;
-      oss << "method_handle(" << reference_kind_name(arg.kind) << ", " << '"' << arg.owner << '"' << ", " << '"' << arg.name << '"' << ", "
-          << '"' << arg.descriptor << '"' << ")";
-      return oss.str();
-    } else if constexpr (std::is_same_v<T, method_type>) {
-      return "method_type(\"" + arg.descriptor + "\")";
-    } else if constexpr (std::is_same_v<T, dynamic>) {
-      std::ostringstream oss;
-      oss << "dynamic(" << '"' << arg.name << '"' << ", " << '"' << arg.descriptor << '"' << ", " << to_string(arg.handle) << ", [";
-      bool first = true;
-      for (const auto& a : arg.args) {
-        if (!first) {
-          oss << ", ";
+  return std::visit(
+      [](const auto& arg) -> std::string {
+        using T = std::decay_t<decltype(arg)>;
+        if constexpr (std::is_same_v<T, class_value>) {
+          return arg.get();
+        } else if constexpr (std::is_same_v<T, std::string>) {
+          std::ostringstream oss;
+          oss << '"' << arg << '"';
+          return oss.str();
+        } else if constexpr (std::is_same_v<T, method_handle>) {
+          std::ostringstream oss;
+          oss << "method_handle(" << reference_kind_name(arg.kind) << ", " << '"' << arg.owner << '"' << ", " << '"'
+              << arg.name << '"' << ", " << '"' << arg.descriptor << '"' << ")";
+          return oss.str();
+        } else if constexpr (std::is_same_v<T, method_type>) {
+          return "method_type(\"" + arg.descriptor + "\")";
+        } else if constexpr (std::is_same_v<T, dynamic>) {
+          std::ostringstream oss;
+          oss << "dynamic(" << '"' << arg.name << '"' << ", " << '"' << arg.descriptor << '"' << ", "
+              << to_string(arg.handle) << ", [";
+          bool first = true;
+          for (const auto& a : arg.args) {
+            if (!first) {
+              oss << ", ";
+            }
+            oss << to_string(a);
+            first = false;
+          }
+          oss << "])";
+          return oss.str();
+        } else {
+          return std::to_string(arg);
         }
-        oss << to_string(a);
-        first = false;
-      }
-      oss << "])";
-      return oss.str();
-    } else {
-      return std::to_string(arg);
-    }
-  }, v);
+      },
+      v);
 }
 } // namespace cafe

@@ -110,7 +110,7 @@ public:
   inner_class(inner_class&&) = default;
   inner_class& operator=(const inner_class&) = default;
   inner_class& operator=(inner_class&&) = default;
- };
+};
 
 class requires_model {
 public:

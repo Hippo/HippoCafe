@@ -23,35 +23,37 @@ std::string annotation::to_string() const {
   return oss.str();
 }
 std::string element_value::to_string() const {
-  return std::visit([](auto&& arg) {
-    using T = std::decay_t<decltype(arg)>;
-    if constexpr (std::is_same_v<T, std::pair<std::string, std::string>>) {
-      return "enum(" + arg.first + ", " + arg.second + ")";
-    } else if constexpr (std::is_same_v<T, class_value>) {
-      return cafe::to_string(arg);
-    } else if constexpr (std::is_same_v<T, annotation>) {
-      return arg.to_string();
-    } else if constexpr (std::is_same_v<T, std::vector<element_value>>) {
-      std::ostringstream oss;
-      oss << "[";
-      bool first = true;
-      for (const auto& e : arg) {
-        if (!first) {
-          oss << ", ";
+  return std::visit(
+      [](auto&& arg) {
+        using T = std::decay_t<decltype(arg)>;
+        if constexpr (std::is_same_v<T, std::pair<std::string, std::string>>) {
+          return "enum(" + arg.first + ", " + arg.second + ")";
+        } else if constexpr (std::is_same_v<T, class_value>) {
+          return cafe::to_string(arg);
+        } else if constexpr (std::is_same_v<T, annotation>) {
+          return arg.to_string();
+        } else if constexpr (std::is_same_v<T, std::vector<element_value>>) {
+          std::ostringstream oss;
+          oss << "[";
+          bool first = true;
+          for (const auto& e : arg) {
+            if (!first) {
+              oss << ", ";
+            }
+            oss << e.to_string();
+            first = false;
+          }
+          oss << "]";
+          return oss.str();
+        } else if constexpr (std::is_same_v<T, std::string>) {
+          std::ostringstream oss;
+          oss << '"' << arg << '"';
+          return oss.str();
+        } else {
+          return std::to_string(arg);
         }
-        oss << e.to_string();
-        first = false;
-      }
-      oss << "]";
-      return oss.str();
-    } else if constexpr (std::is_same_v<T, std::string>) {
-      std::ostringstream oss;
-      oss << '"' << arg << '"';
-      return oss.str();
-    } else {
-      return std::to_string(arg);
-    }
-  }, value);
+      },
+      value);
 }
 target::type_parameter::type_parameter(uint8_t index) : index(index) {
 }
@@ -139,8 +141,8 @@ std::string type_path::to_string() const {
 }
 std::string type_annotation::to_string() const {
   std::ostringstream oss;
-  oss << "type_annotation(0x" << std::hex << static_cast<int>(target_type) << std::dec  << ", " << cafe::to_string(target_info) << ", " << target_path.to_string()
-      << ", " << '"' << descriptor << '"' << ", [";
+  oss << "type_annotation(0x" << std::hex << static_cast<int>(target_type) << std::dec << ", "
+      << cafe::to_string(target_info) << ", " << target_path.to_string() << ", " << '"' << descriptor << '"' << ", [";
   bool first = true;
   for (const auto& [name, value] : values) {
     if (!first) {

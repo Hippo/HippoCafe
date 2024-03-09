@@ -166,25 +166,25 @@ uint16_t constant_pool::get_value(bsm_buffer& bsm_buffer, const value& value) {
           return index;
         } else if constexpr (std::is_same_v<T, method_handle>) {
           uint16_t index;
-              switch (arg.kind) {
-                case reference_kind::get_field:
-                case reference_kind::get_static:
-                case reference_kind::put_field:
-                case reference_kind::put_static:
-                  index = get_field_ref(arg.owner, arg.name, arg.descriptor);
-                  break;
-                case reference_kind::invoke_virtual:
-                case reference_kind::invoke_static:
-                case reference_kind::invoke_special:
-                case reference_kind::new_invoke_special:
-                  index = get_method_ref(arg.owner, arg.name, arg.descriptor);
-                  break;
-                case reference_kind::invoke_interface:
-                  index = get_interface_method_ref(arg.owner, arg.name, arg.descriptor);
-                  break;
-                default:
-                  throw std::runtime_error("Invalid reference kind");
-              }
+          switch (arg.kind) {
+            case reference_kind::get_field:
+            case reference_kind::get_static:
+            case reference_kind::put_field:
+            case reference_kind::put_static:
+              index = get_field_ref(arg.owner, arg.name, arg.descriptor);
+              break;
+            case reference_kind::invoke_virtual:
+            case reference_kind::invoke_static:
+            case reference_kind::invoke_special:
+            case reference_kind::new_invoke_special:
+              index = get_method_ref(arg.owner, arg.name, arg.descriptor);
+              break;
+            case reference_kind::invoke_interface:
+              index = get_interface_method_ref(arg.owner, arg.name, arg.descriptor);
+              break;
+            default:
+              throw std::runtime_error("Invalid reference kind");
+          }
           for (auto i = 1; i < size(); i++) {
             if (const auto handle = std::get_if<method_handle_info>(&at(i))) {
               if (handle->reference_kind == arg.kind && handle->reference_index == index) {
@@ -209,7 +209,7 @@ uint16_t constant_pool::get_value(bsm_buffer& bsm_buffer, const value& value) {
           return type_index;
         } else if constexpr (std::is_same_v<T, dynamic>) {
           auto bsm_index = bsm_buffer.get_bsm_index(*this, arg.handle, arg.args);
-              auto name_and_type_index = get_name_and_type(arg.name, arg.descriptor);
+          auto name_and_type_index = get_name_and_type(arg.name, arg.descriptor);
           for (auto i = 1; i < size(); i++) {
             if (const auto dyn = std::get_if<dynamic_info>(&at(i))) {
               if (dyn->bootstrap_method_attr_index == bsm_index && dyn->name_and_type_index == name_and_type_index) {
