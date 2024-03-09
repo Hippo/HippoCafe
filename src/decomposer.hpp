@@ -52,4 +52,12 @@ private:
   decomposer_ctx& ctx_;
 };
 
+class record_decomposer {
+public:
+  explicit record_decomposer(decomposer_ctx& ctx);
+  attribute::record::component decompose(const record_component& component);
+private:
+  decomposer_ctx& ctx_;
+};
+
 }

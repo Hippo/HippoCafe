@@ -151,6 +151,16 @@ class_file class_decomposer::decompose(const class_model& class_model) {
     cf.attributes.emplace_back(attribute::permitted_subclasses{indices});
   }
 
+  if (!class_model.record_components.empty()) {
+    std::vector<attribute::record::component> components;
+    components.reserve(class_model.record_components.size());
+    record_decomposer record_decomposer(ctx_);
+    for (const auto& component : class_model.record_components) {
+      components.push_back(record_decomposer.decompose(component));
+    }
+    cf.attributes.emplace_back(attribute::record{components});
+  }
+
   if (!class_model.visible_annotations.empty()) {
     annotation_decomposer annotation_decomposer(ctx_);
     std::vector<attribute::annotation> annotations;
@@ -278,53 +288,128 @@ attribute::annotation annotation_decomposer::decompose(const annotation& annotat
   return attribute::annotation{desc_index, pairs};
 }
 attribute::element_value annotation_decomposer::decompose(const element_value& value) {
-  return std::visit([this](auto&& arg) {
-    using T = std::decay_t<decltype(arg)>;
-    if constexpr (std::is_same_v<T, int8_t>) {
-      auto index = ctx_.get_vaule(static_cast<int32_t>(arg));
-      return attribute::element_value{'B', index};
-    } else if constexpr (std::is_same_v<T, uint16_t>) {
-      auto index = ctx_.get_vaule(static_cast<int32_t>(arg));
-      return attribute::element_value{'C', index};
-    } else if constexpr (std::is_same_v<T, double>) {
-      auto index = ctx_.get_vaule(arg);
-      return attribute::element_value{'D', index};
-    } else if constexpr (std::is_same_v<T, float>) {
-      auto index = ctx_.get_vaule(arg);
-      return attribute::element_value{'F', index};
-    } else if constexpr (std::is_same_v<T, int32_t>) {
-      auto index = ctx_.get_vaule(arg);
-      return attribute::element_value{'I', index};
-    } else if constexpr (std::is_same_v<T, int64_t>) {
-      auto index = ctx_.get_vaule(arg);
-      return attribute::element_value{'J', index};
-    } else if constexpr (std::is_same_v<T, int16_t>) {
-      auto index = ctx_.get_vaule(static_cast<int32_t>(arg));
-      return attribute::element_value{'S', index};
-    } else if constexpr (std::is_same_v<T, bool>) {
-      auto index = ctx_.get_vaule(arg ? 1 : 0);
-      return attribute::element_value{'Z', index};
-    } else if constexpr (std::is_same_v<T, std::string>) {
-      auto index = ctx_.pool.get_utf(arg);
-      return attribute::element_value{'s', index};
-    } else if constexpr (std::is_same_v<T, std::pair<std::string, std::string>>) {
-      auto type_name_index = ctx_.pool.get_utf(arg.first);
-      auto const_name_index = ctx_.pool.get_utf(arg.second);
-      return attribute::element_value{'e', attribute::element_value::enum_value{type_name_index, const_name_index}};
-    } else if constexpr (std::is_same_v<T, class_value>) {
-      auto index = ctx_.pool.get_utf(arg.get());
-      return attribute::element_value{'c', index};
-    } else if constexpr (std::is_same_v<T, annotation>) {
-      auto anno = decompose(arg);
-      return attribute::element_value{'@', anno};
-    } else if constexpr (std::is_same_v<T, std::vector<element_value>>) {
-      std::vector<attribute::element_value> values;
-      values.reserve(arg.size());
-      for (const auto& e : arg) {
-        values.push_back(decompose(e));
-      }
-      return attribute::element_value{'[', values};
+  return std::visit(
+      [this](auto&& arg) {
+        using T = std::decay_t<decltype(arg)>;
+        if constexpr (std::is_same_v<T, int8_t>) {
+          auto index = ctx_.get_vaule(static_cast<int32_t>(arg));
+          return attribute::element_value{'B', index};
+        } else if constexpr (std::is_same_v<T, uint16_t>) {
+          auto index = ctx_.get_vaule(static_cast<int32_t>(arg));
+          return attribute::element_value{'C', index};
+        } else if constexpr (std::is_same_v<T, double>) {
+          auto index = ctx_.get_vaule(arg);
+          return attribute::element_value{'D', index};
+        } else if constexpr (std::is_same_v<T, float>) {
+          auto index = ctx_.get_vaule(arg);
+          return attribute::element_value{'F', index};
+        } else if constexpr (std::is_same_v<T, int32_t>) {
+          auto index = ctx_.get_vaule(arg);
+          return attribute::element_value{'I', index};
+        } else if constexpr (std::is_same_v<T, int64_t>) {
+          auto index = ctx_.get_vaule(arg);
+          return attribute::element_value{'J', index};
+        } else if constexpr (std::is_same_v<T, int16_t>) {
+          auto index = ctx_.get_vaule(static_cast<int32_t>(arg));
+          return attribute::element_value{'S', index};
+        } else if constexpr (std::is_same_v<T, bool>) {
+          auto index = ctx_.get_vaule(arg ? 1 : 0);
+          return attribute::element_value{'Z', index};
+        } else if constexpr (std::is_same_v<T, std::string>) {
+          auto index = ctx_.pool.get_utf(arg);
+          return attribute::element_value{'s', index};
+        } else if constexpr (std::is_same_v<T, std::pair<std::string, std::string>>) {
+          auto type_name_index = ctx_.pool.get_utf(arg.first);
+          auto const_name_index = ctx_.pool.get_utf(arg.second);
+          return attribute::element_value{'e', attribute::element_value::enum_value{type_name_index, const_name_index}};
+        } else if constexpr (std::is_same_v<T, class_value>) {
+          auto index = ctx_.pool.get_utf(arg.get());
+          return attribute::element_value{'c', index};
+        } else if constexpr (std::is_same_v<T, annotation>) {
+          auto anno = decompose(arg);
+          return attribute::element_value{'@', anno};
+        } else if constexpr (std::is_same_v<T, std::vector<element_value>>) {
+          std::vector<attribute::element_value> values;
+          values.reserve(arg.size());
+          for (const auto& e : arg) {
+            values.push_back(decompose(e));
+          }
+          return attribute::element_value{'[', values};
+        }
+      },
+      value.value);
+}
+record_decomposer::record_decomposer(decomposer_ctx& ctx) : ctx_(ctx) {
+}
+attribute::record::component record_decomposer::decompose(const record_component& component) {
+  auto name_index = ctx_.pool.get_utf(component.name);
+  auto descriptor_index = ctx_.pool.get_utf(component.descriptor);
+  std::vector<attribute::attribute> attributes;
+  if (!component.signature.empty()) {
+    attributes.emplace_back(attribute::signature{ctx_.pool.get_utf(component.signature)});
+  }
+  if (!component.visible_annotations.empty()) {
+    annotation_decomposer annotation_decomposer(ctx_);
+    std::vector<attribute::annotation> annotations;
+    annotations.reserve(component.visible_annotations.size());
+    for (const auto& anno : component.visible_annotations) {
+      annotations.push_back(annotation_decomposer.decompose(anno));
     }
-  }, value.value);
+    attributes.emplace_back(attribute::runtime_visible_annotations{annotations});
+  }
+  if (!component.invisible_annotations.empty()) {
+    annotation_decomposer annotation_decomposer(ctx_);
+    std::vector<attribute::annotation> annotations;
+    annotations.reserve(component.invisible_annotations.size());
+    for (const auto& anno : component.invisible_annotations) {
+      annotations.push_back(annotation_decomposer.decompose(anno));
+    }
+    attributes.emplace_back(attribute::runtime_invisible_annotations{annotations});
+  }
+  if (!component.visible_type_annotations.empty()) {
+    std::vector<attribute::type_annotation> annotations;
+    annotations.reserve(component.visible_type_annotations.size());
+    for (const auto& anno : component.visible_type_annotations) {
+      annotation_decomposer annotation_decomposer(ctx_);
+      attribute::type_path path;
+      path.paths.reserve(anno.target_path.path.size());
+      for (const auto& [kind, index] : anno.target_path.path) {
+        path.paths.emplace_back(attribute::type_path::path{kind, index});
+      }
+      std::vector<attribute::element_pair> pairs;
+      pairs.reserve(anno.values.size());
+      for (const auto& [name, val] : anno.values) {
+        auto name_index = ctx_.pool.get_utf(name);
+        auto value = annotation_decomposer.decompose(val);
+        pairs.emplace_back(attribute::element_pair{name_index, value});
+      }
+      auto desc_index = ctx_.pool.get_utf(anno.descriptor);
+      annotations.emplace_back(attribute::type_annotation{anno.target_type, attribute::empty{}, path, desc_index, pairs});
+    }
+    attributes.emplace_back(attribute::runtime_visible_type_annotations{annotations});
+  }
+  if (!component.invisible_type_annotations.empty()) {
+    std::vector<attribute::type_annotation> annotations;
+    annotations.reserve(component.invisible_type_annotations.size());
+    for (const auto& anno : component.invisible_type_annotations) {
+      annotation_decomposer annotation_decomposer(ctx_);
+      attribute::type_path path;
+      path.paths.reserve(anno.target_path.path.size());
+      for (const auto& [kind, index] : anno.target_path.path) {
+        path.paths.emplace_back(attribute::type_path::path{kind, index});
+      }
+      std::vector<attribute::element_pair> pairs;
+      pairs.reserve(anno.values.size());
+      for (const auto& [name, val] : anno.values) {
+        auto name_index = ctx_.pool.get_utf(name);
+        auto value = annotation_decomposer.decompose(val);
+        pairs.emplace_back(attribute::element_pair{name_index, value});
+      }
+      auto desc_index = ctx_.pool.get_utf(anno.descriptor);
+      annotations.emplace_back(attribute::type_annotation{anno.target_type, attribute::empty{}, path, desc_index, pairs});
+    }
+    attributes.emplace_back(attribute::runtime_invisible_type_annotations{annotations});
+  }
+  return attribute::record::component{name_index, descriptor_index, attributes};
 }
 } // namespace cafe
