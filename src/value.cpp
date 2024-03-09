@@ -51,16 +51,21 @@ std::string to_string(const value& v) {
       return oss.str();
     } else if constexpr (std::is_same_v<T, method_handle>) {
       std::ostringstream oss;
-      oss << "method_handle(" << reference_kind_name(arg.kind) << ", " << arg.owner << ", " << arg.name << ", "
-          << arg.descriptor << ")";
+      oss << "method_handle(" << reference_kind_name(arg.kind) << ", " << '"' << arg.owner << '"' << ", " << '"' << arg.name << '"' << ", "
+          << '"' << arg.descriptor << '"' << ")";
       return oss.str();
     } else if constexpr (std::is_same_v<T, method_type>) {
-      return "method_type(" + arg.descriptor + ")";
+      return "method_type(\"" + arg.descriptor + "\")";
     } else if constexpr (std::is_same_v<T, dynamic>) {
       std::ostringstream oss;
-      oss << "dynamic(" << arg.name << ", " << arg.descriptor << ", " << to_string(arg.handle) << ", [";
+      oss << "dynamic(" << '"' << arg.name << '"' << ", " << '"' << arg.descriptor << '"' << ", " << to_string(arg.handle) << ", [";
+      bool first = true;
       for (const auto& a : arg.args) {
-        oss << to_string(a) << ", ";
+        if (!first) {
+          oss << ", ";
+        }
+        oss << to_string(a);
+        first = false;
       }
       oss << "])";
       return oss.str();

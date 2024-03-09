@@ -50,7 +50,7 @@ std::ostream& operator<<(std::ostream& stream, const class_file& file);
 
 class field_model {
 public:
-  uint16_t access_flags;
+  uint16_t access_flags{};
   std::string name;
   std::string descriptor;
   field_model(uint16_t access_flags, const std::string_view& name, const std::string_view& descriptor);
@@ -61,17 +61,18 @@ public:
   field_model& operator=(field_model&&) = default;
   bool synthetic = false;
   bool deprecated = false;
-  std::optional<std::variant<int32_t, float, int64_t, double, std::string>> constant_value;
+  std::optional<value> constant_value;
   std::string signature;
   std::vector<annotation> visible_annotations;
   std::vector<annotation> invisible_annotations;
   std::vector<type_annotation> visible_type_annotations;
   std::vector<type_annotation> invisible_type_annotations;
+  [[nodiscard]] std::string to_string() const;
 };
 
 class method_model {
 public:
-  uint16_t access_flags;
+  uint16_t access_flags{};
   std::string name;
   std::string descriptor;
   method_model(uint16_t access_flags, const std::string_view& name, const std::string_view& descriptor);
@@ -93,6 +94,7 @@ public:
   std::optional<element_value> annotation_default;
   std::vector<std::pair<uint16_t, std::string>> method_parameters;
   std::vector<std::string> exceptions;
+  [[nodiscard]] std::string to_string() const;
 };
 
 class inner_class {
@@ -100,7 +102,7 @@ public:
   std::string name;
   std::string outer_name;
   std::string inner_name;
-  uint16_t access_flags;
+  uint16_t access_flags{};
   inner_class(const std::string_view& name, const std::string_view& outer_name, const std::string_view& inner_name,
               uint16_t access_flags);
   ~inner_class() = default;
@@ -108,12 +110,12 @@ public:
   inner_class(inner_class&&) = default;
   inner_class& operator=(const inner_class&) = default;
   inner_class& operator=(inner_class&&) = default;
-};
+ };
 
 class requires_model {
 public:
   std::string name;
-  uint16_t access_flags;
+  uint16_t access_flags{};
   std::string version;
   requires_model(const std::string_view& name, uint16_t access_flags, const std::string_view& version);
   ~requires_model() = default;
@@ -126,7 +128,7 @@ public:
 class exports_model {
 public:
   std::string package;
-  uint16_t access_flags;
+  uint16_t access_flags{};
   std::vector<std::string> modules;
   exports_model(const std::string_view& package, uint16_t access_flags, const std::vector<std::string>& modules);
   ~exports_model() = default;
@@ -139,7 +141,7 @@ public:
 class opens_model {
 public:
   std::string package;
-  uint16_t access_flags;
+  uint16_t access_flags{};
   std::vector<std::string> modules;
   opens_model(const std::string_view& package, uint16_t access_flags, const std::vector<std::string>& modules);
   ~opens_model() = default;
@@ -164,7 +166,7 @@ public:
 class module_model {
 public:
   std::string name;
-  uint16_t access_flags;
+  uint16_t access_flags{};
   std::string version;
   module_model(const std::string_view& name, uint16_t access_flags, const std::string_view& version);
   ~module_model() = default;
@@ -199,8 +201,8 @@ public:
 
 class class_model {
 public:
-  uint32_t version;
-  uint16_t access_flags;
+  uint32_t version{};
+  uint16_t access_flags{};
   std::string name;
   std::string super_name;
   class_model(uint32_t version, uint16_t access_flags, const std::string_view& name,
@@ -234,6 +236,7 @@ public:
   std::vector<annotation> invisible_annotations;
   std::vector<type_annotation> visible_type_annotations;
   std::vector<type_annotation> invisible_type_annotations;
+  [[nodiscard]] std::string to_string() const;
 };
 
 std::istream& operator>>(std::istream& stream, class_model& model);

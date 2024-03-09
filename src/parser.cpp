@@ -61,10 +61,12 @@ cp::constant_pool class_parser::parse_constant_pool(data_reader& reader) {
         break;
       case cp::long_info::tag:
         pool.emplace_back(cp::long_info{reader.read_i64()});
+        pool.emplace_back(cp::pad_info{});
         i++;
         break;
       case cp::double_info::tag:
         pool.emplace_back(cp::double_info{reader.read_f64()});
+        pool.emplace_back(cp::pad_info{});
         i++;
         break;
       case cp::class_info::tag:

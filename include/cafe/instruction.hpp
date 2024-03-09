@@ -1,6 +1,7 @@
 #pragma once
 
 #include <cstdint>
+#include <optional>
 
 #include "annotation.hpp"
 #include "label.hpp"
@@ -256,6 +257,7 @@ public:
   local_var(local_var&&) = default;
   local_var& operator=(const local_var&) = default;
   local_var& operator=(local_var&&) = default;
+  [[nodiscard]] std::string to_string() const;
 };
 
 class top_var {
@@ -328,13 +330,13 @@ class double_var {};
 
 using frame_var = std::variant<top_var, int_var, float_var, long_var, double_var, null_var, uninitialized_this_var,
                                object_var, uninitalized_var>;
+std::string to_string(const frame_var& var);
 
 class same_frame {
 public:
-  std::vector<frame_var> locals;
-  std::vector<frame_var> stack;
+  std::optional<frame_var> stack;
   same_frame() = default;
-  same_frame(const std::vector<frame_var>& locals, const std::vector<frame_var>& stack);
+  same_frame(const frame_var& stack);
   ~same_frame() = default;
   same_frame(const same_frame&) = default;
   same_frame(same_frame&&) = default;
@@ -377,7 +379,7 @@ public:
 };
 
 using frame = std::variant<same_frame, full_frame, chop_frame, append_frame>;
-
+std::string to_string(const frame& frame);
 
 class code : public std::vector<instruction> {
 public:

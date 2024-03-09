@@ -41,8 +41,6 @@ enum class attribute_type : uint8_t {
   permitted_subclasses
 };
 
-class attribute;
-
 class unknown {
 public:
   uint16_t name_index;
@@ -54,22 +52,7 @@ public:
   uint16_t index;
 };
 
-class code {
-public:
-  uint16_t max_stack;
-  uint16_t max_locals;
-  std::vector<uint8_t> bytecode;
 
-  struct exception {
-    uint16_t start_pc;
-    uint16_t end_pc;
-    uint16_t handler_pc;
-    uint16_t catch_type;
-  };
-
-  std::vector<exception> exceptions;
-  std::vector<attribute> attributes;
-};
 
 class stack_map_table {
 public:
@@ -271,6 +254,41 @@ public:
 };
 
 
+class permitted_subclasses {
+public:
+  std::vector<uint16_t> classes;
+};
+
+
+class code;
+class record;
+
+using attribute = std::variant<unknown, constant_value, code, stack_map_table, exceptions, inner_classes,
+                                      enclosing_method, synthetic, signature, source_file, source_debug_extension,
+                                      line_number_table, local_variable_table, local_variable_type_table, deprecated,
+                                      runtime_visible_annotations, runtime_invisible_annotations,
+                                      runtime_visible_parameter_annotations, runtime_invisible_parameter_annotations,
+                                      runtime_visible_type_annotations, runtime_invisible_type_annotations,
+                                      annotation_default, bootstrap_methods, method_parameters, module, module_packages,
+                                      module_main_class, nest_host, nest_members, record, permitted_subclasses>;
+
+class code {
+public:
+  uint16_t max_stack;
+  uint16_t max_locals;
+  std::vector<uint8_t> bytecode;
+
+  struct exception {
+    uint16_t start_pc;
+    uint16_t end_pc;
+    uint16_t handler_pc;
+    uint16_t catch_type;
+  };
+
+  std::vector<exception> exceptions;
+  std::vector<attribute> attributes;
+};
+
 class record {
 public:
   struct component {
@@ -281,18 +299,4 @@ public:
 
   std::vector<component> components;
 };
-
-class permitted_subclasses {
-public:
-  std::vector<uint16_t> classes;
-};
-
-class attribute : public std::variant<unknown, constant_value, code, stack_map_table, exceptions, inner_classes,
-                                      enclosing_method, synthetic, signature, source_file, source_debug_extension,
-                                      line_number_table, local_variable_table, local_variable_type_table, deprecated,
-                                      runtime_visible_annotations, runtime_invisible_annotations,
-                                      runtime_visible_parameter_annotations, runtime_invisible_parameter_annotations,
-                                      runtime_visible_type_annotations, runtime_invisible_type_annotations,
-                                      annotation_default, bootstrap_methods, method_parameters, module, module_packages,
-                                      module_main_class, nest_host, nest_members, record, permitted_subclasses> {};
 } // namespace cafe::attribute

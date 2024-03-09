@@ -11,14 +11,43 @@
 
 namespace cafe {
 
-template<typename CharT, typename TraitsT = std::char_traits<CharT>>
-class vecstreambuf : public std::basic_streambuf<CharT, TraitsT> {
+template<typename CharT>
+class vecstreambuf : public std::streambuf {
 public:
-  vecstreambuf(std::vector<CharT>& vec) {
-    setg(vec.data(), vec.data(), vec.data() + vec.size());
+  using int_type =  std::streambuf::int_type;
+  using traits_type = std::streambuf::traits_type;
+  vecstreambuf(std::vector<CharT>& vec) : vec_(vec) {
+    setg(reinterpret_cast<char*>(vec.data()), reinterpret_cast<char*>(vec.data()), reinterpret_cast<char*>(vec.data()) + vec.size());
   }
   ~vecstreambuf() override = default;
+
+  [[nodiscard]] const std::vector<CharT>& vec() const {
+    return vec_;
+  }
+
+protected:
+  int_type overflow(int_type ch) override {
+    if (traits_type::eq_int_type(traits_type::eof(), ch)) {
+      return traits_type::not_eof(ch);
+    }
+    vec_.push_back(traits_type::to_char_type(ch));
+    return ch;
+  }
+
+private:
+  std::vector<CharT>& vec_;
 };
+
+template <typename CharT>
+class imemstreambuf : public std::streambuf {
+public:
+  imemstreambuf(const CharT* data, size_t length) {
+    auto* data_ptr = reinterpret_cast<char*>(const_cast<CharT*>(data));
+    setg(data_ptr, data_ptr, data_ptr + length);
+  }
+  ~imemstreambuf() override = default;
+};
+
 
 class data_reader {
 public:

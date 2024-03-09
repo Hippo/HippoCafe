@@ -575,8 +575,12 @@ method_model method_composer::compose() {
               mm.invisible_parameter_annotations.emplace_back(std::move(annotations));
             }
           } else if constexpr (std::is_same_v<T, attribute::code>) {
-            code_composer cc(cf_, *this, arg, error_handler_);
-            mm.code = cc.compose();
+            try {
+              code_composer cc(cf_, *this, arg, error_handler_);
+              mm.code = cc.compose();
+            } catch(const std::exception& e) {
+              error_handler_(e);
+            }
           }
         },
         attr);
@@ -805,23 +809,23 @@ code code_composer::compose() {
                     if constexpr (std::is_same_v<T, attribute::same_frame>) {
                       offset_delta += arg.frame_type + off;
                       auto label = get_label(offset_delta);
-                      c.frames.emplace_back(label, same_frame({}, {}));
+                      c.frames.emplace_back(label, same_frame());
                     } else if constexpr (std::is_same_v<T, attribute::same_locals_1_stack_item_frame>) {
                       offset_delta += arg.frame_type - 64 + off;
                       auto label = get_label(offset_delta);
-                      c.frames.emplace_back(label, same_frame({}, {compose_verification(arg.stack)}));
+                      c.frames.emplace_back(label, same_frame(compose_verification(arg.stack)));
                     } else if constexpr (std::is_same_v<T, attribute::same_locals_1_stack_item_frame_extended>) {
                       offset_delta += arg.offset_delta + off;
                       auto label = get_label(offset_delta);
-                      c.frames.emplace_back(label, same_frame({}, {compose_verification(arg.stack)}));
+                      c.frames.emplace_back(label, same_frame(compose_verification(arg.stack)));
                     } else if constexpr (std::is_same_v<T, attribute::chop_frame>) {
                       offset_delta += arg.offset_delta + off;
                       auto label = get_label(offset_delta);
-                      c.frames.emplace_back(label, chop_frame(251 - arg.offset_delta));
+                      c.frames.emplace_back(label, chop_frame(251 - arg.frame_type));
                     } else if constexpr (std::is_same_v<T, attribute::same_frame_extended>) {
                       offset_delta += arg.offset_delta + off;
                       auto label = get_label(offset_delta);
-                      c.frames.emplace_back(label, same_frame({}, {}));
+                      c.frames.emplace_back(label, same_frame());
                     } else if constexpr (std::is_same_v<T, attribute::append_frame>) {
                       offset_delta += arg.offset_delta + off;
                       auto label = get_label(offset_delta);
@@ -887,7 +891,8 @@ code code_composer::compose() {
   auto wide = 0;
   while (i < bytecode.size()) {
     auto insn_start = i;
-    switch (const auto opcode = bytecode[i++]; opcode) {
+    const auto opcode = bytecode[i++];
+    switch ( opcode) {
       case op::aload_0:
       case op::aload_1:
       case op::aload_2:
@@ -955,7 +960,20 @@ code code_composer::compose() {
       case op::iconst_3:
       case op::iconst_4:
       case op::iconst_5:
-        bytemap_instructions.emplace_back(insn_start, push_insn(opcode - op::iconst_0));
+        bytemap_instructions.emplace_back(insn_start, push_insn(static_cast<int32_t>(opcode - op::iconst_0)));
+        break;
+      case op::fconst_0:
+      case op::fconst_1:
+      case op::fconst_2:
+        bytemap_instructions.emplace_back(insn_start, push_insn(static_cast<float>(opcode - op::fconst_0)));
+        break;
+      case op::dconst_0:
+      case op::dconst_1:
+        bytemap_instructions.emplace_back(insn_start, push_insn(static_cast<double>(opcode - op::dconst_0)));
+        break;
+      case op::lconst_0:
+      case op::lconst_1:
+        bytemap_instructions.emplace_back(insn_start, push_insn(static_cast<int64_t>(opcode - op::lconst_0)));
         break;
       case op::aaload:
       case op::aastore:
@@ -975,8 +993,6 @@ code code_composer::compose() {
       case op::dastore:
       case op::dcmpg:
       case op::dcmpl:
-      case op::dconst_0:
-      case op::dconst_1:
       case op::ddiv:
       case op::dmul:
       case op::dneg:
@@ -997,9 +1013,6 @@ code code_composer::compose() {
       case op::fastore:
       case op::fcmpg:
       case op::fcmpl:
-      case op::fconst_0:
-      case op::fconst_1:
-      case op::fconst_2:
       case op::fdiv:
       case op::fmul:
       case op::fneg:
@@ -1035,8 +1048,6 @@ code code_composer::compose() {
       case op::land:
       case op::lastore:
       case op::lcmp:
-      case op::lconst_0:
-      case op::lconst_1:
       case op::ldiv:
       case op::lmul:
       case op::lneg:
@@ -1147,6 +1158,7 @@ code code_composer::compose() {
           value = static_cast<int16_t>((value << 8) | bytecode[i++]);
         }
         bytemap_instructions.emplace_back(insn_start, iinc_insn(index, value));
+        break;
       }
       case op::invokedynamic: {
         auto index = static_cast<uint16_t>(bytecode[i++]) << 8 | bytecode[i++];
