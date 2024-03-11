@@ -228,11 +228,11 @@ class_file class_decomposer::decompose(const class_model& class_model) {
     cf.attributes.emplace_back(attribute::runtime_invisible_type_annotations{annotations});
   }
 
-  cf.constant_pool = ctx_.pool;
   if (!ctx_.bsm_buffer.bsms.empty()) {
     ctx_.pool.get_utf("BootstrapMethods");
     cf.attributes.emplace_back(attribute::bootstrap_methods{ctx_.bsm_buffer.bsms});
   }
+  cf.constant_pool = ctx_.pool;
 
   return cf;
 }
@@ -655,7 +655,7 @@ attribute::code code_decomposer::decompose(const code& code) {
             writer.write_u16(index);
             if (arg.opcode == op::invokeinterface) {
               auto parsed_args = parse_method_descriptor(arg.descriptor).first;
-              auto size = 0;
+              auto size = 1;
               for (const auto& ar : parsed_args) {
                 size += cafe::size(ar);
               }

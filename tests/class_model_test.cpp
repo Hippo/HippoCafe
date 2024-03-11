@@ -17,7 +17,7 @@ TEST(class_model, test) {
 }
 
 TEST(class_model, rw) {
-  std::string test_name = "ForLoopTestLong";
+  std::string test_name = "CalculationTest";
   std::ifstream stream(std::string("data/") + test_name + ".class", std::ios::binary);
   cafe::class_model model;
   stream >> model;
