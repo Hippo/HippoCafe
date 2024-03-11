@@ -24,7 +24,7 @@ add_library(HippoCafe
         src/value.cpp
         include/cafe/model/instruction.hpp
         src/model/annotation.cpp
-        src/constast_pool.cpp
+        src/class_file/constast_pool.cpp
         src/model/instruction.cpp
         src/model/composer.hpp
         src/model/composer.cpp
