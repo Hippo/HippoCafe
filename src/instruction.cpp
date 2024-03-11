@@ -5,12 +5,7 @@
 #include "cafe/instruction.hpp"
 
 namespace cafe {
-insn::insn() : id_(reinterpret_cast<uintptr_t>(this)) {
-}
-insn::insn(uint8_t opcode) : opcode(opcode), id_(reinterpret_cast<uintptr_t>(this)) {
-}
-uint64_t insn::id() const {
-  return id_;
+insn::insn(uint8_t opcode) : opcode(opcode) {
 }
 std::string insn::to_string() const {
   std::ostringstream oss;
@@ -41,45 +36,78 @@ std::string ref_insn::to_string() const {
       << descriptor << '"' << ")";
   return oss.str();
 }
-iinc_insn::iinc_insn() : id_(reinterpret_cast<uintptr_t>(this)) {
-}
-iinc_insn::iinc_insn(uint16_t index, int16_t value) :
-    index(index), value(value), id_(reinterpret_cast<uintptr_t>(this)) {
-}
-uint64_t iinc_insn::id() const {
-  return id_;
+iinc_insn::iinc_insn(uint16_t index, int16_t value) : index(index), value(value) {
 }
 std::string iinc_insn::to_string() const {
   std::ostringstream oss;
   oss << "iinc_insn(" << index << ", " << value << ")";
   return oss.str();
 }
-push_insn::push_insn() : id_(reinterpret_cast<uintptr_t>(this)) {
-}
-push_insn::push_insn(value val) : val(std::move(val)), id_(reinterpret_cast<uintptr_t>(this)) {
-}
-uint64_t push_insn::id() const {
-  return id_;
+push_insn::push_insn(value val) : val(std::move(val)) {
 }
 uint8_t push_insn::opcode() const {
-  int64_t int_val;
-  if (const auto l = std::get_if<int64_t>(&val)) {
-    int_val = *l;
-  } else if (const auto i = std::get_if<int32_t>(&val)) {
-    int_val = *i;
-  } else {
-    return op::ldc;
-  }
-  if (int_val >= -1 && int_val <= 5) {
-    return op::iconst_0 + static_cast<int8_t>(int_val);
-  }
-  if (int_val >= std::numeric_limits<int8_t>::min() && int_val <= std::numeric_limits<int8_t>::max()) {
-    return op::bipush;
-  }
-  if (int_val >= std::numeric_limits<int16_t>::min() && int_val <= std::numeric_limits<int16_t>::max()) {
-    return op::sipush;
-  }
-  return op::ldc;
+  /* int32_t int_val;
+   if (const auto i = std::get_if<int32_t>(&val)) {
+     int_val = *i;
+   } else {
+     return op::ldc;
+   }
+   if (int_val >= -1 && int_val <= 5) {
+     return op::iconst_0 + static_cast<int8_t>(int_val);
+   }
+   if (int_val >= std::numeric_limits<int8_t>::min() && int_val <= std::numeric_limits<int8_t>::max()) {
+     return op::bipush;
+   }
+   if (int_val >= std::numeric_limits<int16_t>::min() && int_val <= std::numeric_limits<int16_t>::max()) {
+     return op::sipush;
+   }
+   return op::ldc;*/
+  return std::visit(
+      [](auto&& arg) -> uint8_t {
+        using T = std::decay_t<decltype(arg)>;
+        if constexpr (std::is_same_v<T, int32_t>) {
+          if (arg >= -1 && arg <= 5) {
+            return op::iconst_0 + static_cast<uint8_t>(arg);
+          }
+          if (arg >= std::numeric_limits<int8_t>::min() && arg <= std::numeric_limits<int8_t>::max()) {
+            return op::bipush;
+          }
+          if (arg >= std::numeric_limits<int16_t>::min() && arg <= std::numeric_limits<int16_t>::max()) {
+            return op::sipush;
+          }
+          return op::ldc;
+        } else if constexpr (std::is_same_v<T, float>) {
+          if (arg == 0.0f) {
+            return op::fconst_0;
+          }
+          if (arg == 1.0f) {
+            return op::fconst_1;
+          }
+          if (arg == 2.0f) {
+            return op::fconst_2;
+          }
+          return op::ldc;
+        } else if constexpr (std::is_same_v<T, int64_t>) {
+          if (arg == 0) {
+            return op::lconst_0;
+          }
+          if (arg == 1) {
+            return op::lconst_1;
+          }
+          return op::ldc;
+        } else if constexpr (std::is_same_v<T, double>) {
+          if (arg == 0.0) {
+            return op::dconst_0;
+          }
+          if (arg == 1.0) {
+            return op::dconst_1;
+          }
+          return op::ldc;
+        } else {
+          return op::ldc;
+        }
+      },
+      val);
 }
 std::string push_insn::to_string() const {
   std::ostringstream oss;
@@ -93,13 +121,8 @@ std::string branch_insn::to_string() const {
   oss << "branch_insn(" << opcode_name(opcode) << ", " << target.to_string() << ")";
   return oss.str();
 }
-lookup_switch_insn::lookup_switch_insn() : id_(reinterpret_cast<uintptr_t>(this)) {
-}
 lookup_switch_insn::lookup_switch_insn(label default_target, const std::vector<std::pair<int32_t, label>>& targets) :
-    default_target(std::move(default_target)), targets(targets), id_(reinterpret_cast<uintptr_t>(this)) {
-}
-uint64_t lookup_switch_insn::id() const {
-  return id_;
+    default_target(std::move(default_target)), targets(targets) {
 }
 std::string lookup_switch_insn::to_string() const {
   std::ostringstream oss;
@@ -115,15 +138,9 @@ std::string lookup_switch_insn::to_string() const {
   oss << "])";
   return oss.str();
 }
-table_switch_insn::table_switch_insn() : id_(reinterpret_cast<uintptr_t>(this)) {
-}
 table_switch_insn::table_switch_insn(label default_target, int32_t low, int32_t high,
                                      const std::vector<label>& targets) :
-    default_target(std::move(default_target)), low(low), high(high), targets(targets),
-    id_(reinterpret_cast<uintptr_t>(this)) {
-}
-uint64_t table_switch_insn::id() const {
-  return id_;
+    default_target(std::move(default_target)), low(low), high(high), targets(targets) {
 }
 std::string table_switch_insn::to_string() const {
   std::ostringstream oss;
@@ -139,26 +156,15 @@ std::string table_switch_insn::to_string() const {
   oss << "])";
   return oss.str();
 }
-multi_array_insn::multi_array_insn() : id_(reinterpret_cast<uintptr_t>(this)) {
-}
 multi_array_insn::multi_array_insn(const std::string_view& descriptor, uint8_t dims) :
-    descriptor(descriptor), dims(dims), id_(reinterpret_cast<uintptr_t>(this)) {
-}
-uint64_t multi_array_insn::id() const {
-  return id_;
+    descriptor(descriptor), dims(dims) {
 }
 std::string multi_array_insn::to_string() const {
   std::ostringstream oss;
   oss << "multi_array_insn(" << descriptor << ", " << static_cast<int>(dims) << ")";
   return oss.str();
 }
-array_insn::array_insn() : id_(reinterpret_cast<uintptr_t>(this)) {
-}
-array_insn::array_insn(const std::variant<uint8_t, std::string>& type) :
-    type(type), id_(reinterpret_cast<uintptr_t>(this)) {
-}
-uint64_t array_insn::id() const {
-  return id_;
+array_insn::array_insn(const std::variant<uint8_t, std::string>& type) : type(type) {
 }
 std::string array_insn::to_string() const {
   std::ostringstream oss;
@@ -176,14 +182,9 @@ std::string array_insn::to_string() const {
   oss << ")";
   return oss.str();
 }
-invoke_dynamic_insn::invoke_dynamic_insn() : id_(reinterpret_cast<uintptr_t>(this)) {
-}
 invoke_dynamic_insn::invoke_dynamic_insn(const std::string_view& name, const std::string_view& descriptor,
                                          method_handle handle, const std::vector<value>& args) :
-    name(name), descriptor(descriptor), handle(std::move(handle)), args(args), id_(reinterpret_cast<uintptr_t>(this)) {
-}
-uint64_t invoke_dynamic_insn::id() const {
-  return id_;
+    name(name), descriptor(descriptor), handle(std::move(handle)), args(args) {
 }
 std::string invoke_dynamic_insn::to_string() const {
   std::ostringstream oss;
@@ -199,12 +200,6 @@ std::string invoke_dynamic_insn::to_string() const {
   }
   oss << "])";
   return oss.str();
-}
-uintptr_t id(const instruction& insn) {
-  return std::visit([](const auto& i) { return i.id(); }, insn);
-}
-uintptr_t id(instruction&& insn) {
-  return std::visit([](auto&& i) { return i.id(); }, insn);
 }
 static int16_t opcode_impl(const instruction& in) {
   return std::visit(
@@ -371,5 +366,8 @@ void code::clear() noexcept {
   invisible_type_annotations.clear();
   max_stack = 0;
   max_locals = 0;
+}
+void code::clear_instruction() noexcept {
+  std::vector<instruction>::clear();
 }
 } // namespace cafe

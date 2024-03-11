@@ -77,4 +77,86 @@ std::string to_string(const value& v) {
       },
       v);
 }
+
+class_descriptor::class_descriptor(const std::string_view& name) : descriptor_(name) {
+  update();
+}
+std::string class_descriptor::to_string() const {
+  return descriptor_;
+}
+uint8_t class_descriptor::size() const {
+  return 1;
+}
+uint8_t class_descriptor::dims() const {
+  return dims_;
+}
+bool class_descriptor::is_array() const {
+  return dims_ > 0;
+}
+void class_descriptor::set(const std::string_view& name) {
+  descriptor_ = name;
+  update();
+}
+void class_descriptor::update() {
+  dims_ = 0;
+  for (const auto& c : descriptor_) {
+    if (c == '[') {
+      dims_++;
+    } else {
+      break;
+    }
+  }
+}
+std::string to_string(const descriptor& d) {
+  return std::visit([](const auto& arg) -> std::string { return arg.to_string(); }, d);
+}
+uint8_t size(const descriptor& d) {
+  return std::visit([](const auto& arg) -> uint8_t { return arg.size(); }, d);
+}
+descriptor parse_descriptor(const std::string_view& descriptor) {
+  switch (descriptor[0]) {
+    case 'V':
+      return void_descriptor();
+    case 'Z':
+      return boolean_descriptor();
+    case 'B':
+      return byte_descriptor();
+    case 'C':
+      return char_descriptor();
+    case 'S':
+      return short_descriptor();
+    case 'I':
+      return int_descriptor();
+    case 'J':
+      return long_descriptor();
+    case 'F':
+      return float_descriptor();
+    case 'D':
+      return double_descriptor();
+    case '[':
+    case 'L': {
+      std::string internal;
+      for (const auto& c : descriptor) {
+        internal.push_back(c);
+        if (c == ';') {
+          break;
+        }
+      }
+      return class_descriptor(internal);
+    }
+  }
+}
+std::pair<std::vector<descriptor>, descriptor> parse_method_descriptor(const std::string_view& descriptor) {
+  std::vector<cafe::descriptor> args;
+  std::string_view::size_type i = 1;
+  while (descriptor[i] != ')') {
+    std::string_view::size_type j = i;
+    if (descriptor[j] == 'L' || descriptor[j] == '[') {
+      j = descriptor.find(';', j);
+    }
+    args.push_back(parse_descriptor(descriptor.substr(i, j - i + 1)));
+    i = j + 1;
+  }
+  return {args, parse_descriptor(descriptor.substr(i + 1))};
+}
 } // namespace cafe

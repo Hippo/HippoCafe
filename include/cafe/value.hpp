@@ -75,4 +75,51 @@ public:
 };
 
 
+template<char C, uint8_t S = 1>
+class basic_descriptor {
+public:
+  ~basic_descriptor() = default;
+  [[nodiscard]] std::string to_string() const {
+    return {C};
+  }
+  [[nodiscard]] uint8_t size() const {
+    return S;
+  }
+};
+using void_descriptor = basic_descriptor<'V'>;
+using boolean_descriptor = basic_descriptor<'Z'>;
+using byte_descriptor = basic_descriptor<'B'>;
+using char_descriptor = basic_descriptor<'C'>;
+using short_descriptor = basic_descriptor<'S'>;
+using int_descriptor = basic_descriptor<'I'>;
+using long_descriptor = basic_descriptor<'J', 2>;
+using float_descriptor = basic_descriptor<'F'>;
+using double_descriptor = basic_descriptor<'D', 2>;
+class class_descriptor {
+public:
+  class_descriptor() = default;
+  explicit class_descriptor(const std::string_view& name);
+  ~class_descriptor() = default;
+  class_descriptor(const class_descriptor&) = default;
+  class_descriptor(class_descriptor&&) = default;
+  class_descriptor& operator=(const class_descriptor&) = default;
+  class_descriptor& operator=(class_descriptor&&) = default;
+  [[nodiscard]] std::string to_string() const;
+  [[nodiscard]] uint8_t size() const;
+  [[nodiscard]] uint8_t dims() const;
+  [[nodiscard]] bool is_array() const;
+  void set(const std::string_view& name);
+
+private:
+  std::string descriptor_;
+  uint8_t dims_{};
+  void update();
+};
+
+using descriptor = std::variant<void_descriptor, boolean_descriptor, byte_descriptor, char_descriptor, short_descriptor,
+                                int_descriptor, long_descriptor, float_descriptor, double_descriptor, class_descriptor>;
+std::string to_string(const descriptor& d);
+uint8_t size(const descriptor& d);
+descriptor parse_descriptor(const std::string_view& descriptor);
+std::pair<std::vector<descriptor>, descriptor> parse_method_descriptor(const std::string_view& descriptor);
 } // namespace cafe

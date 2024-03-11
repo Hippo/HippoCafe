@@ -102,7 +102,7 @@ std::string data_reader::read_utf() {
   }
   byte_cache_.clear();
   for (auto i = 0; i < utflen; i++) {
-    byte_cache_.push_back(read_i8());
+    byte_cache_.emplace_back(read_i8());
   }
   std::string char_cache;
   char_cache.reserve(utflen);

@@ -240,5 +240,6 @@ public:
 };
 
 std::istream& operator>>(std::istream& stream, class_model& model);
+std::ostream& operator<<(std::ostream& stream, const class_model& model);
 
 } // namespace cafe

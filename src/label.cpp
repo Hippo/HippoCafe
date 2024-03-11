@@ -1,9 +1,18 @@
 #include "cafe/label.hpp"
 
+#include <random>
 #include <sstream>
 
 namespace cafe {
-label::label() : id_(reinterpret_cast<uintptr_t>(this)) {
+
+static uint64_t new_id() {
+  std::random_device rd;
+  std::mt19937 generator(rd());
+  std::uniform_int_distribution<uint64_t> distribution(0, std::numeric_limits<uint64_t>::max());
+  return distribution(generator);
+}
+
+label::label() : id_(new_id()) {
 }
 label::label(const std::string_view& debug_name) : debug_name(debug_name), id_(reinterpret_cast<uintptr_t>(this)) {
 }

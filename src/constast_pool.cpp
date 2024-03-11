@@ -1,3 +1,4 @@
+
 #include "cafe/constant_pool.hpp"
 
 #include <stdexcept>
@@ -59,8 +60,9 @@ uint16_t constant_pool::get_class(const std::string_view& value) {
       }
     }
   }
+  auto value_index = get_utf(value);
   const auto index = static_cast<uint16_t>(size());
-  emplace_back(class_info{get_utf(value)});
+  emplace_back(class_info{value_index});
   return index;
 }
 
@@ -75,8 +77,9 @@ uint16_t constant_pool::get_string(const std::string_view& value) {
       }
     }
   }
+  auto value_index = get_utf(value);
   const auto index = static_cast<uint16_t>(size());
-  emplace_back(string_info{get_utf(value)});
+  emplace_back(string_info{value_index});
   return index;
 }
 
@@ -90,8 +93,9 @@ uint16_t constant_pool::get_module(const std::string_view& value) {
       }
     }
   }
+  auto value_index = get_utf(value);
   const auto index = static_cast<uint16_t>(size());
-  emplace_back(module_info{get_utf(value)});
+  emplace_back(module_info{value_index});
   return index;
 }
 
@@ -105,8 +109,9 @@ uint16_t constant_pool::get_package(const std::string_view& value) {
       }
     }
   }
+  auto value_index = get_utf(value);
   const auto index = static_cast<uint16_t>(size());
-  emplace_back(package_info{get_utf(value)});
+  emplace_back(package_info{value_index});
   return index;
 }
 
@@ -239,8 +244,10 @@ uint16_t constant_pool::get_name_and_type(const std::string_view& name, const st
       }
     }
   }
+  auto name_index = get_utf(name);
+  auto desc = get_utf(descriptor);
   const auto index = static_cast<uint16_t>(size());
-  emplace_back(name_and_type_info{get_utf(name), get_utf(descriptor)});
+  emplace_back(name_and_type_info{name_index, desc});
   return index;
 }
 
@@ -267,8 +274,10 @@ uint16_t constant_pool::get_field_ref(const std::string_view& class_name, const 
       }
     }
   }
+  auto class_index = get_class(class_name);
+  auto desc_index = get_name_and_type(name, descriptor);
   const auto index = static_cast<uint16_t>(size());
-  emplace_back(field_ref_info{get_class(class_name), get_name_and_type(name, descriptor)});
+  emplace_back(field_ref_info{class_index, desc_index});
   return index;
 }
 
@@ -295,8 +304,10 @@ uint16_t constant_pool::get_method_ref(const std::string_view& class_name, const
       }
     }
   }
+  auto class_index = get_class(class_name);
+  auto desc_index = get_name_and_type(name, descriptor);
   const auto index = static_cast<uint16_t>(size());
-  emplace_back(method_ref_info{get_class(class_name), get_name_and_type(name, descriptor)});
+  emplace_back(method_ref_info{class_index, desc_index});
   return index;
 }
 
@@ -323,26 +334,43 @@ uint16_t constant_pool::get_interface_method_ref(const std::string_view& class_n
       }
     }
   }
+  auto class_index = get_class(class_name);
+  auto desc_index = get_name_and_type(name, descriptor);
   const auto index = static_cast<uint16_t>(size());
-  emplace_back(interface_method_ref_info{get_class(class_name), get_name_and_type(name, descriptor)});
+  emplace_back(interface_method_ref_info{class_index, desc_index});
   return index;
 }
+
+uint16_t constant_pool::count() const {
+  uint16_t s = 0;
+  for (const auto& info : *this) {
+    if (std::holds_alternative<pad_info>(info)) {
+      continue;
+    }
+    s++;
+    if (std::holds_alternative<long_info>(info) || std::holds_alternative<double_info>(info)) {
+      s++;
+    }
+  }
+  return s;
+}
+
 
 uint16_t bsm_buffer::get_bsm_index(constant_pool& pool, const method_handle& handle, const std::vector<value>& args) {
   auto handle_index = pool.get_value(*this, handle);
   std::vector<uint16_t> args_index;
   args_index.reserve(args.size());
   for (const auto& arg : args) {
-    args_index.push_back(pool.get_value(*this, arg));
+    args_index.emplace_back(pool.get_value(*this, arg));
   }
-  for (auto i = 0; i < bsms_.size(); i++) {
-    auto& bsm = bsms_[i];
+  for (auto i = 0; i < bsms.size(); i++) {
+    auto& bsm = bsms[i];
     if (bsm.index == handle_index && bsm.arguments == args_index) {
       return static_cast<uint16_t>(i);
     }
   }
-  const auto index = static_cast<uint16_t>(bsms_.size());
-  bsms_.emplace_back(attribute::bootstrap_methods::bootstrap_method{handle_index, args_index});
+  const auto index = static_cast<uint16_t>(bsms.size());
+  bsms.emplace_back(attribute::bootstrap_methods::bootstrap_method{handle_index, args_index});
   return index;
 }
 

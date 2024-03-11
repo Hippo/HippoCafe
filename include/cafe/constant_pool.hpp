@@ -133,14 +133,13 @@ public:
                           const std::string_view& descriptor);
   uint16_t get_interface_method_ref(const std::string_view& class_name, const std::string_view& name,
                                     const std::string_view& descriptor);
+  [[nodiscard]] uint16_t count() const;
 };
 
 class bsm_buffer {
 public:
   uint16_t get_bsm_index(constant_pool& pool, const method_handle& handle, const std::vector<value>& args);
-
-private:
-  std::vector<attribute::bootstrap_methods::bootstrap_method> bsms_;
+  std::vector<attribute::bootstrap_methods::bootstrap_method> bsms;
 };
 
 } // namespace cafe::cp

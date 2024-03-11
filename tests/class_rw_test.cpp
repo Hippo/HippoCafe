@@ -6,7 +6,7 @@
 #include <cafe/class_file.hpp>
 
 TEST(class_file, io) {
-  std::string test_name = "ForLoopTestLong";
+  std::string test_name = "HelloWorld";
   std::ifstream stream(std::string("data/") + test_name + ".class", std::ios::binary);
   cafe::class_file cf;
   stream >> cf;

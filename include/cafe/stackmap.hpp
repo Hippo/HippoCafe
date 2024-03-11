@@ -43,14 +43,14 @@ public:
 
 class same_locals_1_stack_item_frame {
 public:
-  uint8_t frame_type;
+  uint8_t frame_type{};
   verification_type_info stack;
 };
 
 class same_locals_1_stack_item_frame_extended {
 public:
   static constexpr uint8_t frame_type = 247;
-  uint16_t offset_delta;
+  uint16_t offset_delta{};
   verification_type_info stack;
 };
 

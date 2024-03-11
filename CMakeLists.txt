@@ -39,6 +39,8 @@ add_library(HippoCafe
         src/class_rw.cpp
         src/decomposer.hpp
         src/decomposer.cpp
+        include/cafe/analysis.hpp
+        src/analysis.cpp
 )
 
 target_include_directories(HippoCafe PUBLIC ${PROJECT_SOURCE_DIR}/include)

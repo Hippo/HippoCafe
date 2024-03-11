@@ -82,7 +82,7 @@ void write_type_annotation(data_writer& writer, const attribute::type_annotation
 
 constant_pool_visitor::constant_pool_visitor(data_writer& writer) : writer_(writer) {
 }
-void constant_pool_visitor::operator()(const cp::pad_info& info) const {
+void constant_pool_visitor::operator()(const cp::pad_info&) const {
 }
 
 void constant_pool_visitor::operator()(const cp::class_info& info) {

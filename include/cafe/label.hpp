@@ -16,10 +16,10 @@ public:
   label& operator=(const label&) = default;
   label& operator=(label&&) = default;
   bool operator==(const label& other) const;
-  [[nodiscard]] uintptr_t id() const;
+  [[nodiscard]] uint64_t id() const;
   [[nodiscard]] std::string to_string() const;
 
 private:
-  uintptr_t id_;
+  uint64_t id_;
 };
 } // namespace cafe

@@ -31,7 +31,7 @@ protected:
     if (traits_type::eq_int_type(traits_type::eof(), ch)) {
       return traits_type::not_eof(ch);
     }
-    vec_.push_back(traits_type::to_char_type(ch));
+    vec_.emplace_back(traits_type::to_char_type(ch));
     return ch;
   }
 

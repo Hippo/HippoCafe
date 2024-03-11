@@ -12,19 +12,16 @@ namespace cafe {
 class insn {
 public:
   uint8_t opcode{};
-  insn();
+  insn() = default;
   explicit insn(uint8_t opcode);
   virtual ~insn() = default;
   insn(const insn&) = default;
   insn(insn&&) = default;
   insn& operator=(const insn&) = default;
   insn& operator=(insn&&) = default;
-  [[nodiscard]] uintptr_t id() const;
 
-  virtual [[nodiscard]] std::string to_string() const;
 
-private:
-  uintptr_t id_;
+  [[nodiscard]] virtual std::string to_string() const;
 };
 
 class var_insn : public insn {
@@ -76,37 +73,31 @@ class iinc_insn {
 public:
   uint16_t index{};
   int16_t value{};
-  iinc_insn();
+  iinc_insn() = default;
   iinc_insn(uint16_t index, int16_t value);
   ~iinc_insn() = default;
   iinc_insn(const iinc_insn&) = default;
   iinc_insn(iinc_insn&&) = default;
   iinc_insn& operator=(const iinc_insn&) = default;
   iinc_insn& operator=(iinc_insn&&) = default;
-  [[nodiscard]] uintptr_t id() const;
+
 
   [[nodiscard]] std::string to_string() const;
-
-private:
-  uintptr_t id_;
 };
 
 class push_insn {
 public:
   value val;
-  push_insn();
+  push_insn() = default;
   explicit push_insn(value val);
   ~push_insn() = default;
   push_insn(const push_insn&) = default;
   push_insn(push_insn&&) = default;
   push_insn& operator=(const push_insn&) = default;
   push_insn& operator=(push_insn&&) = default;
-  [[nodiscard]] uintptr_t id() const;
+
   [[nodiscard]] uint8_t opcode() const;
   [[nodiscard]] std::string to_string() const;
-
-private:
-  uintptr_t id_;
 };
 
 class branch_insn : public insn {
@@ -126,18 +117,15 @@ class lookup_switch_insn {
 public:
   label default_target;
   std::vector<std::pair<int32_t, label>> targets;
-  lookup_switch_insn();
+  lookup_switch_insn() = default;
   lookup_switch_insn(label default_target, const std::vector<std::pair<int32_t, label>>& targets);
   ~lookup_switch_insn() = default;
   lookup_switch_insn(const lookup_switch_insn&) = default;
   lookup_switch_insn(lookup_switch_insn&&) = default;
   lookup_switch_insn& operator=(const lookup_switch_insn&) = default;
   lookup_switch_insn& operator=(lookup_switch_insn&&) = default;
-  [[nodiscard]] uintptr_t id() const;
-  [[nodiscard]] std::string to_string() const;
 
-private:
-  uintptr_t id_;
+  [[nodiscard]] std::string to_string() const;
 };
 
 class table_switch_insn {
@@ -146,53 +134,44 @@ public:
   int32_t low{};
   int32_t high{};
   std::vector<label> targets;
-  table_switch_insn();
+  table_switch_insn() = default;
   table_switch_insn(label default_target, int32_t low, int32_t high, const std::vector<label>& targets);
   ~table_switch_insn() = default;
   table_switch_insn(const table_switch_insn&) = default;
   table_switch_insn(table_switch_insn&&) = default;
   table_switch_insn& operator=(const table_switch_insn&) = default;
   table_switch_insn& operator=(table_switch_insn&&) = default;
-  [[nodiscard]] uintptr_t id() const;
-  [[nodiscard]] std::string to_string() const;
 
-private:
-  uintptr_t id_;
+  [[nodiscard]] std::string to_string() const;
 };
 
 class multi_array_insn {
 public:
   std::string descriptor;
   uint8_t dims{};
-  multi_array_insn();
+  multi_array_insn() = default;
   multi_array_insn(const std::string_view& descriptor, uint8_t dims);
   ~multi_array_insn() = default;
   multi_array_insn(const multi_array_insn&) = default;
   multi_array_insn(multi_array_insn&&) = default;
   multi_array_insn& operator=(const multi_array_insn&) = default;
   multi_array_insn& operator=(multi_array_insn&&) = default;
-  [[nodiscard]] uintptr_t id() const;
-  [[nodiscard]] std::string to_string() const;
 
-private:
-  uintptr_t id_;
+  [[nodiscard]] std::string to_string() const;
 };
 
 class array_insn {
 public:
   std::variant<uint8_t, std::string> type;
-  array_insn();
+  array_insn() = default;
   explicit array_insn(const std::variant<uint8_t, std::string>& type);
   ~array_insn() = default;
   array_insn(const array_insn&) = default;
   array_insn(array_insn&&) = default;
   array_insn& operator=(const array_insn&) = default;
   array_insn& operator=(array_insn&&) = default;
-  [[nodiscard]] uintptr_t id() const;
-  [[nodiscard]] std::string to_string() const;
 
-private:
-  uintptr_t id_;
+  [[nodiscard]] std::string to_string() const;
 };
 
 class invoke_dynamic_insn {
@@ -201,7 +180,7 @@ public:
   std::string descriptor;
   method_handle handle;
   std::vector<value> args;
-  invoke_dynamic_insn();
+  invoke_dynamic_insn() = default;
   invoke_dynamic_insn(const std::string_view& name, const std::string_view& descriptor, method_handle handle,
                       const std::vector<value>& args);
   ~invoke_dynamic_insn() = default;
@@ -209,18 +188,13 @@ public:
   invoke_dynamic_insn(invoke_dynamic_insn&&) = default;
   invoke_dynamic_insn& operator=(const invoke_dynamic_insn&) = default;
   invoke_dynamic_insn& operator=(invoke_dynamic_insn&&) = default;
-  [[nodiscard]] uintptr_t id() const;
-  [[nodiscard]] std::string to_string() const;
 
-private:
-  uintptr_t id_;
+  [[nodiscard]] std::string to_string() const;
 };
 
 using instruction =
     std::variant<label, insn, var_insn, type_insn, ref_insn, iinc_insn, push_insn, branch_insn, lookup_switch_insn,
                  table_switch_insn, multi_array_insn, array_insn, invoke_dynamic_insn>;
-uintptr_t id(const instruction& insn);
-uintptr_t id(instruction&& insn);
 int16_t opcode(const instruction& insn);
 int16_t opcode(instruction&& insn);
 std::string to_string(const instruction& insn);
@@ -398,6 +372,7 @@ public:
   code& operator=(const code&) = default;
   code& operator=(code&&) = default;
   void clear() noexcept;
+  void clear_instruction() noexcept;
 };
 
 } // namespace cafe

@@ -9,7 +9,8 @@ FetchContent_MakeAvailable(googletest)
 
 add_executable(HippoCafeTest data_rw_test.cpp
         class_rw_test.cpp
-        class_model_test.cpp)
+        class_model_test.cpp
+        desc_parse_test.cpp)
 
 enable_testing()
 add_test(NAME HippoCafeTest COMMAND HippoCafeTest)

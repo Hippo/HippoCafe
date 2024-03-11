@@ -6,6 +6,7 @@
 #include "cafe/constants.hpp"
 #include "cafe/data_rw.hpp"
 #include "composer.hpp"
+#include "decomposer.hpp"
 #include "parser.hpp"
 #include "visitor.hpp"
 
@@ -23,7 +24,7 @@ std::ostream& operator<<(std::ostream& stream, const class_file& file) {
   writer.write_u32(file.magic);
   writer.write_u16(file.minor_version);
   writer.write_u16(file.major_version);
-  writer.write_u16(static_cast<uint16_t>(file.constant_pool.size()));
+  writer.write_u16(file.constant_pool.count() + 1);
   for (const auto& cp_info : file.constant_pool) {
     std::visit(constant_pool_visitor(writer), cp_info);
   }
@@ -284,11 +285,9 @@ std::string class_model::to_string() const {
   oss << ":\n";
   oss << "  version: " << (version >> 16) << '.' << (version & 0xFFFF) << ", access: 0x" << std::hex << access_flags
       << std::dec << "\n";
-  oss << "  fields:\n";
   for (const auto& field : fields) {
     oss << field.to_string() << "\n";
   }
-  oss << "  methods:\n";
   for (const auto& method : methods) {
     oss << method.to_string() << "\n";
   }
@@ -454,5 +453,13 @@ std::istream& operator>>(std::istream& stream, class_model& model) {
   class_composer composer(cf, [](const std::exception&) {});
   composer.compose(model);
   return stream;
+}
+std::ostream& operator<<(std::ostream& stream, const class_model& model) {
+  data_writer writer(stream);
+  decomposer_ctx ctx(writer);
+  ctx.pool.emplace_back(cp::pad_info{});
+  class_decomposer decomposer(ctx);
+  const auto cf = decomposer.decompose(model);
+  return stream << cf;
 }
 } // namespace cafe

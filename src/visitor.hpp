@@ -8,7 +8,7 @@ class constant_pool_visitor {
 public:
   explicit constant_pool_visitor(data_writer& writer);
 
-  void operator()(const cp::pad_info& info) const;
+  void operator()(const cp::pad_info&) const;
 
   void operator()(const cp::class_info& info);
 

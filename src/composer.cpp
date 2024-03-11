@@ -2,6 +2,7 @@
 
 #include "cafe/constants.hpp"
 
+
 namespace cafe {
 
 static std::optional<const attribute::bootstrap_methods*> get_bsms(const class_file& cf) {
@@ -192,7 +193,7 @@ void class_composer::compose(class_model& model) {
     model.super_name = cf_.constant_pool.get_string(cf_.super_class);
     model.interfaces.reserve(cf_.interfaces.size());
     for (const auto& index : cf_.interfaces) {
-      model.interfaces.push_back(cf_.constant_pool.get_string(index));
+      model.interfaces.emplace_back(cf_.constant_pool.get_string(index));
     }
     model.fields.reserve(cf_.fields.size());
     for (const auto& field : cf_.fields) {
@@ -481,7 +482,7 @@ method_model method_composer::compose() {
     if (auto* ex = std::get_if<attribute::exceptions>(&attr)) {
       exceptions_.reserve(ex->exception_index_table.size());
       for (const auto& index : ex->exception_index_table) {
-        exceptions_.push_back(cf_.constant_pool.get_string(index));
+        exceptions_.emplace_back(cf_.constant_pool.get_string(index));
       }
       mm.exceptions = exceptions_;
       break;
@@ -1136,7 +1137,7 @@ code code_composer::compose() {
       case op::ifnull:
       case op::jsr: {
         auto offset = static_cast<int16_t>(bytecode[i++]) << 8 | bytecode[i++];
-        auto target = get_label(insn_start + offset);
+        auto target = get_label(static_cast<int16_t>(insn_start + offset));
         bytemap_instructions.emplace_back(insn_start, branch_insn(opcode, target));
         break;
       }
@@ -1246,7 +1247,7 @@ code code_composer::compose() {
         for (auto j = 0; j < offsets; j++) {
           auto offset = static_cast<int32_t>(bytecode[i++]) << 24 | static_cast<int32_t>(bytecode[i++]) << 16 |
                         static_cast<int32_t>(bytecode[i++]) << 8 | bytecode[i++];
-          labels.push_back(get_label(insn_start + offset));
+          labels.emplace_back(get_label(insn_start + offset));
         }
         bytemap_instructions.emplace_back(insn_start,
                                           table_switch_insn(get_label(insn_start + default_offset), low, high, labels));
@@ -1267,15 +1268,15 @@ code code_composer::compose() {
   for (const auto& [loc, in] : bytemap_instructions) {
     for (const auto& [label_loc, label] : needed_labels_) {
       if (label_loc == loc || (last_loc > label_loc && loc < label_loc)) {
-        c.push_back(label);
+        c.emplace_back(label);
       }
     }
     last_loc = loc;
-    c.push_back(in);
+    c.emplace_back(in);
   }
   for (const auto& [label_loc, label] : needed_labels_) {
     if (last_loc < label_loc) {
-      c.push_back(label);
+      c.emplace_back(label);
     }
   }
 

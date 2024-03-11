@@ -34,3 +34,13 @@ TEST(data_writer, write_utf) {
     ASSERT_EQ(value[i], expected[i]);
   }
 }
+
+TEST(vecstreambuf, test) {
+  std::vector<int8_t> vec;
+  cafe::vecstreambuf buf(vec);
+  std::ostream stream(&buf);
+  stream << "Hello, World!";
+  std::cout << "vec: " << vec.size() << std::endl;
+  stream << "Hello, World!";
+  std::cout << "vec: " << vec.size() << std::endl;
+}

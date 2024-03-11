@@ -1,8 +1,8 @@
 #include "parser.hpp"
 
 #include <sstream>
-
 #include "cafe/constants.hpp"
+
 
 namespace cafe {
 using at = attribute::attribute_type;
@@ -215,7 +215,7 @@ attribute::element_value class_parser::parse_element_value(data_reader& reader) 
       std::vector<attribute::element_value> values;
       values.reserve(num_values);
       for (auto i = 0; i < num_values; i++) {
-        values.push_back(parse_element_value(reader));
+        values.emplace_back(parse_element_value(reader));
       }
       return {tag, std::move(values)};
     }
@@ -231,7 +231,8 @@ attribute::stack_map_frame class_parser::parse_stack_map_frame(data_reader& read
   } else if (frame_type == 247) {
     return attribute::same_locals_1_stack_item_frame_extended{reader.read_u16(), parse_verification_type_info(reader)};
   } else if (frame_type >= 248 && frame_type <= 250) {
-    return attribute::chop_frame{frame_type, reader.read_u16()};
+    auto delta = reader.read_u16();
+    return attribute::chop_frame{frame_type, delta};
   } else if (frame_type == 251) {
     return attribute::same_frame_extended{reader.read_u16()};
   } else if (frame_type >= 252 && frame_type <= 254) {
@@ -240,7 +241,7 @@ attribute::stack_map_frame class_parser::parse_stack_map_frame(data_reader& read
     std::vector<attribute::verification_type_info> locals;
     locals.reserve(number_of_locals);
     for (auto i = 0; i < number_of_locals; i++) {
-      locals.push_back(parse_verification_type_info(reader));
+      locals.emplace_back(parse_verification_type_info(reader));
     }
     return attribute::append_frame{frame_type, offset_delta, std::move(locals)};
   } else if (frame_type == 255) {
@@ -249,13 +250,13 @@ attribute::stack_map_frame class_parser::parse_stack_map_frame(data_reader& read
     std::vector<attribute::verification_type_info> locals;
     locals.reserve(number_of_locals);
     for (auto i = 0; i < number_of_locals; i++) {
-      locals.push_back(parse_verification_type_info(reader));
+      locals.emplace_back(parse_verification_type_info(reader));
     }
     const auto number_of_stack_items = reader.read_u16();
     std::vector<attribute::verification_type_info> stack;
     stack.reserve(number_of_stack_items);
     for (auto i = 0; i < number_of_stack_items; i++) {
-      stack.push_back(parse_verification_type_info(reader));
+      stack.emplace_back(parse_verification_type_info(reader));
     }
     return attribute::full_frame{offset_delta, std::move(locals), std::move(stack)};
   }
@@ -315,7 +316,7 @@ attribute::attribute class_parser::parse_attribute(data_reader& reader, const cp
           std::vector<attribute::attribute> attributes;
           attributes.reserve(attributes_count);
           for (auto i = 0; i < attributes_count; i++) {
-            attributes.push_back(parse_attribute(r, pool, oak));
+            attributes.emplace_back(parse_attribute(r, pool, oak));
           }
           return {attribute::code{max_stack, max_locals, std::move(bytecode), std::move(exceptions),
                                   std::move(attributes)}};
@@ -325,7 +326,7 @@ attribute::attribute class_parser::parse_attribute(data_reader& reader, const cp
           std::vector<attribute::stack_map_frame> entries;
           entries.reserve(number_of_entries);
           for (auto i = 0; i < number_of_entries; i++) {
-            entries.push_back(parse_stack_map_frame(r));
+            entries.emplace_back(parse_stack_map_frame(r));
           }
           return {attribute::stack_map_table{std::move(entries)}};
         }
@@ -552,7 +553,7 @@ attribute::attribute class_parser::parse_attribute(data_reader& reader, const cp
             std::vector<attribute::attribute> attributes;
             attributes.reserve(num_attributes);
             for (auto j = 0; j < num_attributes; j++) {
-              attributes.push_back(parse_attribute(r, pool, oak));
+              attributes.emplace_back(parse_attribute(r, pool, oak));
             }
             components.push_back({n_index, descriptor_index, std::move(attributes)});
           }
@@ -584,7 +585,7 @@ void class_parser::parse(data_reader& reader, class_file& file) {
   std::vector<uint16_t> interfaces;
   interfaces.reserve(interfaces_count);
   for (auto i = 0; i < interfaces_count; i++) {
-    interfaces.push_back(reader.read_u16());
+    interfaces.emplace_back(reader.read_u16());
   }
   const auto fields_count = reader.read_u16();
   std::vector<field_info> fields;
@@ -597,7 +598,7 @@ void class_parser::parse(data_reader& reader, class_file& file) {
     std::vector<attribute::attribute> attributes;
     attributes.reserve(attributes_count);
     for (auto j = 0; j < attributes_count; j++) {
-      attributes.push_back(parse_attribute(reader, constant_pool, oak));
+      attributes.emplace_back(parse_attribute(reader, constant_pool, oak));
     }
     fields.push_back({access, name_index, descriptor_index, std::move(attributes)});
   }
@@ -612,7 +613,7 @@ void class_parser::parse(data_reader& reader, class_file& file) {
     std::vector<attribute::attribute> attributes;
     attributes.reserve(attributes_count);
     for (auto j = 0; j < attributes_count; j++) {
-      attributes.push_back(parse_attribute(reader, constant_pool, oak));
+      attributes.emplace_back(parse_attribute(reader, constant_pool, oak));
     }
     methods.push_back({access, name_index, descriptor_index, std::move(attributes)});
   }
@@ -620,7 +621,7 @@ void class_parser::parse(data_reader& reader, class_file& file) {
   std::vector<attribute::attribute> attributes;
   attributes.reserve(attributes_count);
   for (auto i = 0; i < attributes_count; i++) {
-    attributes.push_back(parse_attribute(reader, constant_pool, oak));
+    attributes.emplace_back(parse_attribute(reader, constant_pool, oak));
   }
 
   file.magic = magic;
