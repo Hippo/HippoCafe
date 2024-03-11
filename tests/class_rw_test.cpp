@@ -3,7 +3,7 @@
 
 #include <gtest/gtest.h>
 
-#include <cafe/class_file.hpp>
+#include <hippo/cafe.hpp>
 
 TEST(class_file, io) {
   std::string test_name = "HelloWorld";

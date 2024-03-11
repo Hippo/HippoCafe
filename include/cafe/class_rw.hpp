@@ -4,6 +4,7 @@
 #include <istream>
 
 #include "class_file.hpp"
+#include "model.hpp"
 
 namespace cafe {
 

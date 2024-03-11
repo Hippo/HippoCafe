@@ -1,5 +1,6 @@
-#include <cafe/value.hpp>
 #include <gtest/gtest.h>
+
+#include <hippo/cafe.hpp>
 
 static void test_desc(const std::string_view& desc) {
   auto [args, return_type] = cafe::parse_method_descriptor(desc);

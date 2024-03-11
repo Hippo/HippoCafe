@@ -5,8 +5,8 @@
 #include <variant>
 #include <vector>
 
+#include "cafe/value.hpp"
 #include "attribute.hpp"
-#include "value.hpp"
 
 namespace cafe::cp {
 class class_info {

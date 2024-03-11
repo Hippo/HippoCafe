@@ -13,34 +13,40 @@ endif ()
 add_library(HippoCafe
         include/cafe/data_rw.hpp
         src/data_rw.cpp
-        include/cafe/constant_pool.hpp
-        include/cafe/attribute.hpp
-        include/cafe/stackmap.hpp
-        include/cafe/annotation.hpp
-        include/cafe/class_file.hpp
+        include/cafe/class_file/constant_pool.hpp
+        include/cafe/class_file/attribute.hpp
+        include/cafe/class_file/stackmap.hpp
+        include/cafe/model/annotation.hpp
         include/cafe/constants.hpp
-        src/class_file.cpp
-        src/visitor.hpp
-        src/visitor.cpp
+        src/class_file/visitor.hpp
+        src/class_file/visitor.cpp
         include/cafe/value.hpp
         src/value.cpp
-        include/cafe/instruction.hpp
-        src/annotation.cpp
+        include/cafe/model/instruction.hpp
+        src/model/annotation.cpp
         src/constast_pool.cpp
-        src/instruction.cpp
-        src/composer.hpp
-        src/composer.cpp
-        src/parser.hpp
-        src/parser.cpp
+        src/model/instruction.cpp
+        src/model/composer.hpp
+        src/model/composer.cpp
+        src/class_file/parser.hpp
+        src/class_file/parser.cpp
         src/constants.cpp
-        include/cafe/label.hpp
-        src/label.cpp
+        include/cafe/model/label.hpp
+        src/model/label.cpp
         include/cafe/class_rw.hpp
         src/class_rw.cpp
-        src/decomposer.hpp
-        src/decomposer.cpp
-        include/cafe/analysis.hpp
-        src/analysis.cpp
+        src/model/decomposer.hpp
+        src/model/decomposer.cpp
+        include/cafe/model/analysis.hpp
+        src/model/analysis.cpp
+        include/cafe/class_file/class_file.hpp
+        include/cafe/class_file/annotation.hpp
+        include/cafe/model/class_model.hpp
+        src/class_file/class_file.cpp
+        include/cafe/class_file.hpp
+        src/model/class_model.cpp
+        include/cafe/model.hpp
+        include/hippo/cafe.hpp
 )
 
 target_include_directories(HippoCafe PUBLIC ${PROJECT_SOURCE_DIR}/include)

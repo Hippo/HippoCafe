@@ -5,7 +5,7 @@
 
 #include <gtest/gtest.h>
 
-#include <cafe/data_rw.hpp>
+#include <hippo/cafe.hpp>
 
 TEST(data_reader, read_utf) {
   std::vector<int8_t> data = {0,   28,  -19, -96, -66, -19, -74, -101, -30,  -104, -107, -17, -72, -113, 32,

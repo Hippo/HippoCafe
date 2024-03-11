@@ -2,7 +2,7 @@
 #include <utility>
 
 #include "cafe/constants.hpp"
-#include "cafe/instruction.hpp"
+#include "cafe/model/instruction.hpp"
 
 namespace cafe {
 insn::insn(uint8_t opcode) : opcode(opcode) {

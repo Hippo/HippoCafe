@@ -2,9 +2,10 @@
 
 #include <functional>
 
-#include "cafe/annotation.hpp"
 #include "cafe/class_file.hpp"
-#include "cafe/instruction.hpp"
+#include "cafe/model/class_model.hpp"
+#include "cafe/model/annotation.hpp"
+#include "cafe/model/instruction.hpp"
 
 namespace cafe {
 

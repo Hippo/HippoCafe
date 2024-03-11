@@ -1,5 +1,5 @@
 
-#include "cafe/constant_pool.hpp"
+#include "cafe/class_file/constant_pool.hpp"
 
 #include <stdexcept>
 

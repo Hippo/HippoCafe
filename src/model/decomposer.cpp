@@ -1,7 +1,7 @@
 #include "decomposer.hpp"
 
-#include "cafe/analysis.hpp"
 #include "cafe/constants.hpp"
+#include "cafe/model/analysis.hpp"
 
 #include <iostream>
 

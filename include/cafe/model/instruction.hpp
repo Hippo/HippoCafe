@@ -3,9 +3,9 @@
 #include <cstdint>
 #include <optional>
 
+#include "cafe/value.hpp"
 #include "annotation.hpp"
 #include "label.hpp"
-#include "value.hpp"
 
 namespace cafe {
 

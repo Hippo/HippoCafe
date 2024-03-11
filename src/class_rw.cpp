@@ -1,6 +1,6 @@
 #include "cafe/class_rw.hpp"
 
-#include "composer.hpp"
+#include "model/composer.hpp"
 
 namespace cafe {
 class_reader::class_reader(class_model& model, const std::function<void(const std::exception&)>& error_handler) :

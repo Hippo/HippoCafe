@@ -1,7 +1,7 @@
 #pragma once
 
-#include "cafe/class_file.hpp"
 #include "cafe/data_rw.hpp"
+#include "cafe/class_file.hpp"
 
 namespace cafe {
 class constant_pool_visitor {

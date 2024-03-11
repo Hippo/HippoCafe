@@ -3,10 +3,7 @@
 
 #include <gtest/gtest.h>
 
-#include <cafe/class_file.hpp>
-#include <cafe/class_rw.hpp>
-
-#include "cafe/constants.hpp"
+#include <hippo/cafe.hpp>
 
 TEST(class_model, test) {
   std::ifstream stream("data/ArrayTest.class", std::ios::binary);
@@ -17,7 +14,7 @@ TEST(class_model, test) {
 }
 
 TEST(class_model, rw) {
-  std::string test_name = "CalculationTest";
+  std::string test_name = "GraxCrackMe";
   std::ifstream stream(std::string("data/") + test_name + ".class", std::ios::binary);
   cafe::class_model model;
   stream >> model;

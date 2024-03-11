@@ -1,4 +1,4 @@
-#include "cafe/label.hpp"
+#include "cafe/model/label.hpp"
 
 #include <random>
 #include <sstream>

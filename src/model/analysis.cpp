@@ -1,4 +1,4 @@
-#include "cafe/analysis.hpp"
+#include "cafe/model/analysis.hpp"
 #include "cafe/constants.hpp"
 
 namespace cafe::analysis {
