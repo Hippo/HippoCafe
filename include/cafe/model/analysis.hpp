@@ -1,9 +1,10 @@
 #pragma once
 
+#include "cafe/apidef.hpp"
 #include "instruction.hpp"
 
 namespace cafe::analysis {
-class max_size {
+class CAFE_API max_size {
 public:
   max_size() = default;
   size_t operator()(const label&) const;

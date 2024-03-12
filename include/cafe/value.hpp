@@ -4,10 +4,11 @@
 #include <string_view>
 #include <variant>
 #include <vector>
+#include "apidef.hpp"
 
 namespace cafe {
 
-class class_value {
+class CAFE_API class_value {
 public:
   class_value() = default;
   class_value(const std::string_view& value);
@@ -25,7 +26,7 @@ private:
   std::string binary_;
 };
 
-class method_handle {
+class CAFE_API method_handle {
 public:
   uint8_t kind{};
   std::string owner;
@@ -41,7 +42,7 @@ public:
   method_handle& operator=(method_handle&&) = default;
 };
 
-class method_type {
+class CAFE_API method_type {
 public:
   std::string descriptor;
   method_type() = default;
@@ -58,7 +59,7 @@ using value =
     std::variant<int32_t, float, int64_t, double, class_value, std::string, method_handle, method_type, dynamic>;
 std::string to_string(const value& v);
 
-class dynamic {
+class CAFE_API dynamic {
 public:
   std::string name;
   std::string descriptor;
@@ -76,7 +77,7 @@ public:
 
 
 template<char C, uint8_t S = 1>
-class basic_descriptor {
+class CAFE_API basic_descriptor {
 public:
   ~basic_descriptor() = default;
   [[nodiscard]] std::string to_string() const {
@@ -95,7 +96,7 @@ using int_descriptor = basic_descriptor<'I'>;
 using long_descriptor = basic_descriptor<'J', 2>;
 using float_descriptor = basic_descriptor<'F'>;
 using double_descriptor = basic_descriptor<'D', 2>;
-class class_descriptor {
+class CAFE_API class_descriptor {
 public:
   class_descriptor() = default;
   explicit class_descriptor(const std::string_view& name);
@@ -118,8 +119,8 @@ private:
 
 using descriptor = std::variant<void_descriptor, boolean_descriptor, byte_descriptor, char_descriptor, short_descriptor,
                                 int_descriptor, long_descriptor, float_descriptor, double_descriptor, class_descriptor>;
-std::string to_string(const descriptor& d);
-uint8_t size(const descriptor& d);
-descriptor parse_descriptor(const std::string_view& descriptor);
-std::pair<std::vector<descriptor>, descriptor> parse_method_descriptor(const std::string_view& descriptor);
+CAFE_API std::string to_string(const descriptor& d);
+CAFE_API uint8_t size(const descriptor& d);
+CAFE_API descriptor parse_descriptor(const std::string_view& descriptor);
+CAFE_API std::pair<std::vector<descriptor>, descriptor> parse_method_descriptor(const std::string_view& descriptor);
 } // namespace cafe

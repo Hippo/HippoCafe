@@ -7,12 +7,13 @@
 #include <string>
 #include <string_view>
 #include <vector>
+#include "apidef.hpp"
 
 
 namespace cafe {
 
 template<typename CharT>
-class vecstreambuf : public std::streambuf {
+class CAFE_API vecstreambuf : public std::streambuf {
 public:
   using int_type = std::streambuf::int_type;
   using traits_type = std::streambuf::traits_type;
@@ -40,7 +41,7 @@ private:
 };
 
 template<typename CharT>
-class imemstreambuf : public std::streambuf {
+class CAFE_API imemstreambuf : public std::streambuf {
 public:
   imemstreambuf(const CharT* data, size_t length) {
     auto* data_ptr = reinterpret_cast<char*>(const_cast<CharT*>(data));
@@ -50,7 +51,7 @@ public:
 };
 
 
-class data_reader {
+class CAFE_API data_reader {
 public:
   data_reader(std::istream& stream);
 
@@ -99,7 +100,7 @@ private:
   std::vector<int8_t> byte_cache_;
 };
 
-class data_writer {
+class CAFE_API data_writer {
 public:
   data_writer(std::ostream& stream);
 

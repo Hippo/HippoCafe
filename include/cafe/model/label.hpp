@@ -3,9 +3,10 @@
 #include <cstdint>
 #include <string>
 #include <string_view>
+#include "cafe/apidef.hpp"
 
 namespace cafe {
-class label {
+class CAFE_API label {
 public:
   std::string debug_name;
   label();

@@ -6,6 +6,7 @@
 #include <variant>
 #include <vector>
 
+#include "cafe/apidef.hpp"
 #include "cafe/value.hpp"
 #include "label.hpp"
 
@@ -14,7 +15,7 @@ namespace cafe {
 
 class element_value;
 
-class annotation {
+class CAFE_API annotation {
 public:
   std::string descriptor;
   annotation() = default;
@@ -28,7 +29,7 @@ public:
   [[nodiscard]] std::string to_string() const;
 };
 
-class element_value {
+class CAFE_API element_value {
 public:
   using type = std::variant<int8_t, uint16_t, double, float, int32_t, int64_t, int16_t, bool, std::string,
                             std::pair<std::string, std::string>, class_value, annotation, std::vector<element_value>>;
@@ -38,9 +39,9 @@ public:
 
 
 namespace target {
-class type_parameter {
+class CAFE_API type_parameter {
 public:
-  uint8_t index;
+  uint8_t index{};
   explicit type_parameter(uint8_t index);
   ~type_parameter() = default;
   type_parameter(const type_parameter&) = default;
@@ -49,7 +50,7 @@ public:
   type_parameter& operator=(type_parameter&&) = default;
 };
 
-class supertype {
+class CAFE_API supertype {
 public:
   std::string name;
   explicit supertype(const std::string_view& name);
@@ -60,10 +61,10 @@ public:
   supertype& operator=(supertype&&) = default;
 };
 
-class type_parameter_bound {
+class CAFE_API type_parameter_bound {
 public:
-  uint8_t type_parameter_index;
-  uint8_t bound_index;
+  uint8_t type_parameter_index{};
+  uint8_t bound_index{};
   type_parameter_bound(uint8_t type_parameter_index, uint8_t bound_index);
   ~type_parameter_bound() = default;
   type_parameter_bound(const type_parameter_bound&) = default;
@@ -72,14 +73,14 @@ public:
   type_parameter_bound& operator=(type_parameter_bound&&) = default;
 };
 
-class empty {
+class CAFE_API empty {
 public:
   empty() = default;
 };
 
-class formal_parameter {
+class CAFE_API formal_parameter {
 public:
-  uint8_t index;
+  uint8_t index{};
   explicit formal_parameter(uint8_t index);
   ~formal_parameter() = default;
   formal_parameter(const formal_parameter&) = default;
@@ -88,7 +89,7 @@ public:
   formal_parameter& operator=(formal_parameter&&) = default;
 };
 
-class throws {
+class CAFE_API throws {
 public:
   std::string name;
   explicit throws(const std::string_view& name);
@@ -98,11 +99,11 @@ public:
   throws& operator=(const throws&) = default;
   throws& operator=(throws&&) = default;
 };
-class local {
+class CAFE_API local {
 public:
   label start;
   label end;
-  uint16_t index;
+  uint16_t index{};
   local(label start, label end, uint16_t index);
   ~local() = default;
   local(const local&) = default;
@@ -110,7 +111,7 @@ public:
   local& operator=(const local&) = default;
   local& operator=(local&&) = default;
 };
-class localvar {
+class CAFE_API localvar {
 public:
   std::vector<local> table;
   explicit localvar(const std::vector<local>& table);
@@ -120,7 +121,7 @@ public:
   localvar& operator=(const localvar&) = default;
   localvar& operator=(localvar&&) = default;
 };
-class catch_target {
+class CAFE_API catch_target {
 public:
   label handler_label;
   explicit catch_target(label handler_label);
@@ -130,7 +131,7 @@ public:
   catch_target& operator=(const catch_target&) = default;
   catch_target& operator=(catch_target&&) = default;
 };
-class offset_target {
+class CAFE_API offset_target {
 public:
   label offset;
   explicit offset_target(label offset);
@@ -140,10 +141,10 @@ public:
   offset_target& operator=(const offset_target&) = default;
   offset_target& operator=(offset_target&&) = default;
 };
-class type_argument {
+class CAFE_API type_argument {
 public:
   label offset;
-  uint8_t index;
+  uint8_t index{};
   type_argument(label offset, uint8_t index);
   ~type_argument() = default;
   type_argument(const type_argument&) = default;
@@ -156,8 +157,8 @@ public:
 using type_annotation_target = std::variant<target::type_parameter, target::supertype, target::type_parameter_bound,
                                             target::empty, target::formal_parameter, target::throws, target::localvar,
                                             target::catch_target, target::offset_target, target::type_argument>;
-std::string to_string(const type_annotation_target& target);
-class type_path {
+CAFE_API std::string to_string(const type_annotation_target& target);
+class CAFE_API type_path {
 public:
   std::vector<std::pair<uint8_t, uint8_t>> path;
   type_path() = default;
@@ -170,7 +171,7 @@ public:
   [[nodiscard]] std::string to_string() const;
 };
 
-class type_annotation {
+class CAFE_API type_annotation {
 public:
   uint8_t target_type{};
   type_annotation_target target_info;

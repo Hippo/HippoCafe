@@ -3,15 +3,24 @@ project(HippoCafe)
 
 set(CMAKE_CXX_STANDARD 17)
 
-option(BUILD_SHARED_LIBS "Build as a shared library" OFF)
-option(BUILD_TESTS "Build tests" ON)
 
-if (BUILD_TESTS)
+if (${CMAKE_SOURCE_DIR} STREQUAL ${CMAKE_CURRENT_SOURCE_DIR})
+    set(CAFE_STANDALONE ON)
+else ()
+    set(CAFE_STANDALONE OFF)
+endif ()
+
+
+option(BUILD_SHARED_LIBS "Build as a shared library" OFF)
+option(CAFE_BUILD_TESTS "Build tests" ${CAFE_STANDALONE})
+
+
+if (${CAFE_BUILD_TESTS})
     add_subdirectory(tests)
 endif ()
 
-add_library(HippoCafe
-        include/cafe/data_rw.hpp
+
+add_library(HippoCafe include/cafe/data_rw.hpp
         src/data_rw.cpp
         include/cafe/class_file/constant_pool.hpp
         include/cafe/class_file/attribute.hpp
@@ -47,6 +56,19 @@ add_library(HippoCafe
         src/model/class_model.cpp
         include/cafe/model.hpp
         include/hippo/cafe.hpp
-)
+        include/cafe/apidef.hpp)
+
+if (${BUILD_SHARED_LIBS})
+    target_compile_definitions(HippoCafe PRIVATE CAFE_BUILDING_LIB)
+else ()
+    target_compile_definitions(HippoCafe PUBLIC CAFE_STATIC_LIB)
+endif ()
+
+
+if (${BUILD_SHARED_LIBS})
+    set_property(TARGET HippoCafe PROPERTY POSITION_INDEPENDENT_CODE ON)
+endif ()
+
+target_compile_options(HippoCafe PRIVATE /W0)
 
 target_include_directories(HippoCafe PUBLIC ${PROJECT_SOURCE_DIR}/include)

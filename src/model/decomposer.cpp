@@ -86,13 +86,12 @@ class_file class_decomposer::decompose(const class_model& class_model) {
     ctx_.pool.get_utf("Module");
     auto name_index = ctx_.pool.get_utf(class_model.module->name);
     auto version_index = ctx_.pool.get_utf(class_model.module->version);
-    std::vector<attribute::module::require>
-      requires;
-    requires.reserve(class_model.module->requires.size());
-    for (const auto& req : class_model.module->requires) {
+    std::vector<attribute::module::mod_require> mod_requires;
+    mod_requires.reserve(class_model.module->require_models.size());
+    for (const auto& req : class_model.module->require_models) {
       auto index = ctx_.pool.get_module(req.name);
       auto ver_index = static_cast<uint16_t>(req.version.empty() ? 0 : ctx_.pool.get_utf(req.version));
-      requires.emplace_back(attribute::module::require{index, req.access_flags, ver_index});
+      mod_requires.emplace_back(attribute::module::mod_require{index, req.access_flags, ver_index});
     }
     std::vector<attribute::module::mod_export> exports;
     exports.reserve(class_model.module->exports.size());
@@ -132,8 +131,8 @@ class_file class_decomposer::decompose(const class_model& class_model) {
       }
       provides.emplace_back(attribute::module::provide{index, with_index});
     }
-    cf.attributes.emplace_back(attribute::module{name_index, class_model.module->access_flags, version_index, requires,
-                                                 exports, opens, uses, provides});
+    cf.attributes.emplace_back(attribute::module{name_index, class_model.module->access_flags, version_index,
+                                                 mod_requires, exports, opens, uses, provides});
   }
 
   if (!class_model.module_packages.empty()) {

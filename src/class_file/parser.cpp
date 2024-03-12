@@ -479,11 +479,10 @@ attribute::attribute class_parser::parse_attribute(data_reader& reader, const cp
           const auto module_version_index = r.read_u16();
 
           const auto requires_count = r.read_u16();
-          std::vector<attribute::module::require>
-            requires;
-          requires.reserve(requires_count);
+          std::vector<attribute::module::mod_require> mod_requires;
+          mod_requires.reserve(requires_count);
           for (auto i = 0; i < requires_count; i++) {
-            requires.push_back({r.read_u16(), r.read_u16(), r.read_u16()});
+            mod_requires.push_back({r.read_u16(), r.read_u16(), r.read_u16()});
           }
 
           const auto exports_count = r.read_u16();
@@ -525,7 +524,7 @@ attribute::attribute class_parser::parse_attribute(data_reader& reader, const cp
             provides.push_back({provides_index, std::move(provides_with)});
           }
 
-          return {attribute::module{module_name_index, module_flags, module_version_index, std::move(requires),
+          return {attribute::module{module_name_index, module_flags, module_version_index, std::move(mod_requires),
                                     std::move(exports), std::move(opens), std::move(uses), std::move(provides)}};
         }
         case at::module_package: {

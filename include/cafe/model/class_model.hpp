@@ -3,15 +3,15 @@
 #include <cstdint>
 #include <istream>
 #include <ostream>
-#include <vector>
 #include <string>
 #include <string_view>
 #include <vector>
 
+#include "cafe/apidef.hpp"
 #include "instruction.hpp"
 
 namespace cafe {
-class field_model {
+class CAFE_API field_model {
 public:
   uint16_t access_flags{};
   std::string name;
@@ -33,7 +33,7 @@ public:
   [[nodiscard]] std::string to_string() const;
 };
 
-class method_model {
+class CAFE_API method_model {
 public:
   uint16_t access_flags{};
   std::string name;
@@ -60,7 +60,7 @@ public:
   [[nodiscard]] std::string to_string() const;
 };
 
-class inner_class {
+class CAFE_API inner_class {
 public:
   std::string name;
   std::string outer_name;
@@ -75,7 +75,7 @@ public:
   inner_class& operator=(inner_class&&) = default;
 };
 
-class requires_model {
+class CAFE_API requires_model {
 public:
   std::string name;
   uint16_t access_flags{};
@@ -88,7 +88,7 @@ public:
   requires_model& operator=(requires_model&&) = default;
 };
 
-class exports_model {
+class CAFE_API exports_model {
 public:
   std::string package;
   uint16_t access_flags{};
@@ -101,7 +101,7 @@ public:
   exports_model& operator=(exports_model&&) = default;
 };
 
-class opens_model {
+class CAFE_API opens_model {
 public:
   std::string package;
   uint16_t access_flags{};
@@ -114,7 +114,7 @@ public:
   opens_model& operator=(opens_model&&) = default;
 };
 
-class provides_model {
+class CAFE_API provides_model {
 public:
   std::string service;
   std::vector<std::string> providers;
@@ -126,7 +126,7 @@ public:
   provides_model& operator=(provides_model&&) = default;
 };
 
-class module_model {
+class CAFE_API module_model {
 public:
   std::string name;
   uint16_t access_flags{};
@@ -137,15 +137,14 @@ public:
   module_model(module_model&&) = default;
   module_model& operator=(const module_model&) = default;
   module_model& operator=(module_model&&) = default;
-  std::vector<requires_model>
-    requires;
+  std::vector<requires_model> require_models;
   std::vector<exports_model> exports;
   std::vector<opens_model> opens;
   std::vector<std::string> uses;
   std::vector<provides_model> provides;
 };
 
-class record_component {
+class CAFE_API record_component {
 public:
   std::string name;
   std::string descriptor;
@@ -162,7 +161,7 @@ public:
   std::vector<type_annotation> invisible_type_annotations;
 };
 
-class class_model {
+class CAFE_API class_model {
 public:
   uint32_t version{};
   uint16_t access_flags{};
@@ -202,6 +201,6 @@ public:
   [[nodiscard]] std::string to_string() const;
 };
 
-std::istream& operator>>(std::istream& stream, class_model& model);
-std::ostream& operator<<(std::ostream& stream, const class_model& model);
-}
+CAFE_API std::istream& operator>>(std::istream& stream, class_model& model);
+CAFE_API std::ostream& operator<<(std::ostream& stream, const class_model& model);
+} // namespace cafe

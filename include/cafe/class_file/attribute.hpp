@@ -5,10 +5,11 @@
 #include <vector>
 
 #include "annotation.hpp"
+#include "cafe/apidef.hpp"
 #include "stackmap.hpp"
 
 namespace cafe::attribute {
-enum class attribute_type : uint8_t {
+enum class CAFE_API attribute_type : uint8_t {
   constant_value,
   code,
   stack_map_table,
@@ -41,31 +42,31 @@ enum class attribute_type : uint8_t {
   permitted_subclasses
 };
 
-class unknown {
+class CAFE_API unknown {
 public:
   uint16_t name_index;
   std::vector<uint8_t> info;
 };
 
-class constant_value {
+class CAFE_API constant_value {
 public:
   uint16_t index;
 };
 
 
-class stack_map_table {
+class CAFE_API stack_map_table {
 public:
   std::vector<stack_map_frame> entries;
 };
 
-class exceptions {
+class CAFE_API exceptions {
 public:
   std::vector<uint16_t> exception_index_table;
 };
 
-class inner_classes {
+class CAFE_API inner_classes {
 public:
-  struct inner_class {
+  struct CAFE_API inner_class {
     uint16_t inner_index;
     uint16_t outer_index;
     uint16_t name_index;
@@ -75,32 +76,32 @@ public:
   std::vector<inner_class> classes;
 };
 
-class enclosing_method {
+class CAFE_API enclosing_method {
 public:
   uint16_t class_index;
   uint16_t method_index;
 };
 
-class synthetic {};
+class CAFE_API synthetic {};
 
-class signature {
+class CAFE_API signature {
 public:
   uint16_t index;
 };
 
-class source_file {
+class CAFE_API source_file {
 public:
   uint16_t index;
 };
 
-class source_debug_extension {
+class CAFE_API source_debug_extension {
 public:
   std::vector<uint8_t> debug_extension;
 };
 
-class line_number_table {
+class CAFE_API line_number_table {
 public:
-  struct line_number {
+  struct CAFE_API line_number {
     uint16_t start_pc;
     uint16_t number;
   };
@@ -108,9 +109,9 @@ public:
   std::vector<line_number> line_numbers;
 };
 
-class local_variable_table {
+class CAFE_API local_variable_table {
 public:
-  struct local_variable {
+  struct CAFE_API local_variable {
     uint16_t start_pc;
     uint16_t length;
     uint16_t name_index;
@@ -121,9 +122,9 @@ public:
   std::vector<local_variable> local_variables;
 };
 
-class local_variable_type_table {
+class CAFE_API local_variable_type_table {
 public:
-  struct local_variable {
+  struct CAFE_API local_variable {
     uint16_t start_pc;
     uint16_t length;
     uint16_t name_index;
@@ -134,46 +135,46 @@ public:
   std::vector<local_variable> local_variables;
 };
 
-class deprecated {};
+class CAFE_API deprecated {};
 
-class runtime_visible_annotations {
+class CAFE_API runtime_visible_annotations {
 public:
   std::vector<annotation> annotations;
 };
 
-class runtime_invisible_annotations {
+class CAFE_API runtime_invisible_annotations {
 public:
   std::vector<annotation> annotations;
 };
 
-class runtime_visible_parameter_annotations {
+class CAFE_API runtime_visible_parameter_annotations {
 public:
   std::vector<std::vector<annotation>> parameter_annotations;
 };
 
-class runtime_invisible_parameter_annotations {
+class CAFE_API runtime_invisible_parameter_annotations {
 public:
   std::vector<std::vector<annotation>> parameter_annotations;
 };
 
-class runtime_visible_type_annotations {
+class CAFE_API runtime_visible_type_annotations {
 public:
   std::vector<type_annotation> annotations;
 };
 
-class runtime_invisible_type_annotations {
+class CAFE_API runtime_invisible_type_annotations {
 public:
   std::vector<type_annotation> annotations;
 };
 
-class annotation_default {
+class CAFE_API annotation_default {
 public:
   element_value default_value;
 };
 
-class bootstrap_methods {
+class CAFE_API bootstrap_methods {
 public:
-  struct bootstrap_method {
+  struct CAFE_API bootstrap_method {
     uint16_t index;
     std::vector<uint16_t> arguments;
   };
@@ -181,9 +182,9 @@ public:
   std::vector<bootstrap_method> methods;
 };
 
-class method_parameters {
+class CAFE_API method_parameters {
 public:
-  struct parameter {
+  struct CAFE_API parameter {
     uint16_t name_index;
     uint16_t access_flags;
   };
@@ -191,32 +192,31 @@ public:
   std::vector<parameter> parameters;
 };
 
-class module {
+class CAFE_API module {
 public:
-  uint16_t module_name_index;
-  uint16_t module_flags;
-  uint16_t module_version_index;
+  uint16_t module_name_index{};
+  uint16_t module_flags{};
+  uint16_t module_version_index{};
 
-  struct require {
+  struct CAFE_API mod_require {
     uint16_t require_index;
     uint16_t require_flags;
     uint16_t require_version_index;
   };
 
-  std::vector<require>
-    requires;
+  std::vector<mod_require> mod_requires;
 
-  struct mod_export {
-    uint16_t exports_index;
-    uint16_t exports_flags;
+  struct CAFE_API mod_export {
+    uint16_t exports_index{};
+    uint16_t exports_flags{};
     std::vector<uint16_t> exports_to_index;
   };
 
   std::vector<mod_export> exports;
 
-  struct open {
-    uint16_t opens_index;
-    uint16_t opens_flags;
+  struct CAFE_API open {
+    uint16_t opens_index{};
+    uint16_t opens_flags{};
     std::vector<uint16_t> opens_to_index;
   };
 
@@ -224,36 +224,36 @@ public:
 
   std::vector<uint16_t> uses;
 
-  struct provide {
-    uint16_t provides_index;
+  struct CAFE_API provide {
+    uint16_t provides_index{};
     std::vector<uint16_t> provides_with_index;
   };
 
   std::vector<provide> provides;
 };
 
-class module_packages {
+class CAFE_API module_packages {
 public:
   std::vector<uint16_t> package_indices;
 };
 
-class module_main_class {
+class CAFE_API module_main_class {
 public:
   uint16_t index;
 };
 
-class nest_host {
+class CAFE_API nest_host {
 public:
   uint16_t index;
 };
 
-class nest_members {
+class CAFE_API nest_members {
 public:
   std::vector<uint16_t> classes;
 };
 
 
-class permitted_subclasses {
+class CAFE_API permitted_subclasses {
 public:
   std::vector<uint16_t> classes;
 };
@@ -271,28 +271,28 @@ using attribute =
                  bootstrap_methods, method_parameters, module, module_packages, module_main_class, nest_host,
                  nest_members, record, permitted_subclasses>;
 
-class code {
+class CAFE_API code {
 public:
-  uint16_t max_stack;
-  uint16_t max_locals;
+  uint16_t max_stack{};
+  uint16_t max_locals{};
   std::vector<uint8_t> bytecode;
 
-  struct exception {
-    uint16_t start_pc;
-    uint16_t end_pc;
-    uint16_t handler_pc;
-    uint16_t catch_type;
+  struct CAFE_API exception {
+    uint16_t start_pc{};
+    uint16_t end_pc{};
+    uint16_t handler_pc{};
+    uint16_t catch_type{};
   };
 
   std::vector<exception> exceptions;
   std::vector<attribute> attributes;
 };
 
-class record {
+class CAFE_API record {
 public:
-  struct component {
-    uint16_t name_index;
-    uint16_t descriptor_index;
+  struct CAFE_API component {
+    uint16_t name_index{};
+    uint16_t descriptor_index{};
     std::vector<attribute> attributes;
   };
 

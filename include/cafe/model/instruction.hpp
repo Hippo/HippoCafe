@@ -3,13 +3,14 @@
 #include <cstdint>
 #include <optional>
 
-#include "cafe/value.hpp"
 #include "annotation.hpp"
+#include "cafe/apidef.hpp"
+#include "cafe/value.hpp"
 #include "label.hpp"
 
 namespace cafe {
 
-class insn {
+class CAFE_API insn {
 public:
   uint8_t opcode{};
   insn() = default;
@@ -24,7 +25,7 @@ public:
   [[nodiscard]] virtual std::string to_string() const;
 };
 
-class var_insn : public insn {
+class CAFE_API var_insn : public insn {
 public:
   uint16_t index{};
   var_insn() = default;
@@ -38,7 +39,7 @@ public:
   [[nodiscard]] std::string to_string() const override;
 };
 
-class type_insn : public insn {
+class CAFE_API type_insn : public insn {
 public:
   std::string type;
   type_insn() = default;
@@ -52,7 +53,7 @@ public:
   [[nodiscard]] std::string to_string() const override;
 };
 
-class ref_insn : public insn {
+class CAFE_API ref_insn : public insn {
 public:
   std::string owner;
   std::string name;
@@ -69,7 +70,7 @@ public:
   [[nodiscard]] std::string to_string() const override;
 };
 
-class iinc_insn {
+class CAFE_API iinc_insn {
 public:
   uint16_t index{};
   int16_t value{};
@@ -85,7 +86,7 @@ public:
   [[nodiscard]] std::string to_string() const;
 };
 
-class push_insn {
+class CAFE_API push_insn {
 public:
   value val;
   push_insn() = default;
@@ -100,7 +101,7 @@ public:
   [[nodiscard]] std::string to_string() const;
 };
 
-class branch_insn : public insn {
+class CAFE_API branch_insn : public insn {
 public:
   label target;
   branch_insn() = default;
@@ -113,7 +114,7 @@ public:
   [[nodiscard]] std::string to_string() const override;
 };
 
-class lookup_switch_insn {
+class CAFE_API lookup_switch_insn {
 public:
   label default_target;
   std::vector<std::pair<int32_t, label>> targets;
@@ -128,7 +129,7 @@ public:
   [[nodiscard]] std::string to_string() const;
 };
 
-class table_switch_insn {
+class CAFE_API table_switch_insn {
 public:
   label default_target;
   int32_t low{};
@@ -145,7 +146,7 @@ public:
   [[nodiscard]] std::string to_string() const;
 };
 
-class multi_array_insn {
+class CAFE_API multi_array_insn {
 public:
   std::string descriptor;
   uint8_t dims{};
@@ -160,7 +161,7 @@ public:
   [[nodiscard]] std::string to_string() const;
 };
 
-class array_insn {
+class CAFE_API array_insn {
 public:
   std::variant<uint8_t, std::string> type;
   array_insn() = default;
@@ -174,7 +175,7 @@ public:
   [[nodiscard]] std::string to_string() const;
 };
 
-class invoke_dynamic_insn {
+class CAFE_API invoke_dynamic_insn {
 public:
   std::string name;
   std::string descriptor;
@@ -195,13 +196,13 @@ public:
 using instruction =
     std::variant<label, insn, var_insn, type_insn, ref_insn, iinc_insn, push_insn, branch_insn, lookup_switch_insn,
                  table_switch_insn, multi_array_insn, array_insn, invoke_dynamic_insn>;
-int16_t opcode(const instruction& insn);
-int16_t opcode(instruction&& insn);
-std::string to_string(const instruction& insn);
-std::string to_string(instruction&& insn);
+CAFE_API int16_t opcode(const instruction& insn);
+CAFE_API int16_t opcode(instruction&& insn);
+CAFE_API std::string to_string(const instruction& insn);
+CAFE_API std::string to_string(instruction&& insn);
 
 
-class tcb {
+class CAFE_API tcb {
 public:
   label start;
   label end;
@@ -216,7 +217,7 @@ public:
   [[nodiscard]] std::string to_string() const;
 };
 
-class local_var {
+class CAFE_API local_var {
 public:
   std::string name;
   std::string descriptor;
@@ -234,7 +235,7 @@ public:
   [[nodiscard]] std::string to_string() const;
 };
 
-class top_var {
+class CAFE_API top_var {
 public:
   top_var() = default;
   ~top_var() = default;
@@ -243,7 +244,7 @@ public:
   top_var& operator=(const top_var&) = default;
   top_var& operator=(top_var&&) = default;
 };
-class int_var {
+class CAFE_API int_var {
 public:
   int_var() = default;
   ~int_var() = default;
@@ -252,7 +253,7 @@ public:
   int_var& operator=(const int_var&) = default;
   int_var& operator=(int_var&&) = default;
 };
-class float_var {
+class CAFE_API float_var {
 public:
   float_var() = default;
   ~float_var() = default;
@@ -261,7 +262,7 @@ public:
   float_var& operator=(const float_var&) = default;
   float_var& operator=(float_var&&) = default;
 };
-class null_var {
+class CAFE_API null_var {
 public:
   null_var() = default;
   ~null_var() = default;
@@ -270,7 +271,7 @@ public:
   null_var& operator=(const null_var&) = default;
   null_var& operator=(null_var&&) = default;
 };
-class uninitialized_this_var {
+class CAFE_API uninitialized_this_var {
 public:
   uninitialized_this_var() = default;
   ~uninitialized_this_var() = default;
@@ -279,7 +280,7 @@ public:
   uninitialized_this_var& operator=(const uninitialized_this_var&) = default;
   uninitialized_this_var& operator=(uninitialized_this_var&&) = default;
 };
-class object_var {
+class CAFE_API object_var {
 public:
   std::string type;
   object_var(const std::string_view& type);
@@ -289,7 +290,7 @@ public:
   object_var& operator=(const object_var&) = default;
   object_var& operator=(object_var&&) = default;
 };
-class uninitalized_var {
+class CAFE_API uninitalized_var {
 public:
   label offset;
   uninitalized_var(label offset);
@@ -299,14 +300,14 @@ public:
   uninitalized_var& operator=(const uninitalized_var&) = default;
   uninitalized_var& operator=(uninitalized_var&&) = default;
 };
-class long_var {};
-class double_var {};
+class CAFE_API long_var {};
+class CAFE_API double_var {};
 
 using frame_var = std::variant<top_var, int_var, float_var, long_var, double_var, null_var, uninitialized_this_var,
                                object_var, uninitalized_var>;
-std::string to_string(const frame_var& var);
+CAFE_API std::string to_string(const frame_var& var);
 
-class same_frame {
+class CAFE_API same_frame {
 public:
   std::optional<frame_var> stack;
   same_frame() = default;
@@ -317,7 +318,7 @@ public:
   same_frame& operator=(const same_frame&) = default;
   same_frame& operator=(same_frame&&) = default;
 };
-class full_frame {
+class CAFE_API full_frame {
 public:
   std::vector<frame_var> locals;
   std::vector<frame_var> stack;
@@ -329,7 +330,7 @@ public:
   full_frame& operator=(const full_frame&) = default;
   full_frame& operator=(full_frame&&) = default;
 };
-class chop_frame {
+class CAFE_API chop_frame {
 public:
   uint8_t size{};
   chop_frame() = default;
@@ -340,7 +341,7 @@ public:
   chop_frame& operator=(const chop_frame&) = default;
   chop_frame& operator=(chop_frame&&) = default;
 };
-class append_frame {
+class CAFE_API append_frame {
 public:
   std::vector<frame_var> locals;
   append_frame() = default;
@@ -353,9 +354,9 @@ public:
 };
 
 using frame = std::variant<same_frame, full_frame, chop_frame, append_frame>;
-std::string to_string(const frame& frame);
+CAFE_API std::string to_string(const frame& frame);
 
-class code : public std::vector<instruction> {
+class CAFE_API code : public std::vector<instruction> {
 public:
   uint16_t max_locals{};
   uint16_t max_stack{};

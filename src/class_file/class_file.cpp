@@ -1,9 +1,9 @@
 #include "cafe/class_file/class_file.hpp"
 
-#include "cafe/data_rw.hpp"
 #include "cafe/constants.hpp"
-#include "visitor.hpp"
+#include "cafe/data_rw.hpp"
 #include "parser.hpp"
+#include "visitor.hpp"
 
 namespace cafe {
 
@@ -58,4 +58,4 @@ std::ostream& operator<<(std::ostream& stream, const class_file& file) {
 
   return stream;
 }
-}
+} // namespace cafe

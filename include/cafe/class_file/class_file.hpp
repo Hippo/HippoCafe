@@ -6,10 +6,11 @@
 #include <vector>
 
 #include "attribute.hpp"
+#include "cafe/apidef.hpp"
 #include "constant_pool.hpp"
 
 namespace cafe {
-class method_info {
+class CAFE_API method_info {
 public:
   uint16_t access_flags;
   uint16_t name_index;
@@ -17,7 +18,7 @@ public:
   std::vector<attribute::attribute> attributes;
 };
 
-class field_info {
+class CAFE_API field_info {
 public:
   uint16_t access_flags;
   uint16_t name_index;
@@ -25,7 +26,7 @@ public:
   std::vector<attribute::attribute> attributes;
 };
 
-class class_file {
+class CAFE_API class_file {
 public:
   uint32_t magic;
   uint16_t minor_version;
@@ -40,7 +41,7 @@ public:
   std::vector<attribute::attribute> attributes;
 };
 
-std::istream& operator>>(std::istream& stream, class_file& file);
+CAFE_API std::istream& operator>>(std::istream& stream, class_file& file);
 
-std::ostream& operator<<(std::ostream& stream, const class_file& file);
-}
+CAFE_API std::ostream& operator<<(std::ostream& stream, const class_file& file);
+} // namespace cafe

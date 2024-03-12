@@ -144,6 +144,8 @@ descriptor parse_descriptor(const std::string_view& descriptor) {
       }
       return class_descriptor(internal);
     }
+    default:
+      throw std::invalid_argument("invalid descriptor");
   }
 }
 std::pair<std::vector<descriptor>, descriptor> parse_method_descriptor(const std::string_view& descriptor) {

@@ -270,14 +270,10 @@ void class_composer::compose(class_model& model) {
             } else if constexpr (std::is_same_v<T, attribute::module>) {
               module_model mm(cf_.constant_pool.get_string(arg.module_name_index), arg.module_flags,
                               cf_.constant_pool.get_string(arg.module_version_index));
-              mm.
-                requires
-                  .reserve(arg.requires.size());
-              for (const auto& req : arg.requires) {
-                mm.
-                  requires
-                    .emplace_back(cf_.constant_pool.get_string(req.require_index), req.require_flags,
-                                  cf_.constant_pool.get_string(req.require_version_index));
+              mm.require_models.reserve(arg.mod_requires.size());
+              for (const auto& req : arg.mod_requires) {
+                mm.require_models.emplace_back(cf_.constant_pool.get_string(req.require_index), req.require_flags,
+                                               cf_.constant_pool.get_string(req.require_version_index));
               }
               mm.exports.reserve(arg.exports.size());
               for (const auto& ex : arg.exports) {

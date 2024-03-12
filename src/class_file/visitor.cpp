@@ -511,8 +511,8 @@ void attribute_visitor::operator()(const attribute::module& attr) {
   writer.write_u16(attr.module_flags);
   writer.write_u16(attr.module_version_index);
 
-  writer.write_u16(static_cast<uint16_t>(attr.requires.size()));
-  for (const auto& r : attr.requires) {
+  writer.write_u16(static_cast<uint16_t>(attr.mod_requires.size()));
+  for (const auto& r : attr.mod_requires) {
     writer.write_u16(r.require_index);
     writer.write_u16(r.require_flags);
     writer.write_u16(r.require_version_index);

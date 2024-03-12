@@ -3,10 +3,11 @@
 #include <cstdint>
 #include <variant>
 #include <vector>
+#include "cafe/apidef.hpp"
 
 namespace cafe::attribute {
 template<int tag_value>
-class variable_info {
+class CAFE_API variable_info {
 public:
   static constexpr uint8_t tag = tag_value;
 };
@@ -19,16 +20,16 @@ using long_variable_info = variable_info<4>;
 using null_variable_info = variable_info<5>;
 using uninitialized_this_variable_info = variable_info<6>;
 
-class object_variable_info {
+class CAFE_API object_variable_info {
 public:
   static constexpr uint8_t tag = 7;
-  uint16_t index;
+  uint16_t index{};
 };
 
-class uninitialized_variable_info {
+class CAFE_API uninitialized_variable_info {
 public:
   static constexpr uint8_t tag = 8;
-  uint16_t offset;
+  uint16_t offset{};
 };
 
 using verification_type_info =
@@ -36,47 +37,47 @@ using verification_type_info =
                  long_variable_info, null_variable_info, uninitialized_this_variable_info, object_variable_info,
                  uninitialized_variable_info>;
 
-class same_frame {
+class CAFE_API same_frame {
 public:
-  uint8_t frame_type;
+  uint8_t frame_type{};
 };
 
-class same_locals_1_stack_item_frame {
+class CAFE_API same_locals_1_stack_item_frame {
 public:
   uint8_t frame_type{};
   verification_type_info stack;
 };
 
-class same_locals_1_stack_item_frame_extended {
+class CAFE_API same_locals_1_stack_item_frame_extended {
 public:
   static constexpr uint8_t frame_type = 247;
   uint16_t offset_delta{};
   verification_type_info stack;
 };
 
-class chop_frame {
+class CAFE_API chop_frame {
 public:
-  uint8_t frame_type;
-  uint16_t offset_delta;
+  uint8_t frame_type{};
+  uint16_t offset_delta{};
 };
 
-class same_frame_extended {
+class CAFE_API same_frame_extended {
 public:
   static constexpr uint8_t frame_type = 251;
-  uint16_t offset_delta;
+  uint16_t offset_delta{};
 };
 
-class append_frame {
+class CAFE_API append_frame {
 public:
-  uint8_t frame_type;
-  uint16_t offset_delta;
+  uint8_t frame_type{};
+  uint16_t offset_delta{};
   std::vector<verification_type_info> locals;
 };
 
-class full_frame {
+class CAFE_API full_frame {
 public:
   static constexpr uint8_t frame_type = 255;
-  uint16_t offset_delta;
+  uint16_t offset_delta{};
   std::vector<verification_type_info> locals;
   std::vector<verification_type_info> stack;
 };

@@ -2,9 +2,10 @@
 
 #include <sstream>
 
+#include "cafe/class_file.hpp"
+#include "cafe/data_rw.hpp"
 #include "composer.hpp"
 #include "decomposer.hpp"
-#include "cafe/data_rw.hpp"
 
 namespace cafe {
 field_model::field_model(uint16_t access_flags, const std::string_view& name, const std::string_view& descriptor) :
@@ -260,7 +261,7 @@ std::string class_model::to_string() const {
     oss << "  module " << module->name << ":\n";
     oss << "    access: 0x" << std::hex << module->access_flags << std::dec << ", version: " << module->version << "\n";
     oss << "    requires:\n";
-    for (const auto& req : module->requires) {
+    for (const auto& req : module->require_models) {
       oss << "      " << req.name << " 0x" << std::hex << req.access_flags << std::dec << " " << req.version << "\n";
     }
     oss << "    exports:\n";
@@ -405,4 +406,4 @@ std::ostream& operator<<(std::ostream& stream, const class_model& model) {
   const auto cf = decomposer.decompose(model);
   return stream << cf;
 }
-}
+} // namespace cafe
