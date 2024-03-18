@@ -1,4 +1,4 @@
-#include "cafe/model/annotation.hpp"
+#include "cafe/annotation.hpp"
 
 #include <sstream>
 #include <utility>
@@ -11,7 +11,7 @@ annotation::annotation(const std::string_view& descriptor) : descriptor(descript
 std::string annotation::to_string() const {
   std::ostringstream oss;
   oss << "annotation(" << '"' << descriptor << '"' << ", [";
-  bool first = false;
+  bool first = true;
   for (const auto& [name, value] : values) {
     if (!first) {
       oss << ", ";
@@ -21,6 +21,8 @@ std::string annotation::to_string() const {
   }
   oss << "])";
   return oss.str();
+}
+element_value::element_value(type value) : value(std::move(value)) {
 }
 std::string element_value::to_string() const {
   return std::visit(
@@ -57,21 +59,27 @@ std::string element_value::to_string() const {
 }
 target::type_parameter::type_parameter(uint8_t index) : index(index) {
 }
-target::supertype::supertype(const std::string_view& name) : name(name) {
+target::supertype::supertype(uint16_t index) : index(index) {
+}
+bool target::supertype::is_super() const {
+  return index == 65535;
+}
+void target::supertype::make_super() {
+  index = 65535;
 }
 target::type_parameter_bound::type_parameter_bound(uint8_t type_parameter_index, uint8_t bound_index) :
     type_parameter_index(type_parameter_index), bound_index(bound_index) {
 }
 target::formal_parameter::formal_parameter(uint8_t index) : index(index) {
 }
-target::throws::throws(const std::string_view& name) : name(name) {
+target::throws::throws(uint16_t index) : index(index) {
 }
 target::local::local(label start, label end, uint16_t index) :
     start(std::move(start)), end(std::move(end)), index(index) {
 }
 target::localvar::localvar(const std::vector<local>& table) : table(table) {
 }
-target::catch_target::catch_target(label handler_label) : handler_label(std::move(handler_label)) {
+target::catch_target::catch_target(uint16_t index) : index(index) {
 }
 target::offset_target::offset_target(label offset) : offset(std::move(offset)) {
 }
@@ -93,14 +101,14 @@ std::string to_string(const type_annotation_target& target) {
         if constexpr (std::is_same_v<T, target::type_parameter>) {
           return "type_parameter(" + std::to_string(arg.index) + ")";
         } else if constexpr (std::is_same_v<T, target::supertype>) {
-          return "supertype(\"" + arg.name + "\")";
+          return "supertype(\"" + std::to_string(arg.index) + "\")";
         } else if constexpr (std::is_same_v<T, target::type_parameter_bound>) {
           return "type_parameter_bound(" + std::to_string(arg.type_parameter_index) + ", " +
                  std::to_string(arg.bound_index) + ")";
         } else if constexpr (std::is_same_v<T, target::formal_parameter>) {
           return "formal_parameter(" + std::to_string(arg.index) + ")";
         } else if constexpr (std::is_same_v<T, target::throws>) {
-          return "throws(\"" + arg.name + "\")";
+          return "throws(\"" + std::to_string(arg.index) + "\")";
         } else if constexpr (std::is_same_v<T, target::localvar>) {
           std::ostringstream oss;
           oss << "localvar([";
@@ -115,7 +123,7 @@ std::string to_string(const type_annotation_target& target) {
           oss << "])";
           return oss.str();
         } else if constexpr (std::is_same_v<T, target::catch_target>) {
-          return "catch_target(" + arg.handler_label.to_string() + ")";
+          return "catch_target(" + std::to_string(arg.index) + ")";
         } else if constexpr (std::is_same_v<T, target::offset_target>) {
           return "offset_target(" + arg.offset.to_string() + ")";
         } else if constexpr (std::is_same_v<T, target::type_argument>) {

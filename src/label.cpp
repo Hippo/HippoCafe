@@ -1,10 +1,9 @@
-#include "cafe/model/label.hpp"
+#include "cafe/label.hpp"
 
 #include <random>
 #include <sstream>
 
 namespace cafe {
-
 static uint64_t new_id() {
   std::random_device rd;
   std::mt19937 generator(rd());

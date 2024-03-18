@@ -1,12 +1,13 @@
 #pragma once
 
-#include <cstdint>
 #include <optional>
+#include <string>
+#include <variant>
+#include <vector>
 
-#include "annotation.hpp"
-#include "cafe/apidef.hpp"
-#include "cafe/value.hpp"
+#include "apidef.hpp"
 #include "label.hpp"
+#include "value.hpp"
 
 namespace cafe {
 
@@ -88,9 +89,9 @@ public:
 
 class CAFE_API push_insn {
 public:
-  value val;
+  value value;
   push_insn() = default;
-  explicit push_insn(value val);
+  explicit push_insn(cafe::value value);
   ~push_insn() = default;
   push_insn(const push_insn&) = default;
   push_insn(push_insn&&) = default;
@@ -99,6 +100,8 @@ public:
 
   [[nodiscard]] uint8_t opcode() const;
   [[nodiscard]] std::string to_string() const;
+
+  static uint8_t opcode_of(const cafe::value& value);
 };
 
 class CAFE_API branch_insn : public insn {
@@ -201,7 +204,6 @@ CAFE_API int16_t opcode(instruction&& insn);
 CAFE_API std::string to_string(const instruction& insn);
 CAFE_API std::string to_string(instruction&& insn);
 
-
 class CAFE_API tcb {
 public:
   label start;
@@ -290,21 +292,21 @@ public:
   object_var& operator=(const object_var&) = default;
   object_var& operator=(object_var&&) = default;
 };
-class CAFE_API uninitalized_var {
+class CAFE_API uninitialized_var {
 public:
   label offset;
-  uninitalized_var(label offset);
-  ~uninitalized_var() = default;
-  uninitalized_var(const uninitalized_var&) = default;
-  uninitalized_var(uninitalized_var&&) = default;
-  uninitalized_var& operator=(const uninitalized_var&) = default;
-  uninitalized_var& operator=(uninitalized_var&&) = default;
+  uninitialized_var(label offset);
+  ~uninitialized_var() = default;
+  uninitialized_var(const uninitialized_var&) = default;
+  uninitialized_var(uninitialized_var&&) = default;
+  uninitialized_var& operator=(const uninitialized_var&) = default;
+  uninitialized_var& operator=(uninitialized_var&&) = default;
 };
 class CAFE_API long_var {};
 class CAFE_API double_var {};
 
 using frame_var = std::variant<top_var, int_var, float_var, long_var, double_var, null_var, uninitialized_this_var,
-                               object_var, uninitalized_var>;
+                               object_var, uninitialized_var>;
 CAFE_API std::string to_string(const frame_var& var);
 
 class CAFE_API same_frame {
@@ -355,25 +357,5 @@ public:
 
 using frame = std::variant<same_frame, full_frame, chop_frame, append_frame>;
 CAFE_API std::string to_string(const frame& frame);
-
-class CAFE_API code : public std::vector<instruction> {
-public:
-  uint16_t max_locals{};
-  uint16_t max_stack{};
-  std::vector<tcb> tcb_table;
-  std::vector<std::pair<label, uint16_t>> line_numbers;
-  std::vector<local_var> local_vars;
-  std::vector<std::pair<label, frame>> frames;
-  std::vector<type_annotation> visible_type_annotations;
-  std::vector<type_annotation> invisible_type_annotations;
-  code() = default;
-  ~code() = default;
-  code(const code&) = default;
-  code(code&&) = default;
-  code& operator=(const code&) = default;
-  code& operator=(code&&) = default;
-  void clear() noexcept;
-  void clear_instruction() noexcept;
-};
 
 } // namespace cafe

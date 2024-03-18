@@ -3,7 +3,8 @@
 #include <cstdint>
 #include <string>
 #include <string_view>
-#include "cafe/apidef.hpp"
+
+#include "apidef.hpp"
 
 namespace cafe {
 class CAFE_API label {

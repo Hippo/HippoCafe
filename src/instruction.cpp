@@ -1,8 +1,8 @@
+#include "cafe/instruction.hpp"
+
 #include <sstream>
-#include <utility>
 
 #include "cafe/constants.hpp"
-#include "cafe/model/instruction.hpp"
 
 namespace cafe {
 insn::insn(uint8_t opcode) : opcode(opcode) {
@@ -43,25 +43,12 @@ std::string iinc_insn::to_string() const {
   oss << "iinc_insn(" << index << ", " << value << ")";
   return oss.str();
 }
-push_insn::push_insn(value val) : val(std::move(val)) {
+push_insn::push_insn(cafe::value value) : value(std::move(value)) {
 }
 uint8_t push_insn::opcode() const {
-  /* int32_t int_val;
-   if (const auto i = std::get_if<int32_t>(&val)) {
-     int_val = *i;
-   } else {
-     return op::ldc;
-   }
-   if (int_val >= -1 && int_val <= 5) {
-     return op::iconst_0 + static_cast<int8_t>(int_val);
-   }
-   if (int_val >= std::numeric_limits<int8_t>::min() && int_val <= std::numeric_limits<int8_t>::max()) {
-     return op::bipush;
-   }
-   if (int_val >= std::numeric_limits<int16_t>::min() && int_val <= std::numeric_limits<int16_t>::max()) {
-     return op::sipush;
-   }
-   return op::ldc;*/
+  return opcode_of(value);
+}
+uint8_t push_insn::opcode_of(const cafe::value& value) {
   return std::visit(
       [](auto&& arg) -> uint8_t {
         using T = std::decay_t<decltype(arg)>;
@@ -107,11 +94,11 @@ uint8_t push_insn::opcode() const {
           return op::ldc;
         }
       },
-      val);
+      value);
 }
 std::string push_insn::to_string() const {
   std::ostringstream oss;
-  oss << "push_insn(" << cafe::to_string(val) << ")";
+  oss << "push_insn(" << cafe::to_string(value) << ")";
   return oss.str();
 }
 branch_insn::branch_insn(uint8_t opcode, label target) : insn(opcode), target(std::move(target)) {
@@ -248,13 +235,13 @@ tcb::tcb(label start, label end, label handler, const std::string_view& type) :
 }
 std::string tcb::to_string() const {
   std::ostringstream oss;
-  oss << "tcb(" << start.to_string() << ", " << end.to_string() << ", " << handler.to_string() << ", " << '"' << type
-      << '"' << ")";
+  oss << "try_catch_block(" << start.to_string() << ", " << end.to_string() << ", " << handler.to_string() << ", "
+      << '"' << type << '"' << ")";
   return oss.str();
 }
 object_var::object_var(const std::string_view& type) : type(type) {
 }
-uninitalized_var::uninitalized_var(label offset) : offset(std::move(offset)) {
+uninitialized_var::uninitialized_var(label offset) : offset(std::move(offset)) {
 }
 same_frame::same_frame(const frame_var& stack) : stack(stack) {
 }
@@ -296,7 +283,7 @@ std::string to_string(const frame_var& var) {
           return "uninitialized_this";
         } else if constexpr (std::is_same_v<T, object_var>) {
           return "object(" + arg.type + ")";
-        } else if constexpr (std::is_same_v<T, uninitalized_var>) {
+        } else if constexpr (std::is_same_v<T, uninitialized_var>) {
           return "uninitialized(" + arg.offset.to_string() + ")";
         }
       },
@@ -355,19 +342,5 @@ std::string to_string(const frame& frame) {
         }
       },
       frame);
-}
-void code::clear() noexcept {
-  std::vector<instruction>::clear();
-  tcb_table.clear();
-  line_numbers.clear();
-  local_vars.clear();
-  frames.clear();
-  visible_type_annotations.clear();
-  invisible_type_annotations.clear();
-  max_stack = 0;
-  max_locals = 0;
-}
-void code::clear_instruction() noexcept {
-  std::vector<instruction>::clear();
 }
 } // namespace cafe

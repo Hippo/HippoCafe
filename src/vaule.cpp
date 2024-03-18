@@ -7,7 +7,6 @@
 #include "cafe/constants.hpp"
 
 namespace cafe {
-
 class_value::class_value(const std::string_view& value) {
   auto internal = std::string(value);
   auto binary = internal;

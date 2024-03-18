@@ -123,4 +123,5 @@ CAFE_API std::string to_string(const descriptor& d);
 CAFE_API uint8_t size(const descriptor& d);
 CAFE_API descriptor parse_descriptor(const std::string_view& descriptor);
 CAFE_API std::pair<std::vector<descriptor>, descriptor> parse_method_descriptor(const std::string_view& descriptor);
+
 } // namespace cafe

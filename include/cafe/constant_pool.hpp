@@ -1,13 +1,12 @@
 #pragma once
 
+
 #include <cstdint>
 #include <string>
 #include <variant>
 #include <vector>
 
-#include "attribute.hpp"
-#include "cafe/apidef.hpp"
-#include "cafe/value.hpp"
+#include "apidef.hpp"
 
 namespace cafe::cp {
 class CAFE_API class_info {
@@ -114,33 +113,5 @@ using constant_pool_info =
                  integer_info, float_info, long_info, double_info, name_and_type_info, utf8_info, method_handle_info,
                  method_type_info, dynamic_info, invoke_dynamic_info, module_info, package_info>;
 
-
-class bsm_buffer;
-
-class CAFE_API constant_pool : public std::vector<constant_pool_info> {
-public:
-  [[nodiscard]] std::string get_string(uint16_t index) const;
-
-  uint16_t get_utf(const std::string_view& value);
-  uint16_t get_class(const std::string_view& value);
-  uint16_t get_string(const std::string_view& value);
-  uint16_t get_module(const std::string_view& value);
-  uint16_t get_package(const std::string_view& value);
-  uint16_t get_value(bsm_buffer& bsm_buffer, const value& value);
-  uint16_t get_name_and_type(const std::string_view& name, const std::string_view& descriptor);
-  uint16_t get_field_ref(const std::string_view& class_name, const std::string_view& name,
-                         const std::string_view& descriptor);
-  uint16_t get_method_ref(const std::string_view& class_name, const std::string_view& name,
-                          const std::string_view& descriptor);
-  uint16_t get_interface_method_ref(const std::string_view& class_name, const std::string_view& name,
-                                    const std::string_view& descriptor);
-  [[nodiscard]] uint16_t count() const;
-};
-
-class CAFE_API bsm_buffer {
-public:
-  uint16_t get_bsm_index(constant_pool& pool, const method_handle& handle, const std::vector<value>& args);
-  std::vector<attribute::bootstrap_methods::bootstrap_method> bsms;
-};
-
+using constant_pool = std::vector<constant_pool_info>;
 } // namespace cafe::cp

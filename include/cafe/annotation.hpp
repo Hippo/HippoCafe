@@ -2,13 +2,12 @@
 
 #include <string>
 #include <string_view>
-#include <unordered_map>
 #include <variant>
 #include <vector>
 
-#include "cafe/apidef.hpp"
-#include "cafe/value.hpp"
+#include "apidef.hpp"
 #include "label.hpp"
+#include "value.hpp"
 
 namespace cafe {
 
@@ -25,7 +24,7 @@ public:
   annotation(annotation&&) = default;
   annotation& operator=(const annotation&) = default;
   annotation& operator=(annotation&&) = default;
-  std::unordered_map<std::string, element_value> values;
+  std::vector<std::pair<std::string, element_value>> values;
   [[nodiscard]] std::string to_string() const;
 };
 
@@ -33,6 +32,13 @@ class CAFE_API element_value {
 public:
   using type = std::variant<int8_t, uint16_t, double, float, int32_t, int64_t, int16_t, bool, std::string,
                             std::pair<std::string, std::string>, class_value, annotation, std::vector<element_value>>;
+  element_value() = default;
+  element_value(type value);
+  ~element_value() = default;
+  element_value(const element_value&) = default;
+  element_value(element_value&&) = default;
+  element_value& operator=(const element_value&) = default;
+  element_value& operator=(element_value&&) = default;
   type value;
   [[nodiscard]] std::string to_string() const;
 };
@@ -52,13 +58,15 @@ public:
 
 class CAFE_API supertype {
 public:
-  std::string name;
-  explicit supertype(const std::string_view& name);
+  uint16_t index{};
+  explicit supertype(uint16_t index);
   ~supertype() = default;
   supertype(const supertype&) = default;
   supertype(supertype&&) = default;
   supertype& operator=(const supertype&) = default;
   supertype& operator=(supertype&&) = default;
+  [[nodiscard]] bool is_super() const;
+  void make_super();
 };
 
 class CAFE_API type_parameter_bound {
@@ -91,8 +99,8 @@ public:
 
 class CAFE_API throws {
 public:
-  std::string name;
-  explicit throws(const std::string_view& name);
+  uint16_t index{};
+  explicit throws(uint16_t index);
   ~throws() = default;
   throws(const throws&) = default;
   throws(throws&&) = default;
@@ -123,8 +131,8 @@ public:
 };
 class CAFE_API catch_target {
 public:
-  label handler_label;
-  explicit catch_target(label handler_label);
+  uint16_t index{};
+  explicit catch_target(uint16_t index);
   ~catch_target() = default;
   catch_target(const catch_target&) = default;
   catch_target(catch_target&&) = default;
@@ -177,7 +185,7 @@ public:
   type_annotation_target target_info;
   type_path target_path;
   std::string descriptor;
-  std::unordered_map<std::string, element_value> values;
+  std::vector<std::pair<std::string, element_value>> values;
   type_annotation();
   type_annotation(uint8_t target_type, type_annotation_target target_info, type_path target_path,
                   const std::string_view& descriptor);
