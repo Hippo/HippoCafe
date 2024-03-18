@@ -23,7 +23,7 @@ add_library(HippoCafe
         include/cafe/apidef.hpp
         include/cafe/constant_pool.hpp
         include/cafe/value.hpp
-        src/vaule.cpp
+        src/value.cpp
         include/cafe/constants.hpp
         src/constants.cpp
         include/cafe/label.hpp
