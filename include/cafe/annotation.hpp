@@ -16,31 +16,32 @@ class element_value;
 
 class CAFE_API annotation {
 public:
-  std::string descriptor;
+  std::string desc;
   annotation() = default;
-  explicit annotation(const std::string_view& descriptor);
+  explicit annotation(const std::string_view& desc);
   ~annotation() = default;
   annotation(const annotation&) = default;
   annotation(annotation&&) = default;
   annotation& operator=(const annotation&) = default;
   annotation& operator=(annotation&&) = default;
   std::vector<std::pair<std::string, element_value>> values;
-  [[nodiscard]] std::string to_string() const;
+  std::string to_string() const;
 };
 
+using element_type = std::variant<int8_t, uint16_t, double, float, int32_t, int64_t, int16_t, bool, std::string,
+                            std::pair<std::string, std::string>, type, annotation, std::vector<element_value>>;
 class CAFE_API element_value {
 public:
-  using type = std::variant<int8_t, uint16_t, double, float, int32_t, int64_t, int16_t, bool, std::string,
-                            std::pair<std::string, std::string>, class_value, annotation, std::vector<element_value>>;
+
   element_value() = default;
-  element_value(type value);
+  element_value(element_type value);
   ~element_value() = default;
   element_value(const element_value&) = default;
   element_value(element_value&&) = default;
   element_value& operator=(const element_value&) = default;
   element_value& operator=(element_value&&) = default;
-  type value;
-  [[nodiscard]] std::string to_string() const;
+  element_type value;
+  std::string to_string() const;
 };
 
 
@@ -65,7 +66,7 @@ public:
   supertype(supertype&&) = default;
   supertype& operator=(const supertype&) = default;
   supertype& operator=(supertype&&) = default;
-  [[nodiscard]] bool is_super() const;
+  bool is_super() const;
   void make_super();
 };
 
@@ -176,7 +177,7 @@ public:
   type_path(type_path&&) = default;
   type_path& operator=(const type_path&) = default;
   type_path& operator=(type_path&&) = default;
-  [[nodiscard]] std::string to_string() const;
+  std::string to_string() const;
 };
 
 class CAFE_API type_annotation {
@@ -184,16 +185,16 @@ public:
   uint8_t target_type{};
   type_annotation_target target_info;
   type_path target_path;
-  std::string descriptor;
+  std::string desc;
   std::vector<std::pair<std::string, element_value>> values;
   type_annotation();
   type_annotation(uint8_t target_type, type_annotation_target target_info, type_path target_path,
-                  const std::string_view& descriptor);
+                  const std::string_view& desc);
   ~type_annotation() = default;
   type_annotation(const type_annotation&) = default;
   type_annotation(type_annotation&&) = default;
   type_annotation& operator=(const type_annotation&) = default;
   type_annotation& operator=(type_annotation&&) = default;
-  [[nodiscard]] std::string to_string() const;
+  std::string to_string() const;
 };
 } // namespace cafe

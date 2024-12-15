@@ -6,11 +6,11 @@
 #include "cafe/constants.hpp"
 
 namespace cafe {
-annotation::annotation(const std::string_view& descriptor) : descriptor(descriptor) {
+annotation::annotation(const std::string_view& desc) : desc(desc) {
 }
 std::string annotation::to_string() const {
   std::ostringstream oss;
-  oss << "annotation(" << '"' << descriptor << '"' << ", [";
+  oss << "annotation(" << '"' << desc << '"' << ", [";
   bool first = true;
   for (const auto& [name, value] : values) {
     if (!first) {
@@ -22,7 +22,7 @@ std::string annotation::to_string() const {
   oss << "])";
   return oss.str();
 }
-element_value::element_value(type value) : value(std::move(value)) {
+element_value::element_value(element_type value) : value(std::move(value)) {
 }
 std::string element_value::to_string() const {
   return std::visit(
@@ -30,7 +30,7 @@ std::string element_value::to_string() const {
         using T = std::decay_t<decltype(arg)>;
         if constexpr (std::is_same_v<T, std::pair<std::string, std::string>>) {
           return "enum(" + arg.first + ", " + arg.second + ")";
-        } else if constexpr (std::is_same_v<T, class_value>) {
+        } else if constexpr (std::is_same_v<T, type>) {
           return cafe::to_string(arg);
         } else if constexpr (std::is_same_v<T, annotation>) {
           return arg.to_string();
@@ -90,9 +90,9 @@ type_path::type_path(const std::vector<std::pair<uint8_t, uint8_t>>& path) : pat
 type_annotation::type_annotation() : target_info(target::empty()) {
 }
 type_annotation::type_annotation(uint8_t target_type, type_annotation_target target_info, type_path target_path,
-                                 const std::string_view& descriptor) :
+                                 const std::string_view& desc) :
     target_type(target_type), target_info(std::move(target_info)), target_path(std::move(target_path)),
-    descriptor(descriptor) {
+    desc(desc) {
 }
 std::string to_string(const type_annotation_target& target) {
   return std::visit(
@@ -150,7 +150,7 @@ std::string type_path::to_string() const {
 std::string type_annotation::to_string() const {
   std::ostringstream oss;
   oss << "type_annotation(0x" << std::hex << static_cast<int>(target_type) << std::dec << ", "
-      << cafe::to_string(target_info) << ", " << target_path.to_string() << ", " << '"' << descriptor << '"' << ", [";
+      << cafe::to_string(target_info) << ", " << target_path.to_string() << ", " << '"' << desc << '"' << ", [";
   bool first = true;
   for (const auto& [name, value] : values) {
     if (!first) {

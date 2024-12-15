@@ -62,7 +62,7 @@ class CAFE_API name_and_type_info {
 public:
   static constexpr uint8_t tag = 12;
   uint16_t name_index{};
-  uint16_t descriptor_index{};
+  uint16_t desc_index{};
 };
 
 using utf8_info = value_info<std::string, 1>;
@@ -77,7 +77,7 @@ public:
 class CAFE_API method_type_info {
 public:
   static constexpr uint8_t tag = 16;
-  uint16_t descriptor_index{};
+  uint16_t desc_index{};
 };
 
 class CAFE_API dynamic_info {

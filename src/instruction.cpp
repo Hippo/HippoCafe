@@ -14,6 +14,24 @@ std::string insn::to_string() const {
 }
 var_insn::var_insn(uint8_t opcode, uint16_t index) : insn(opcode), index(index) {
 }
+bool var_insn::is_load() const {
+  switch (opcode) {
+    case op::aload:
+    case op::iload:
+    case op::fload:
+    case op::dload:
+    case op::lload:
+      return true;
+    default:
+      return false;
+  }
+}
+bool var_insn::is_store() const {
+  return !is_load() && opcode != op::ret;
+}
+bool var_insn::is_wide() const {
+  return opcode == op::dload || opcode == op::lload || opcode == op::dstore || opcode == op::lstore;
+}
 std::string var_insn::to_string() const {
   std::ostringstream oss;
   oss << "var_insn(" << opcode_name(opcode) << ", " << index << ")";
@@ -26,14 +44,27 @@ std::string type_insn::to_string() const {
   oss << "type_insn(" << opcode_name(opcode) << ", " << type << ")";
   return oss.str();
 }
-ref_insn::ref_insn(uint8_t opcode, const std::string_view& owner, const std::string_view& name,
-                   const std::string_view& descriptor) :
-    insn(opcode), owner(owner), name(name), descriptor(descriptor) {
+field_insn::field_insn(uint8_t opcode, const std::string_view& owner, const std::string_view& name,
+                       const std::string_view& desc) : insn(opcode), owner(owner), name(name), desc(desc) {
 }
-std::string ref_insn::to_string() const {
+std::string field_insn::to_string() const {
   std::ostringstream oss;
-  oss << "ref_insn(" << opcode_name(opcode) << ", " << '"' << owner << '"' << ", " << '"' << name << '"' << ", " << '"'
-      << descriptor << '"' << ")";
+  oss << "field_insn(" << opcode_name(opcode) << ", " << owner << ", " << name << ", " << desc << ")";
+  return oss.str();
+}
+method_insn::method_insn(uint8_t opcode, const std::string_view& owner, const std::string_view& name,
+                         const std::string_view& desc) : insn(opcode), owner(owner), name(name), desc(desc), interface(opcode == op::invokeinterface) {
+}
+method_insn::method_insn(uint8_t opcode, const std::string_view& owner, const std::string_view& name,
+                         const std::string_view& desc, bool interface) : insn(opcode), owner(owner), name(name), desc(desc), interface(interface) {
+}
+std::string method_insn::to_string() const {
+  std::ostringstream oss;
+  oss << "method_insn(" << opcode_name(opcode) << ", " << owner << ", " << name << ", " << desc;
+  if (interface && opcode != op::invokeinterface) {
+    oss << ", true";
+  }
+  oss << ")";
   return oss.str();
 }
 iinc_insn::iinc_insn(uint16_t index, int16_t value) : index(index), value(value) {
@@ -44,6 +75,9 @@ std::string iinc_insn::to_string() const {
   return oss.str();
 }
 push_insn::push_insn(cafe::value value) : value(std::move(value)) {
+}
+bool push_insn::is_wide() const {
+  return std::holds_alternative<int64_t>(value) || std::holds_alternative<double>(value);
 }
 uint8_t push_insn::opcode() const {
   return opcode_of(value);
@@ -143,12 +177,12 @@ std::string table_switch_insn::to_string() const {
   oss << "])";
   return oss.str();
 }
-multi_array_insn::multi_array_insn(const std::string_view& descriptor, uint8_t dims) :
-    descriptor(descriptor), dims(dims) {
+multi_array_insn::multi_array_insn(const std::string_view& desc, uint8_t dims) :
+    desc(desc), dims(dims) {
 }
 std::string multi_array_insn::to_string() const {
   std::ostringstream oss;
-  oss << "multi_array_insn(" << descriptor << ", " << static_cast<int>(dims) << ")";
+  oss << "multi_array_insn(" << desc << ", " << static_cast<int>(dims) << ")";
   return oss.str();
 }
 array_insn::array_insn(const std::variant<uint8_t, std::string>& type) : type(type) {
@@ -169,13 +203,13 @@ std::string array_insn::to_string() const {
   oss << ")";
   return oss.str();
 }
-invoke_dynamic_insn::invoke_dynamic_insn(const std::string_view& name, const std::string_view& descriptor,
+invoke_dynamic_insn::invoke_dynamic_insn(const std::string_view& name, const std::string_view& desc,
                                          method_handle handle, const std::vector<value>& args) :
-    name(name), descriptor(descriptor), handle(std::move(handle)), args(args) {
+    name(name), desc(desc), handle(std::move(handle)), args(args) {
 }
 std::string invoke_dynamic_insn::to_string() const {
   std::ostringstream oss;
-  oss << "invoke_dynamic_insn(" << '"' << name << '"' << ", " << '"' << descriptor << '"' << ", "
+  oss << "invoke_dynamic_insn(" << '"' << name << '"' << ", " << '"' << desc << '"' << ", "
       << cafe::to_string(handle) << ", [";
   bool first = true;
   for (const auto& arg : args) {
@@ -230,18 +264,75 @@ std::string to_string(const instruction& insn) {
 std::string to_string(instruction&& insn) {
   return std::visit([](auto&& i) -> std::string { return i.to_string(); }, insn);
 }
-tcb::tcb(label start, label end, label handler, const std::string_view& type) :
+tcb::tcb(label start, label end, label handler, const std::optional<std::string>& type) :
     start(std::move(start)), end(std::move(end)), handler(std::move(handler)), type(type) {
 }
 std::string tcb::to_string() const {
   std::ostringstream oss;
-  oss << "try_catch_block(" << start.to_string() << ", " << end.to_string() << ", " << handler.to_string() << ", "
-      << '"' << type << '"' << ")";
+  oss << "tcb(" << start.to_string() << ", " << end.to_string() << ", " << handler.to_string();
+  if (type) {
+    oss << ", " << '"' << *type << '"';
+  }
+  oss << ")";
   return oss.str();
 }
 object_var::object_var(const std::string_view& type) : type(type) {
 }
 uninitialized_var::uninitialized_var(label offset) : offset(std::move(offset)) {
+}
+bool top_var::operator==(const top_var&) const {
+  return true;
+}
+bool top_var::operator!=(const top_var&) const {
+  return false;
+}
+bool int_var::operator==(const int_var&) const {
+  return true;
+}
+bool int_var::operator!=(const int_var&) const {
+  return false;
+}
+bool float_var::operator==(const float_var&) const {
+  return true;
+}
+bool float_var::operator!=(const float_var&) const {
+  return false;
+}
+bool null_var::operator==(const null_var&) const {
+  return true;
+}
+bool null_var::operator!=(const null_var&) const {
+  return false;
+}
+bool uninitialized_this_var::operator==(const uninitialized_this_var&) const {
+  return true;
+}
+bool uninitialized_this_var::operator!=(const uninitialized_this_var&) const {
+  return false;
+}
+bool object_var::operator==(const object_var& other) const {
+  return type == other.type;
+}
+bool object_var::operator!=(const object_var& other) const {
+  return type != other.type;
+}
+bool uninitialized_var::operator==(const uninitialized_var& other) const {
+  return offset == other.offset;
+}
+bool uninitialized_var::operator!=(const uninitialized_var& other) const {
+  return offset != other.offset;
+}
+bool long_var::operator==(const long_var&) const {
+  return true;
+}
+bool long_var::operator!=(const long_var&) const {
+  return false;
+}
+bool double_var::operator==(const double_var&) const {
+  return true;
+}
+bool double_var::operator!=(const double_var&) const {
+  return false;
 }
 same_frame::same_frame(const frame_var& stack) : stack(stack) {
 }
@@ -252,14 +343,14 @@ chop_frame::chop_frame(uint8_t size) : size(size) {
 }
 append_frame::append_frame(const std::vector<frame_var>& locals) : locals(locals) {
 }
-local_var::local_var(const std::string_view& name, const std::string_view& descriptor,
+local_var::local_var(const std::string_view& name, const std::string_view& desc,
                      const std::string_view& signature, label start, label end, uint16_t index) :
-    name(name), descriptor(descriptor), signature(signature), start(std::move(start)), end(std::move(end)),
+    name(name), desc(desc), signature(signature), start(std::move(start)), end(std::move(end)),
     index(index) {
 }
 std::string local_var::to_string() const {
   std::ostringstream oss;
-  oss << "local_var(" << '"' << name << '"' << ", " << '"' << descriptor << '"' << ", " << '"' << signature << '"'
+  oss << "local_var(" << '"' << name << '"' << ", " << '"' << desc << '"' << ", " << '"' << signature << '"'
       << ", " << start.to_string() << ", " << end.to_string() << ", " << index << ")";
   return oss.str();
 }

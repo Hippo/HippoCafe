@@ -3,7 +3,7 @@ public final class InterfaceTest implements java.util.function.Predicate<String>
 
     @Deprecated
     @InnerAnnotation(test = 69)
-    private static String testField = "ur black";
+    private static String testField = "field";
 
     public boolean test(String test) {
         return true;

@@ -1,9 +1,11 @@
 #pragma once
 
-#if defined(CAFE_BUILDING_LIB)
+#ifdef CAFE_SHARED_LIB
+#ifdef CAFE_EXPORTS
 #define CAFE_API __declspec(dllexport)
-#elif defined(CAFE_STATIC_LIB)
-#define CAFE_API
 #else
 #define CAFE_API __declspec(dllimport)
+#endif
+#else
+#define CAFE_API
 #endif

@@ -4,925 +4,1071 @@
 
 #include "cafe/constants.hpp"
 
-#include "bytebuf.hpp"
+#include "../include/cafe/data_writer.hpp"
+#include "cafe/analysis.hpp"
 #include "visitor.hpp"
 
+
 namespace cafe {
-record_component_writer::record_component_writer(class_writer& writer) : writer_(writer) {
+class_writer::class_writer(uint8_t flags) : flags_(flags) {
 }
-void record_component_writer::visit(const std::string_view& name, const std::string_view& descriptor) {
-  name_index_ = writer_.get_utf(name);
-  descriptor_index_ = writer_.get_utf(descriptor);
+class_writer::class_writer(const class_tree& tree, uint8_t flags) : flags_(flags), tree_(&tree) {
 }
-void record_component_writer::visit_signature(const std::string_view& signature) {
-  const auto attr_name = writer_.get_utf("Signature");
-  const auto sig = writer_.get_utf(signature);
-  bytebuf buf;
-  buf.write_u16(attr_name);
-  buf.write_u32(2);
-  buf.write_u16(sig);
-  const auto data = buf.data();
-  attributes_count_++;
-  attributes_.insert(attributes_.end(), data.begin(), data.end());
-}
-void record_component_writer::visit_visible_annotation(const annotation& annotation) {
-  visible_annotations_count_++;
-  const auto data = writer_.get_annotation(annotation);
-  visible_annotations_.insert(writer_.visible_annotations_.end(), data.begin(), data.end());
-}
-void record_component_writer::visit_invisible_annotation(const annotation& annotation) {
-  invisible_annotations_count_++;
-  const auto data = writer_.get_annotation(annotation);
-  invisible_annotations_.insert(writer_.invisible_annotations_.end(), data.begin(), data.end());
-}
-void record_component_writer::visit_visible_type_annotation(const type_annotation& annotation) {
-  std::vector<std::pair<size_t, label>> dummy_labels;
-  visible_type_annotations_count_++;
-  const auto data = writer_.get_type_annotation(annotation, dummy_labels);
-  visible_type_annotations_.insert(writer_.visible_type_annotations_.end(), data.begin(), data.end());
-}
-void record_component_writer::visit_invisible_type_annotation(const type_annotation& annotation) {
-  std::vector<std::pair<size_t, label>> dummy_labels;
-  invisible_type_annotations_count_++;
-  const auto data = writer_.get_type_annotation(annotation, dummy_labels);
-  invisible_type_annotations_.insert(writer_.invisible_type_annotations_.end(), data.begin(), data.end());
-}
-void record_component_writer::visit_attribute(const std::string_view& name, const std::vector<int8_t>& data) {
-  attributes_count_++;
-  const auto attr_name = writer_.get_utf(name);
-  bytebuf buf;
-  buf.write_u16(attr_name);
-  buf.write_u32(static_cast<uint32_t>(data.size()));
-  buf.write_all(data);
-  const auto info = buf.data();
-  attributes_.insert(attributes_.end(), info.begin(), info.end());
-}
-module_writer::module_writer(class_writer& writer) : writer_(writer) {
-}
-void module_writer::visit(const std::string_view& name, uint16_t access_flags, const std::string_view& version) {
-  const auto name_index = writer_.get_module(name);
-  const auto version_index = version.empty() ? 0 : writer_.get_utf(version);
-  name_index_ = name_index;
-  module_flags_ = access_flags;
-  version_index_ = version_index;
-}
-void module_writer::visit_require(const std::string_view& module, uint16_t access_flags,
-                                  const std::string_view& version) {
-  requires_count_++;
-  const auto index = writer_.get_module(module);
-  const auto version_index = version.empty() ? 0 : writer_.get_utf(version);
-  bytebuf buf;
-  buf.write_u16(index);
-  buf.write_u16(access_flags);
-  buf.write_u16(version_index);
-  requires_.insert(requires_.end(), buf.data().begin(), buf.data().end());
-}
-void module_writer::visit_export(const std::string_view& package, uint16_t access_flags,
-                                 const std::vector<std::string>& modules) {
-  exports_count_++;
-  const auto package_index = writer_.get_package(package);
-  bytebuf buf;
-  buf.write_u16(package_index);
-  buf.write_u16(access_flags);
-  buf.write_u16(static_cast<uint16_t>(modules.size()));
-  for (const auto& module : modules) {
-    buf.write_u16(writer_.get_module(module));
-  }
-  exports_.insert(exports_.end(), buf.data().begin(), buf.data().end());
-}
-void module_writer::visit_open(const std::string_view& package, uint16_t access_flags,
-                               const std::vector<std::string>& modules) {
-  opens_count_++;
-  const auto package_index = writer_.get_package(package);
-  bytebuf buf;
-  buf.write_u16(package_index);
-  buf.write_u16(access_flags);
-  buf.write_u16(static_cast<uint16_t>(modules.size()));
-  for (const auto& module : modules) {
-    buf.write_u16(writer_.get_module(module));
-  }
-  opens_.insert(opens_.end(), buf.data().begin(), buf.data().end());
-}
-void module_writer::visit_use(const std::string_view& service) {
-  uses_.emplace_back(writer_.get_class(service));
-}
-void module_writer::visit_provide(const std::string_view& service, const std::vector<std::string>& providers) {
-  provides_count_++;
-  const auto service_index = writer_.get_class(service);
-  bytebuf buf;
-  buf.write_u16(service_index);
-  buf.write_u16(static_cast<uint16_t>(providers.size()));
-  for (const auto& provider : providers) {
-    buf.write_u16(writer_.get_class(provider));
-  }
-  provides_.insert(provides_.end(), buf.data().begin(), buf.data().end());
-}
-code_writer::code_writer(class_writer& writer, method_writer& parent) : writer_(writer), parent_(parent) {
-}
-void code_writer::visit(uint16_t max_stack, uint16_t max_locals) {
-  max_stack_ = max_stack;
-  max_locals_ = max_locals;
-}
-void code_writer::visit_line_number(uint16_t line, label start) {
-  lines_.emplace_back(line, start);
-}
-void code_writer::visit_tcb(const tcb& try_catch) {
-  tcbs_.emplace_back(try_catch);
-}
-void code_writer::visit_local(const local_var& local) {
-  local_variables_.emplace_back(local);
-}
-void code_writer::visit_frame(const label& target, const frame& frame) {
-  frames_stack_.emplace_back(target, frame);
-}
-void code_writer::visit_visible_type_annotation(const type_annotation& annotation) {
-  type_annotations_.emplace_back(annotation, true);
-}
-void code_writer::visit_invisible_type_annotation(const type_annotation& annotation) {
-  type_annotations_.emplace_back(annotation, false);
-}
-void code_writer::visit_label(const label& label) {
-  estimates_.emplace_back(label, estimated_size_);
-  labels_.emplace_back(code_.size(), label);
-}
-void code_writer::visit_insn(uint8_t opcode) {
-  code_.emplace_back(opcode);
-  estimated_size_++;
-}
-void code_writer::visit_var_insn(uint8_t opcode, uint16_t index) {
-  const auto wide = index > std::numeric_limits<uint8_t>::max();
-  if (wide) {
-    code_.emplace_back(op::wide);
-  }
-  code_.emplace_back(opcode);
-  if (wide) {
-    code_.emplace_back(static_cast<uint8_t>((index >> 8) & 0xff));
-    code_.emplace_back(static_cast<uint8_t>(index & 0xff));
-  } else {
-    code_.emplace_back(static_cast<uint8_t>(index));
-  }
-  estimated_size_ += wide ? 4 : 2;
-}
-void code_writer::visit_type_insn(uint8_t opcode, const std::string_view& type) {
-  const auto index = writer_.get_class(type);
-  code_.emplace_back(opcode);
-  code_.emplace_back(static_cast<uint8_t>((index >> 8) & 0xff));
-  code_.emplace_back(static_cast<uint8_t>(index & 0xff));
-  estimated_size_ += 3;
-}
-void code_writer::visit_ref_insn(uint8_t opcode, const std::string_view& owner, const std::string_view& name,
-                                 const std::string_view& descriptor) {
-  uint16_t index;
-  switch (opcode) {
-    case op::getfield:
-    case op::putfield:
-    case op::getstatic:
-    case op::putstatic:
-      index = writer_.get_field_ref(owner, name, descriptor);
-      break;
-    case op::invokeinterface:
-      index = writer_.get_interface_method_ref(owner, name, descriptor);
-      break;
-    default:
-      index = writer_.get_method_ref(owner, name, descriptor);
-  }
-  code_.emplace_back(opcode);
-  code_.emplace_back(static_cast<uint8_t>((index >> 8) & 0xff));
-  code_.emplace_back(static_cast<uint8_t>(index & 0xff));
-  estimated_size_ += 3;
-  if (opcode == op::invokeinterface) {
-    const auto parsed_arg = parse_method_descriptor(descriptor).first;
-    auto size = 1;
-    for (const auto& ar : parsed_arg) {
-      size += cafe::size(ar);
-    }
-    code_.emplace_back(size);
-    code_.emplace_back(0);
-    estimated_size_ += 2;
-  }
-}
-void code_writer::visit_iinc_insn(uint16_t index, int16_t value) {
-  const auto wide = index > std::numeric_limits<uint8_t>::max() || value > std::numeric_limits<int8_t>::max() ||
-                    value < std::numeric_limits<int8_t>::min();
-  if (wide) {
-    code_.emplace_back(op::wide);
-  }
-  code_.emplace_back(op::iinc);
-  if (wide) {
-    code_.emplace_back(static_cast<uint8_t>((index >> 8) & 0xff));
-    code_.emplace_back(static_cast<uint8_t>(index & 0xff));
-    code_.emplace_back(static_cast<uint8_t>((value >> 8) & 0xff));
-    code_.emplace_back(static_cast<uint8_t>(value & 0xff));
-  } else {
-    code_.emplace_back(static_cast<uint8_t>(index));
-    code_.emplace_back(static_cast<uint8_t>(value));
-  }
-  estimated_size_ += wide ? 6 : 3;
-}
-void code_writer::visit_push_insn(value val) {
-  const auto opcode = push_insn::opcode_of(val);
-  if (opcode == op::bipush) {
-    code_.emplace_back(opcode);
-    code_.emplace_back(static_cast<int8_t>(std::get<int32_t>(val)));
-    estimated_size_ += 2;
-  } else if (opcode == op::sipush) {
-    const auto value = static_cast<int16_t>(std::get<int32_t>(val));
-    code_.emplace_back(opcode);
-    code_.emplace_back(static_cast<uint8_t>((value >> 8) & 0xff));
-    code_.emplace_back(static_cast<uint8_t>(value & 0xff));
-    estimated_size_ += 3;
-  } else if (opcode != op::ldc) {
-    code_.emplace_back(opcode);
-    estimated_size_++;
-  } else {
-    const auto index = writer_.get_value(val);
-    if (std::holds_alternative<int64_t>(val) || std::holds_alternative<double>(val)) {
-      code_.emplace_back(op::ldc2_w);
-      code_.emplace_back(static_cast<uint8_t>((index >> 8) & 0xff));
-      code_.emplace_back(static_cast<uint8_t>(index & 0xff));
-      estimated_size_ += 3;
-    } else if (index > std::numeric_limits<int8_t>::max()) {
-      code_.emplace_back(op::ldc_w);
-      code_.emplace_back(static_cast<uint8_t>((index >> 8) & 0xff));
-      code_.emplace_back(static_cast<uint8_t>(index & 0xff));
-      estimated_size_ += 3;
-    } else {
-      code_.emplace_back(op::ldc);
-      code_.emplace_back(static_cast<int8_t>(index));
-      estimated_size_ += 2;
-    }
-  }
-}
-void code_writer::visit_branch_insn(uint8_t opcode, label target) {
-  const auto jmp = opcode == op::goto_ || opcode == op::jsr || opcode == op::jsr_w || opcode == op::goto_w;
-  if (jmp) {
-    const auto est = get_estimated(target);
-    if (est != 0) {
-      const auto offset = static_cast<int32_t>(est) - static_cast<int32_t>(estimated_size_);
-      if (offset > std::numeric_limits<int16_t>::max() || offset < std::numeric_limits<int16_t>::min()) {
-        if (opcode == op::goto_ || opcode == op::goto_w) {
-          opcode = op::goto_w;
-        } else {
-          opcode = op::jsr_w;
-        }
-      }
-    }
-  }
-  code_.emplace_back(opcode);
-  branches_.emplace_back(target, code_.size(), opcode == op::goto_w || opcode == op::jsr_w, code_.size() - 1);
-  code_.emplace_back(0);
-  code_.emplace_back(0);
-  if (opcode == op::goto_w || opcode == op::jsr_w) {
-    code_.emplace_back(0);
-    code_.emplace_back(0);
-  }
-  estimated_size_ += jmp ? 5 : 3;
-}
-void code_writer::visit_lookup_switch_insn(label default_target,
-                                           const std::vector<std::pair<int32_t, label>>& targets) {
-  const auto insn_pos = code_.size();
-  code_.emplace_back(op::lookupswitch);
-  switch_pads_.emplace_back(code_.size());
-  branches_.emplace_back(default_target, code_.size(), true, insn_pos);
-  code_.insert(code_.end(), 4, 0);
-  const auto target_size = targets.size();
-  code_.emplace_back(static_cast<uint8_t>((target_size >> 24) & 0xff));
-  code_.emplace_back(static_cast<uint8_t>((target_size >> 16) & 0xff));
-  code_.emplace_back(static_cast<uint8_t>((target_size >> 8) & 0xff));
-  code_.emplace_back(static_cast<uint8_t>(target_size & 0xff));
-  estimated_size_ += 12;
-  for (const auto& [key, target] : targets) {
-    estimated_size_ += 8;
-    code_.emplace_back(static_cast<uint8_t>((key >> 24) & 0xff));
-    code_.emplace_back(static_cast<uint8_t>((key >> 16) & 0xff));
-    code_.emplace_back(static_cast<uint8_t>((key >> 8) & 0xff));
-    code_.emplace_back(static_cast<uint8_t>(key & 0xff));
-    branches_.emplace_back(target, code_.size(), true, insn_pos);
-    code_.insert(code_.end(), 4, 0);
-  }
-}
-void code_writer::visit_table_switch_insn(label default_target, int32_t low, int32_t high,
-                                          const std::vector<label>& targets) {
-  const auto insn_pos = code_.size();
-  code_.emplace_back(op::tableswitch);
-  switch_pads_.emplace_back(code_.size());
-  branches_.emplace_back(default_target, code_.size(), true, insn_pos);
-  code_.insert(code_.end(), 4, 0);
-  code_.emplace_back(static_cast<uint8_t>((low >> 24) & 0xff));
-  code_.emplace_back(static_cast<uint8_t>((low >> 16) & 0xff));
-  code_.emplace_back(static_cast<uint8_t>((low >> 8) & 0xff));
-  code_.emplace_back(static_cast<uint8_t>(low & 0xff));
-  code_.emplace_back(static_cast<uint8_t>((high >> 24) & 0xff));
-  code_.emplace_back(static_cast<uint8_t>((high >> 16) & 0xff));
-  code_.emplace_back(static_cast<uint8_t>((high >> 8) & 0xff));
-  code_.emplace_back(static_cast<uint8_t>(high & 0xff));
-  estimated_size_ += 16;
-  for (const auto& target : targets) {
-    estimated_size_ += 4;
-    branches_.emplace_back(target, code_.size(), true, insn_pos);
-    code_.insert(code_.end(), 4, 0);
-  }
-}
-void code_writer::visit_multi_array_insn(const std::string_view& descriptor, uint8_t dims) {
-  const auto index = writer_.get_class(descriptor);
-  code_.emplace_back(op::multianewarray);
-  code_.emplace_back(static_cast<uint8_t>((index >> 8) & 0xff));
-  code_.emplace_back(static_cast<uint8_t>(index & 0xff));
-  code_.emplace_back(dims);
-  estimated_size_ += 4;
-}
-void code_writer::visit_array_insn(const std::variant<uint8_t, std::string>& type) {
-  if (const auto ty = std::get_if<std::string>(&type)) {
-    const auto index = writer_.get_class(*ty);
-    code_.emplace_back(op::anewarray);
-    code_.emplace_back(static_cast<uint8_t>((index >> 8) & 0xff));
-    code_.emplace_back(static_cast<uint8_t>(index & 0xff));
-    estimated_size_ += 3;
-  } else {
-    const auto array_type = std::get<uint8_t>(type);
-    code_.emplace_back(op::newarray);
-    code_.emplace_back(array_type);
-    estimated_size_++;
-  }
-}
-void code_writer::visit_invoke_dynamic_insn(const std::string_view& name, const std::string_view& descriptor,
-                                            method_handle handle, const std::vector<value>& args) {
-  const auto index = writer_.get_invoke_dynamic(name, descriptor, handle, args);
-  code_.emplace_back(op::invokedynamic);
-  code_.emplace_back(static_cast<uint8_t>((index >> 8) & 0xff));
-  code_.emplace_back(static_cast<uint8_t>(index & 0xff));
-  code_.emplace_back(0);
-  code_.emplace_back(0);
-  estimated_size_ += 5;
-}
-void code_writer::visit_attribute(const std::string_view& name, const std::vector<int8_t>& data) {
-  attributes_count_++;
-  const auto attr_name = writer_.get_utf(name);
-  bytebuf buf;
-  buf.write_u16(attr_name);
-  buf.write_u32(static_cast<uint32_t>(data.size()));
-  buf.write_all(data);
-  const auto info = buf.data();
-  attributes_.insert(attributes_.end(), info.begin(), info.end());
-}
-void code_writer::finish_attributes() {
-  for (const auto& [line, start] : lines_) {
-    line_numbers_count_++;
-    const auto start_pc = get_label(start);
-    bytebuf buf;
-    buf.write_u16(static_cast<uint16_t>(start_pc));
-    buf.write_u16(line);
-    const auto data = buf.data();
-    line_numbers_.insert(line_numbers_.end(), data.begin(), data.end());
-  }
-  for (const auto& try_catch : tcbs_) {
-    exception_table_count_++;
-    const auto start_pc = get_label(try_catch.start);
-    const auto end_pc = get_label(try_catch.end);
-    const auto handler_pc = get_label(try_catch.handler);
-    const auto catch_type = try_catch.type.empty() ? 0 : writer_.get_class(try_catch.type);
-    bytebuf buf;
-    buf.write_u16(static_cast<uint16_t>(start_pc));
-    buf.write_u16(static_cast<uint16_t>(end_pc));
-    buf.write_u16(static_cast<uint16_t>(handler_pc));
-    buf.write_u16(catch_type);
-    const auto data = buf.data();
-    exception_table_.insert(exception_table_.end(), data.begin(), data.end());
-  }
-  for (const auto& local : local_variables_) {
-    const auto start_pc = get_label(local.start);
-    const auto length = get_label(local.end) - start_pc;
-    const auto name_index = writer_.get_utf(local.name);
-    const auto descriptor_index = local.descriptor.empty() ? 0 : writer_.get_utf(local.descriptor);
-    const auto signature_index = local.signature.empty() ? 0 : writer_.get_utf(local.signature);
-    if (descriptor_index != 0) {
-      local_vars_count_++;
-      bytebuf buf;
-      buf.write_u16(static_cast<uint16_t>(start_pc));
-      buf.write_u16(static_cast<uint16_t>(length));
-      buf.write_u16(name_index);
-      buf.write_u16(descriptor_index);
-      buf.write_u16(local.index);
-      const auto data = buf.data();
-      local_vars_.insert(local_vars_.end(), data.begin(), data.end());
-    }
-
-    if (signature_index != 0) {
-      local_type_vars_count_++;
-      bytebuf buf;
-      buf.write_u16(static_cast<uint16_t>(start_pc));
-      buf.write_u16(static_cast<uint16_t>(length));
-      buf.write_u16(name_index);
-      buf.write_u16(signature_index);
-      buf.write_u16(local.index);
-      const auto data = buf.data();
-      local_type_vars_.insert(local_type_vars_.end(), data.begin(), data.end());
-    }
-  }
-  for (const auto& [target, frame] : frames_stack_) {
-    frames_count_++;
-    const auto delta = next_delta(target);
-    bytebuf buf;
-    std::visit(
-        [this, &buf, delta](const auto& arg) {
-          using T = std::decay_t<decltype(arg)>;
-          if constexpr (std::is_same_v<T, same_frame>) {
-            if (const auto stack_opt = arg.stack) {
-              const auto stack = write_frame_var(*stack_opt);
-              if (delta <= 63) {
-                buf.write_u8(static_cast<uint8_t>(delta + 64));
-              } else {
-                buf.write_u8(247);
-                buf.write_u16(delta);
-              }
-              buf.write_all(stack);
-            } else {
-              if (delta <= 63) {
-                buf.write_u8(static_cast<uint8_t>(delta));
-              } else {
-                buf.write_u8(251);
-                buf.write_u16(delta);
-              }
-            }
-          } else if constexpr (std::is_same_v<T, full_frame>) {
-            buf.write_u8(255);
-            buf.write_u16(delta);
-            buf.write_u16(static_cast<uint16_t>(arg.locals.size()));
-            for (const auto& local : arg.locals) {
-              buf.write_all(write_frame_var(local));
-            }
-            buf.write_u16(static_cast<uint16_t>(arg.stack.size()));
-            for (const auto& stack : arg.stack) {
-              buf.write_all(write_frame_var(stack));
-            }
-          } else if constexpr (std::is_same_v<T, chop_frame>) {
-            buf.write_u8(static_cast<uint8_t>(251 - arg.size));
-            buf.write_u16(delta);
-          } else if constexpr (std::is_same_v<T, append_frame>) {
-            buf.write_u8(static_cast<uint8_t>(arg.locals.size() + 251));
-            buf.write_u16(delta);
-            for (const auto& local : arg.locals) {
-              buf.write_all(write_frame_var(local));
-            }
-          }
-        },
-        frame);
-    const auto data = buf.data();
-    frames_.insert(frames_.end(), data.begin(), data.end());
-  }
-  for (const auto& [annotation, visible] : type_annotations_) {
-    const auto data = writer_.get_type_annotation(annotation, labels_);
-    if (visible) {
-      visible_type_annotations_count_++;
-      visible_type_annotations_.insert(visible_type_annotations_.end(), data.begin(), data.end());
-    } else {
-      invisible_type_annotations_count_++;
-      invisible_type_annotations_.insert(invisible_type_annotations_.end(), data.begin(), data.end());
-    }
-  }
-}
-void code_writer::shift(size_t start, size_t offset) {
-  for (auto& pos : switch_pads_) {
-    if (pos >= start) {
-      pos += offset;
-    }
-  }
-  for (auto& [target, pos, wide, insn_start] : branches_) {
-    if (pos >= start) {
-      pos += offset;
-    }
-  }
-  for (auto& [pos, label] : labels_) {
-    if (pos >= start) {
-      pos += offset;
-    }
-  }
-}
-size_t code_writer::get_label(const label& lbl) {
-  for (const auto& [pos, label] : labels_) {
-    if (label == lbl) {
-      return pos;
-    }
-  }
-  return 0;
-}
-size_t code_writer::get_estimated(const label& lbl) {
-  for (const auto& [label, pos] : estimates_) {
-    if (label == lbl) {
-      return pos;
-    }
-  }
-  return 0;
-}
-
-std::vector<int8_t> code_writer::write_frame_var(const frame_var& var) {
-  bytebuf buf;
-  std::visit(
-      [this, &buf](const auto& arg) {
-        using T = std::decay_t<decltype(arg)>;
-        if constexpr (std::is_same_v<T, top_var>) {
-          buf.write_u8(0);
-        } else if constexpr (std::is_same_v<T, int_var>) {
-          buf.write_u8(1);
-        } else if constexpr (std::is_same_v<T, float_var>) {
-          buf.write_u8(2);
-        } else if constexpr (std::is_same_v<T, null_var>) {
-          buf.write_u8(5);
-        } else if constexpr (std::is_same_v<T, uninitialized_this_var>) {
-          buf.write_u8(6);
-        } else if constexpr (std::is_same_v<T, object_var>) {
-          const auto cpool_index = writer_.get_class(arg.type);
-          buf.write_u8(7);
-          buf.write_u16(cpool_index);
-        } else if constexpr (std::is_same_v<T, uninitialized_var>) {
-          const auto offset_pc = get_label(arg.offset);
-          buf.write_u8(8);
-          buf.write_u16(static_cast<uint16_t>(offset_pc));
-        } else if constexpr (std::is_same_v<T, long_var>) {
-          buf.write_u8(4);
-        } else if constexpr (std::is_same_v<T, double_var>) {
-          buf.write_u8(3);
-        }
-      },
-      var);
-  return buf.data();
-}
-uint16_t code_writer::next_delta(const label& target) {
-  const auto pos = get_label(target);
-  auto delta = static_cast<uint16_t>(pos - last_label_);
-  if (last_label_ != 0) {
-    delta--;
-  }
-  last_label_ = pos;
-  return delta;
-}
-field_writer::field_writer(class_writer& writer) : writer_(writer) {
-}
-void field_writer::visit(uint16_t access_flags, const std::string_view& name, const std::string_view& descriptor) {
-  access_flags_ = access_flags;
-  name_index_ = writer_.get_utf(name);
-  descriptor_index_ = writer_.get_utf(descriptor);
-}
-void field_writer::visit_constant_value(const value& constant_value) {
-  const auto attr_name = writer_.get_utf("ConstantValue");
-  const auto index = writer_.get_value(constant_value);
-  bytebuf buf;
-  buf.write_u16(attr_name);
-  buf.write_u32(2);
-  buf.write_u16(index);
-  const auto data = buf.data();
-  attributes_count_++;
-  attributes_.insert(attributes_.end(), data.begin(), data.end());
-}
-void field_writer::visit_synthetic(bool synthetic) {
-  if (!synthetic) {
-    return;
-  }
-  const auto attr_name = writer_.get_utf("Synthetic");
-  bytebuf buf;
-  buf.write_u16(attr_name);
-  buf.write_u32(0);
-  const auto data = buf.data();
-  attributes_count_++;
-  attributes_.insert(attributes_.end(), data.begin(), data.end());
-}
-void field_writer::visit_deprecated(bool deprecated) {
-  if (!deprecated) {
-    return;
-  }
-  const auto attr_name = writer_.get_utf("Deprecated");
-  bytebuf buf;
-  buf.write_u16(attr_name);
-  buf.write_u32(0);
-  const auto data = buf.data();
-  attributes_count_++;
-  attributes_.insert(attributes_.end(), data.begin(), data.end());
-}
-void field_writer::visit_signature(const std::string_view& signature) {
-  const auto attr_name = writer_.get_utf("Signature");
-  const auto sig = writer_.get_utf(signature);
-  bytebuf buf;
-  buf.write_u16(attr_name);
-  buf.write_u32(2);
-  buf.write_u16(sig);
-}
-void field_writer::visit_visible_annotation(const annotation& annotation) {
-  visible_annotations_count_++;
-  const auto data = writer_.get_annotation(annotation);
-  visible_annotations_.insert(visible_annotations_.end(), data.begin(), data.end());
-}
-void field_writer::visit_invisible_annotation(const annotation& annotation) {
-  invisible_annotations_count_++;
-  const auto data = writer_.get_annotation(annotation);
-  invisible_annotations_.insert(invisible_annotations_.end(), data.begin(), data.end());
-}
-void field_writer::visit_visible_type_annotation(const type_annotation& annotation) {
-  visible_type_annotations_count_++;
-  std::vector<std::pair<size_t, label>> dummy_labels;
-  const auto data = writer_.get_type_annotation(annotation, dummy_labels);
-  visible_type_annotations_.insert(visible_type_annotations_.end(), data.begin(), data.end());
-}
-void field_writer::visit_invisible_type_annotation(const type_annotation& annotation) {
-  invisible_type_annotations_count_++;
-  std::vector<std::pair<size_t, label>> dummy_labels;
-  const auto data = writer_.get_type_annotation(annotation, dummy_labels);
-  invisible_type_annotations_.insert(invisible_type_annotations_.end(), data.begin(), data.end());
-}
-void field_writer::visit_attribute(const std::string_view& name, const std::vector<int8_t>& data) {
-  attributes_count_++;
-  const auto attr_name = writer_.get_utf(name);
-  bytebuf buf;
-  buf.write_u16(attr_name);
-  buf.write_u32(static_cast<uint32_t>(data.size()));
-  buf.write_all(data);
-  const auto info = buf.data();
-  attributes_.insert(attributes_.end(), info.begin(), info.end());
-}
-method_writer::method_writer(class_writer& writer) : writer_(writer) {
-}
-void method_writer::visit(uint16_t access_flags, const std::string_view& name, const std::string_view& descriptor) {
-  access_flags_ = access_flags;
-  name_index_ = writer_.get_utf(name);
-  descriptor_index_ = writer_.get_utf(descriptor);
-}
-code_visitor& method_writer::visit_code(uint16_t max_stack, uint16_t max_locals) {
-  code_.emplace(writer_, *this);
-  code_->visit(max_stack, max_locals);
-  return code_.value();
-}
-void method_writer::visit_exception(const std::string_view& exception) {
-  exceptions_.emplace_back(writer_.get_class(exception));
-}
-void method_writer::visit_visible_parameter_annotation(uint8_t parameter, const annotation& annotation) {
-  if (visible_parameter_annotations_.size() <= parameter) {
-    visible_parameter_annotations_.resize(parameter + 1);
-    visible_parameter_annotations_count_.resize(parameter + 1);
-  }
-  visible_parameter_annotations_count_[parameter]++;
-  const auto data = writer_.get_annotation(annotation);
-  visible_parameter_annotations_[parameter].insert(visible_parameter_annotations_[parameter].end(), data.begin(),
-                                                   data.end());
-}
-void method_writer::visit_invisible_parameter_annotation(uint8_t parameter, const annotation& annotation) {
-  if (invisible_parameter_annotations_.size() <= parameter) {
-    invisible_parameter_annotations_.resize(parameter + 1);
-    invisible_parameter_annotations_count_.resize(parameter + 1);
-  }
-  invisible_parameter_annotations_count_[parameter]++;
-  const auto data = writer_.get_annotation(annotation);
-  invisible_parameter_annotations_[parameter].insert(invisible_parameter_annotations_[parameter].end(), data.begin(),
-                                                     data.end());
-}
-void method_writer::visit_annotation_default(const element_value& value) {
-  const auto attr_name = writer_.get_utf("AnnotationDefault");
-  const auto data = writer_.get_element_value(value);
-  bytebuf buf;
-  buf.write_u16(attr_name);
-  buf.write_u32(static_cast<uint32_t>(data.size()));
-  buf.write_all(data);
-}
-void method_writer::visit_parameter(uint16_t access_flags, const std::string_view& name) {
-  const auto name_index = static_cast<uint16_t>(name.empty() ? 0 : writer_.get_utf(name));
-  parameters_count_++;
-  parameters_.emplace_back(static_cast<int8_t>((name_index >> 8) & 0xff));
-  parameters_.emplace_back(static_cast<int8_t>(name_index & 0xff));
-  parameters_.emplace_back(static_cast<int8_t>((access_flags >> 8) & 0xff));
-  parameters_.emplace_back(static_cast<int8_t>(access_flags & 0xff));
-}
-void method_writer::visit_synthetic(bool synthetic) {
-  if (!synthetic) {
-    return;
-  }
-  const auto attr_name = writer_.get_utf("Synthetic");
-  bytebuf buf;
-  buf.write_u16(attr_name);
-  buf.write_u32(0);
-  const auto data = buf.data();
-  attributes_count_++;
-  attributes_.insert(attributes_.end(), data.begin(), data.end());
-}
-void method_writer::visit_deprecated(bool deprecated) {
-  if (!deprecated) {
-    return;
-  }
-  const auto attr_name = writer_.get_utf("Deprecated");
-  bytebuf buf;
-  buf.write_u16(attr_name);
-  buf.write_u32(0);
-}
-void method_writer::visit_signature(const std::string_view& signature) {
-  const auto attr_name = writer_.get_utf("Signature");
-  const auto sig = writer_.get_utf(signature);
-  bytebuf buf;
-  buf.write_u16(attr_name);
-  buf.write_u32(2);
-  buf.write_u16(sig);
-  const auto data = buf.data();
-  attributes_count_++;
-  attributes_.insert(attributes_.end(), data.begin(), data.end());
-}
-void method_writer::visit_visible_annotation(const annotation& annotation) {
-  visible_annotations_count_++;
-  const auto data = writer_.get_annotation(annotation);
-  visible_annotations_.insert(visible_annotations_.end(), data.begin(), data.end());
-}
-void method_writer::visit_invisible_annotation(const annotation& annotation) {
-  invisible_annotations_count_++;
-  const auto data = writer_.get_annotation(annotation);
-  invisible_annotations_.insert(invisible_annotations_.end(), data.begin(), data.end());
-}
-void method_writer::visit_visible_type_annotation(const type_annotation& annotation) {
-  std::vector<std::pair<size_t, label>> dummy_labels;
-  visible_type_annotations_count_++;
-  const auto data = writer_.get_type_annotation(annotation, dummy_labels);
-  visible_type_annotations_.insert(visible_type_annotations_.end(), data.begin(), data.end());
-}
-void method_writer::visit_invisible_type_annotation(const type_annotation& annotation) {
-  std::vector<std::pair<size_t, label>> dummy_labels;
-  invisible_type_annotations_count_++;
-  const auto data = writer_.get_type_annotation(annotation, dummy_labels);
-  invisible_type_annotations_.insert(invisible_type_annotations_.end(), data.begin(), data.end());
-}
-void method_writer::visit_attribute(const std::string_view& name, const std::vector<int8_t>& data) {
-  attributes_count_++;
-  const auto attr_name = writer_.get_utf(name);
-  bytebuf buf;
-  buf.write_u16(attr_name);
-  buf.write_u32(static_cast<uint32_t>(data.size()));
-  buf.write_all(data);
-  const auto info = buf.data();
-  attributes_.insert(attributes_.end(), info.begin(), info.end());
-}
-class_writer::class_writer() {
-  pool_.emplace_back(cp::pad_info{});
-}
-void class_writer::visit(uint32_t version, uint16_t access_flags, const std::string_view& name,
-                         const std::string_view& super_name) {
-  version_ = version;
-  access_flags_ = access_flags;
-  this_class_ = get_class(name);
-  if (!super_name.empty()) {
-    super_class_ = get_class(super_name);
-  }
-}
-void class_writer::visit_interface(const std::string_view& name) {
-  interfaces_.push_back(get_class(name));
-}
-field_visitor& class_writer::visit_field(uint16_t access_flags, const std::string_view& name,
-                                         const std::string_view& descriptor) {
-  fields_.emplace_back(*this);
-  fields_.back().visit(access_flags, name, descriptor);
-  return fields_.back();
-}
-method_visitor& class_writer::visit_method(uint16_t access_flags, const std::string_view& name,
-                                           const std::string_view& descriptor) {
-  methods_.emplace_back(*this);
-  methods_.back().visit(access_flags, name, descriptor);
-  return methods_.back();
-}
-void class_writer::visit_source_file(const std::string_view& source_file) {
+void class_writer::write_source_file(const std::string_view& source_file) {
   const auto attr_name = get_utf("SourceFile");
   const auto source_index = get_utf(source_file);
-  bytebuf buf;
+  databuf buf(attributes_);
   buf.write_u16(attr_name);
   buf.write_u32(2);
   buf.write_u16(source_index);
-  const auto data = buf.data();
   attributes_count_++;
-  attributes_.insert(attributes_.end(), data.begin(), data.end());
 }
-void class_writer::visit_inner_class(const std::string_view& name, const std::string_view& outer_name,
-                                     const std::string_view& inner_name, uint16_t access_flags) {
-  const auto name_index = get_class(name);
-  const auto outer_index = outer_name.empty() ? 0 : get_class(outer_name);
-  const auto inner_index = inner_name.empty() ? 0 : get_utf(inner_name);
-  inner_classes_.emplace_back(name_index, outer_index, inner_index, access_flags);
-}
-void class_writer::visit_enclosing_method(const std::string_view& owner, const std::string_view& name,
-                                          const std::string_view& descriptor) {
+void class_writer::write_enclosing_method(const std::string_view& owner,
+                                          const std::optional<std::pair<std::string, std::string>>& method) {
   const auto attr_name = get_utf("EnclosingMethod");
   const auto class_index = get_class(owner);
-  const auto nat_index = get_name_and_type(name, descriptor);
-  bytebuf buf;
+  auto nat_index = 0;
+  if (method) {
+    const auto [name, desc] = *method;
+    nat_index = get_name_and_type(name, desc);
+  }
+  databuf buf(attributes_);
   buf.write_u16(attr_name);
   buf.write_u32(4);
   buf.write_u16(class_index);
   buf.write_u16(nat_index);
+  attributes_count_++;
 }
-void class_writer::visit_source_debug_extension(const std::string_view& debug_extension) {
+void class_writer::write_source_debug_extension(const std::string_view& debug_extension) {
   const auto attr_name = get_utf("SourceDebugExtension");
-  const auto data = std::vector<int8_t>(debug_extension.begin(), debug_extension.end());
-  bytebuf buf;
+  const auto& data = std::vector<int8_t>(debug_extension.begin(), debug_extension.end());
+  databuf buf(attributes_);
   buf.write_u16(attr_name);
   buf.write_u32(static_cast<uint32_t>(data.size()));
   buf.write_all(data);
-  const auto info = buf.data();
   attributes_count_++;
-  attributes_.insert(attributes_.end(), info.begin(), info.end());
 }
-module_visitor& class_writer::visit_module(const std::string_view& name, uint16_t access_flags,
-                                           const std::string_view& version) {
-  module_.emplace(*this);
-  module_->visit(name, access_flags, version);
-  return module_.value();
+void class_writer::write_signature(const std::string_view& signature) {
+  const auto attr_name = get_utf("Signature");
+  const auto sig_index = get_utf(signature);
+  databuf buf(attributes_);
+  buf.write_u16(attr_name);
+  buf.write_u32(2);
+  buf.write_u16(sig_index);
+  attributes_count_++;
 }
-void class_writer::visit_module_package(const std::string_view& package) {
-  module_packages_.emplace_back(get_package(package));
+void class_writer::write_inner_classes(const std::vector<inner_class>& inner_classes) {
+  const auto attr_name = get_utf("InnerClasses");
+  databuf buf(attributes_);
+  buf.write_u16(attr_name);
+  buf.write_u32(static_cast<uint32_t>((inner_classes.size() * 8) + 2));
+  buf.write_u16(static_cast<uint16_t>(inner_classes.size()));
+  for (const auto& [name, outer, inner, access] : inner_classes) {
+    buf.write_u16(get_class(name));
+    buf.write_u16(outer ? get_class(*outer) : 0);
+    buf.write_u16(inner ? get_utf(*inner) : 0);
+    buf.write_u16(access);
+  }
+  attributes_count_++;
 }
-void class_writer::visit_module_main_class(const std::string_view& main_class) {
+void class_writer::write_module(const module& module) {
+  data_writer buf;
+  buf.write_u16(get_module(module.name));
+  buf.write_u16(module.access_flags);
+  buf.write_u16(module.version ? get_utf(*module.version) : 0);
+  buf.write_u16(static_cast<uint16_t>(module.mod_requires.size()));
+  for (const auto& req : module.mod_requires) {
+    buf.write_u16(get_module(req.module));
+    buf.write_u16(req.access_flags);
+    buf.write_u16(req.version ? get_utf(*req.version) : 0);
+  }
+  buf.write_u16(static_cast<uint16_t>(module.exports.size()));
+  for (const auto& exp : module.exports) {
+    buf.write_u16(get_package(exp.package));
+    buf.write_u16(exp.access_flags);
+    buf.write_u16(static_cast<uint16_t>(exp.modules.size()));
+    for (const auto& name : exp.modules) {
+      buf.write_u16(get_module(name));
+    }
+  }
+  buf.write_u16(static_cast<uint16_t>(module.opens.size()));
+  for (const auto& open : module.opens) {
+    buf.write_u16(get_package(open.package));
+    buf.write_u16(open.access_flags);
+    buf.write_u16(static_cast<uint16_t>(open.modules.size()));
+    for (const auto& name : open.modules) {
+      buf.write_u16(get_module(name));
+    }
+  }
+  buf.write_u16(static_cast<uint16_t>(module.uses.size()));
+  for (const auto& use : module.uses) {
+    buf.write_u16(get_class(use));
+  }
+  buf.write_u16(static_cast<uint16_t>(module.provides.size()));
+  for (const auto& prov : module.provides) {
+    buf.write_u16(get_class(prov.service));
+    buf.write_u16(static_cast<uint16_t>(prov.providers.size()));
+    for (const auto& provider : prov.providers) {
+      buf.write_u16(get_class(provider));
+    }
+  }
+  const auto attr_name = get_utf("Module");
+  const auto module_data = buf.data();
+  databuf data(attributes_);
+  data.write_u16(attr_name);
+  data.write_u32(static_cast<uint32_t>(module_data.size()));
+  data.write_all(module_data);
+  attributes_count_++;
+}
+void class_writer::write_module_packages(const std::vector<std::string>& module_packages) {
+  const auto attr_name = get_utf("ModulePackages");
+  databuf buf(attributes_);
+  buf.write_u16(attr_name);
+  buf.write_u32(static_cast<uint32_t>(module_packages.size() + 2));
+  buf.write_u16(static_cast<uint16_t>(module_packages.size()));
+  for (const auto& name : module_packages) {
+    buf.write_u16(get_package(name));
+  }
+  attributes_count_++;
+}
+void class_writer::write_module_main_class(const std::string_view& main_class) {
   const auto attr_name = get_utf("ModuleMainClass");
   const auto module_class = get_class(main_class);
-  bytebuf buf;
+  databuf buf(attributes_);
   buf.write_u16(attr_name);
   buf.write_u32(2);
   buf.write_u16(module_class);
+  attributes_count_++;
 }
-void class_writer::visit_nest_host(const std::string_view& host) {
+void class_writer::write_nest_host(const std::string_view& host) {
   const auto attr_name = get_utf("NestHost");
   const auto nest_host = get_class(host);
-  bytebuf buf;
+  databuf buf(attributes_);
   buf.write_u16(attr_name);
   buf.write_u32(2);
   buf.write_u16(nest_host);
+  attributes_count_++;
 }
-void class_writer::visit_nest_member(const std::string_view& members) {
-  nest_members_.emplace_back(get_class(members));
-}
-record_component_visitor& class_writer::visit_record_component(const std::string_view& name,
-                                                               const std::string_view& descriptor) {
-  record_components_.emplace_back(*this);
-  record_components_.back().visit(name, descriptor);
-  return record_components_.back();
-}
-void class_writer::visit_permitted_subclass(const std::string_view& subclass) {
-  permitted_subclasses_.emplace_back(get_class(subclass));
-}
-void class_writer::visit_synthetic(bool synthetic) {
-  if (!synthetic) {
-    return;
+void class_writer::write_nest_members(const std::vector<std::string>& members) {
+  const auto attr_name = get_utf("NestMembers");
+  databuf buf(attributes_);
+  buf.write_u16(attr_name);
+  buf.write_u32(static_cast<uint32_t>((members.size() * 2) + 2));
+  buf.write_u16(static_cast<uint16_t>(members.size()));
+  for (const auto& name : members) {
+    buf.write_u16(get_class(name));
   }
-  const auto attr_name = get_utf("Synthetic");
-  bytebuf buf;
-  buf.write_u16(attr_name);
-  buf.write_u32(0);
-  const auto data = buf.data();
   attributes_count_++;
-  attributes_.insert(attributes_.end(), data.begin(), data.end());
 }
-void class_writer::visit_deprecated(bool deprecated) {
-  if (!deprecated) {
-    return;
+void class_writer::write_record(const std::vector<record_component>& components) {
+  data_writer buf;
+  buf.write_u16(static_cast<uint16_t>(components.size()));
+  std::vector<std::pair<size_t, label>> dummy_labels;
+  for (const auto& comp : components) {
+    buf.write_u16(get_utf(comp.name));
+    buf.write_u16(get_utf(comp.desc));
+
+    data_writer attr_buf;
+    uint16_t attr_count = 0;
+    if (comp.signature) {
+      const auto attr_name = get_utf("Signature");
+      const auto sig = get_utf(*comp.signature);
+      attr_buf.write_u16(attr_name);
+      attr_buf.write_u32(2);
+      attr_buf.write_u16(sig);
+      attr_count++;
+    }
+    if (!comp.visible_annotations.empty()) {
+      const auto attr_name = get_utf("RuntimeVisibleAnnotations");
+      const auto& data = get_annotations(comp.visible_annotations);
+      attr_buf.write_u16(attr_name);
+      attr_buf.write_u32(static_cast<uint32_t>(data.size() + 2));
+      attr_buf.write_u16(static_cast<uint16_t>(comp.visible_annotations.size()));
+      attr_buf.write_all(data);
+      attr_count++;
+    }
+    if (!comp.invisible_annotations.empty()) {
+      const auto attr_name = get_utf("RuntimeInvisibleAnnotations");
+      const auto& data = get_annotations(comp.invisible_annotations);
+      attr_buf.write_u16(attr_name);
+      attr_buf.write_u32(static_cast<uint32_t>(data.size() + 2));
+      attr_buf.write_u16(static_cast<uint16_t>(comp.invisible_annotations.size()));
+      attr_buf.write_all(data);
+      attr_count++;
+    }
+    if (!comp.visible_type_annotations.empty()) {
+      const auto attr_name = get_utf("RuntimeVisibleTypeAnnotations");
+      const auto& data = get_type_annotations(comp.visible_type_annotations, dummy_labels);
+      attr_buf.write_u16(attr_name);
+      attr_buf.write_u32(static_cast<uint32_t>(data.size() + 2));
+      attr_buf.write_u16(static_cast<uint16_t>(comp.visible_type_annotations.size()));
+      attr_buf.write_all(data);
+      attr_count++;
+    }
+    if (!comp.invisible_type_annotations.empty()) {
+      const auto attr_name = get_utf("RuntimeInvisibleTypeAnnotations");
+      const auto& data = get_type_annotations(comp.invisible_type_annotations, dummy_labels);
+      attr_buf.write_u16(attr_name);
+      attr_buf.write_u32(static_cast<uint32_t>(data.size() + 2));
+      attr_buf.write_u16(static_cast<uint16_t>(comp.invisible_type_annotations.size()));
+      attr_buf.write_all(data);
+      attr_count++;
+    }
+    for (const auto& attr : comp.attributes) {
+      const auto attr_name = get_utf(attr.name);
+      attr_buf.write_u16(attr_name);
+      attr_buf.write_u32(static_cast<uint32_t>(attr.data.size()));
+      attr_buf.write_all(attr.data);
+      attr_count++;
+    }
+    buf.write_u16(attr_count);
+    buf.write_all(attr_buf.data());
   }
-  const auto attr_name = get_utf("Deprecated");
-  bytebuf buf;
-  buf.write_u16(attr_name);
-  buf.write_u32(0);
-  const auto data = buf.data();
+  const auto attr_name = get_utf("Record");
+  const auto& data = buf.data();
+  databuf data_buf(attributes_);
+  data_buf.write_u16(attr_name);
+  data_buf.write_u32(static_cast<uint32_t>(data.size()));
+  data_buf.write_all(data);
   attributes_count_++;
-  attributes_.insert(attributes_.end(), data.begin(), data.end());
 }
-void class_writer::visit_signature(const std::string_view& signature) {
-  const auto attr_name = get_utf("Signature");
-  const auto sig = get_utf(signature);
-  bytebuf buf;
+void class_writer::write_permitted_subclasses(const std::vector<std::string>& subclasses) {
+  const auto attr_name = get_utf("PermittedSubclasses");
+  databuf buf(attributes_);
   buf.write_u16(attr_name);
-  buf.write_u32(2);
-  buf.write_u16(sig);
-  const auto data = buf.data();
+  buf.write_u32(static_cast<uint32_t>((subclasses.size() * 2) + 2));
+  buf.write_u16(static_cast<uint16_t>(subclasses.size()));
+  for (const auto& name : subclasses) {
+    buf.write_u16(get_class(name));
+  }
   attributes_count_++;
-  attributes_.insert(attributes_.end(), data.begin(), data.end());
 }
-void class_writer::visit_visible_annotation(const annotation& annotation) {
-  visible_annotations_count_++;
-  const auto data = get_annotation(annotation);
-  visible_annotations_.insert(visible_annotations_.end(), data.begin(), data.end());
-}
-void class_writer::visit_invisible_annotation(const annotation& annotation) {
-  invisible_annotations_count_++;
-  const auto data = get_annotation(annotation);
-  invisible_annotations_.insert(invisible_annotations_.end(), data.begin(), data.end());
-}
-void class_writer::visit_visible_type_annotation(const type_annotation& annotation) {
-  std::vector<std::pair<size_t, label>> dummy_labels;
-  visible_type_annotations_count_++;
-  const auto data = get_type_annotation(annotation, dummy_labels);
-  visible_type_annotations_.insert(visible_type_annotations_.end(), data.begin(), data.end());
-}
-void class_writer::visit_invisible_type_annotation(const type_annotation& annotation) {
-  std::vector<std::pair<size_t, label>> dummy_labels;
-  invisible_type_annotations_count_++;
-  const auto data = get_type_annotation(annotation, dummy_labels);
-  invisible_type_annotations_.insert(invisible_type_annotations_.end(), data.begin(), data.end());
-}
-void class_writer::visit_attribute(const std::string_view& name, const std::vector<int8_t>& data) {
-  attributes_count_++;
-  const auto attr_name = get_utf(name);
-  bytebuf buf;
+void class_writer::write_annotations(const std::vector<annotation>& annotations, bool visible) {
+  const auto attr_name = get_utf(visible ? "RuntimeVisibleAnnotations" : "RuntimeInvisibleAnnotations");
+  const auto& data = get_annotations(annotations);
+  databuf buf(attributes_);
   buf.write_u16(attr_name);
-  buf.write_u32(static_cast<uint32_t>(data.size()));
+  buf.write_u32(static_cast<uint32_t>(data.size() + 2));
+  buf.write_u16(static_cast<uint16_t>(annotations.size()));
   buf.write_all(data);
-  const auto info = buf.data();
-  attributes_.insert(attributes_.end(), info.begin(), info.end());
+  attributes_count_++;
+}
+void class_writer::write_type_annotations(const std::vector<type_annotation>& annotations, bool visible) {
+  const auto attr_name = get_utf(visible ? "RuntimeVisibleTypeAnnotations" : "RuntimeInvisibleTypeAnnotations");
+  std::vector<std::pair<size_t, label>> dummy_labels;
+  const auto& data = get_type_annotations(annotations, dummy_labels);
+  databuf buf(attributes_);
+  buf.write_u16(attr_name);
+  buf.write_u32(static_cast<uint32_t>(data.size() + 2));
+  buf.write_u16(static_cast<uint16_t>(annotations.size()));
+  buf.write_all(data);
+  attributes_count_++;
+}
+void class_writer::write_fields(const std::vector<field>& fields) {
+  databuf buf(fields_);
+  std::vector<std::pair<size_t, label>> dummy_labels;
+  for (const auto& field : fields) {
+    const auto name = get_utf(field.name);
+    const auto desc = get_utf(field.desc);
+    buf.write_u16(field.access_flags);
+    buf.write_u16(name);
+    buf.write_u16(desc);
+
+    uint16_t attr_count = 0;
+    data_writer attr_buf;
+    if (field.signature) {
+      const auto attr_name = get_utf("Signature");
+      const auto sig = get_utf(*field.signature);
+      attr_buf.write_u16(attr_name);
+      attr_buf.write_u32(2);
+      attr_buf.write_u16(sig);
+      attr_count++;
+    }
+    if (field.synthetic) {
+      attr_buf.write_u16(get_utf("Synthetic"));
+      attr_buf.write_u32(0);
+      attr_count++;
+    }
+    if (field.deprecated) {
+      attr_buf.write_u16(get_utf("Deprecated"));
+      attr_buf.write_u32(0);
+      attr_count++;
+    }
+    if (!field.visible_annotations.empty()) {
+      const auto attr_name = get_utf("RuntimeVisibleAnnotations");
+      const auto& data = get_annotations(field.visible_annotations);
+      attr_buf.write_u16(attr_name);
+      attr_buf.write_u32(static_cast<uint32_t>(data.size() + 2));
+      attr_buf.write_u16(static_cast<uint16_t>(field.visible_annotations.size()));
+      attr_buf.write_all(data);
+      attr_count++;
+    }
+    if (!field.invisible_annotations.empty()) {
+      const auto attr_name = get_utf("RuntimeInvisibleAnnotations");
+      const auto& data = get_annotations(field.invisible_annotations);
+      attr_buf.write_u16(attr_name);
+      attr_buf.write_u32(static_cast<uint32_t>(data.size() + 2));
+      attr_buf.write_u16(static_cast<uint16_t>(field.invisible_annotations.size()));
+      attr_buf.write_all(data);
+      attr_count++;
+    }
+    if (!field.visible_type_annotations.empty()) {
+      const auto attr_name = get_utf("RuntimeVisibleTypeAnnotations");
+      const auto& data = get_type_annotations(field.visible_type_annotations, dummy_labels);
+      attr_buf.write_u16(attr_name);
+      attr_buf.write_u32(static_cast<uint32_t>(data.size() + 2));
+      attr_buf.write_u16(static_cast<uint16_t>(field.visible_type_annotations.size()));
+      attr_buf.write_all(data);
+      attr_count++;
+    }
+    if (!field.invisible_type_annotations.empty()) {
+      const auto attr_name = get_utf("RuntimeInvisibleTypeAnnotations");
+      const auto& data = get_type_annotations(field.invisible_type_annotations, dummy_labels);
+      attr_buf.write_u16(attr_name);
+      attr_buf.write_u32(static_cast<uint32_t>(data.size() + 2));
+      attr_buf.write_u16(static_cast<uint16_t>(field.invisible_type_annotations.size()));
+      attr_buf.write_all(data);
+      attr_count++;
+    }
+    for (const auto& attr : field.attributes) {
+      const auto attr_name = get_utf(attr.name);
+      attr_buf.write_u16(attr_name);
+      attr_buf.write_u32(static_cast<uint32_t>(attr.data.size()));
+      attr_buf.write_all(attr.data);
+      attr_count++;
+    }
+    buf.write_u16(attr_count);
+    buf.write_all(attr_buf.data());
+  }
+}
+void class_writer::write_methods(const class_file&file, const std::vector<method>& methods, bool oak) {
+  databuf buf(methods_);
+  std::vector<std::pair<size_t, label>> dummy_labels;
+  for (const auto& method : methods) {
+    const auto name = get_utf(method.name);
+    const auto desc = get_utf(method.desc);
+    buf.write_u16(method.access_flags);
+    buf.write_u16(name);
+    buf.write_u16(desc);
+
+    uint16_t attr_count = 0;
+    data_writer attr_buf;
+    if (!method.exceptions.empty()) {
+      const auto attr_name = get_utf("Exceptions");
+      attr_buf.write_u16(attr_name);
+      attr_buf.write_u32(static_cast<uint32_t>((method.exceptions.size() * 2) + 2));
+      attr_buf.write_u16(static_cast<uint16_t>(method.exceptions.size()));
+      for (const auto& exc : method.exceptions) {
+        attr_buf.write_u16(get_class(exc));
+      }
+      attr_count++;
+    }
+    if (!method.visible_parameter_annotations.empty()) {
+      const auto attr_name = get_utf("RuntimeVisibleParameterAnnotations");
+      data_writer anno_writer;
+      for (const auto& annos : method.visible_parameter_annotations) {
+        const auto anno = get_annotations(annos);
+        anno_writer.write_u16(static_cast<uint16_t>(annos.size()));
+        anno_writer.write_all(anno);
+      }
+      const auto& data = anno_writer.data();
+      attr_buf.write_u16(attr_name);
+      attr_buf.write_u32(static_cast<uint32_t>(data.size() + 1));
+      attr_buf.write_u8(static_cast<uint8_t>(method.visible_parameter_annotations.size()));
+      attr_buf.write_all(data);
+      attr_count++;
+    }
+    if (!method.invisible_parameter_annotations.empty()) {
+      const auto attr_name = get_utf("RuntimeInvisibleParameterAnnotations");
+      data_writer anno_writer;
+      for (const auto& annos : method.invisible_parameter_annotations) {
+        const auto anno = get_annotations(annos);
+        anno_writer.write_u16(static_cast<uint16_t>(annos.size()));
+        anno_writer.write_all(anno);
+      }
+      const auto& data = anno_writer.data();
+      attr_buf.write_u16(attr_name);
+      attr_buf.write_u32(static_cast<uint32_t>(data.size() + 1));
+      attr_buf.write_u8(static_cast<uint8_t>(method.invisible_parameter_annotations.size()));
+      attr_buf.write_all(data);
+      attr_count++;
+    }
+    if (method.annotation_default) {
+      const auto attr_name = get_utf("AnnotationDefault");
+      data_writer anno_writer;
+      get_element_value(anno_writer, *method.annotation_default);
+      const auto& data = anno_writer.data();
+      attr_buf.write_u16(attr_name);
+      attr_buf.write_u32(static_cast<uint32_t>(data.size()));
+      attr_buf.write_all(data);
+      attr_count++;
+    }
+    if (!method.parameters.empty()) {
+      const auto attr_name = get_utf("MethodParameters");
+      attr_buf.write_u16(attr_name);
+      attr_buf.write_u32(static_cast<uint32_t>((method.parameters.size() * 4) + 1));
+      attr_buf.write_u8(static_cast<uint8_t>(method.parameters.size()));
+      for (const auto& [access, name] : method.parameters) {
+        attr_buf.write_u16(name ? get_utf(*name) : 0);
+        attr_buf.write_u16(access);
+      }
+      attr_count++;
+    }
+    if (method.synthetic) {
+      attr_buf.write_u16(get_utf("Synthetic"));
+      attr_buf.write_u32(0);
+      attr_count++;
+    }
+    if (method.deprecated) {
+      attr_buf.write_u16(get_utf("Deprecated"));
+      attr_buf.write_u32(0);
+      attr_count++;
+    }
+    if (method.signature) {
+      const auto attr_name = get_utf("Signature");
+      const auto sig = get_utf(*method.signature);
+      attr_buf.write_u16(attr_name);
+      attr_buf.write_u32(2);
+      attr_buf.write_u16(sig);
+      attr_count++;
+    }
+    if (!method.visible_annotations.empty()) {
+      const auto attr_name = get_utf("RuntimeVisibleAnnotations");
+      const auto& data = get_annotations(method.visible_annotations);
+      attr_buf.write_u16(attr_name);
+      attr_buf.write_u32(static_cast<uint32_t>(data.size() + 2));
+      attr_buf.write_u16(static_cast<uint16_t>(method.visible_annotations.size()));
+      attr_buf.write_all(data);
+      attr_count++;
+    }
+    if (!method.invisible_annotations.empty()) {
+      const auto attr_name = get_utf("RuntimeInvisibleAnnotations");
+      const auto& data = get_annotations(method.invisible_annotations);
+      attr_buf.write_u16(attr_name);
+      attr_buf.write_u32(static_cast<uint32_t>(data.size() + 2));
+      attr_buf.write_u16(static_cast<uint16_t>(method.invisible_annotations.size()));
+      attr_buf.write_all(data);
+      attr_count++;
+    }
+    if (!method.visible_type_annotations.empty()) {
+      const auto attr_name = get_utf("RuntimeVisibleTypeAnnotations");
+      const auto& data = get_type_annotations(method.visible_type_annotations, dummy_labels);
+      attr_buf.write_u16(attr_name);
+      attr_buf.write_u32(static_cast<uint32_t>(data.size() + 2));
+      attr_buf.write_u16(static_cast<uint16_t>(method.visible_type_annotations.size()));
+      attr_buf.write_all(data);
+      attr_count++;
+    }
+    if (!method.invisible_type_annotations.empty()) {
+      const auto attr_name = get_utf("RuntimeInvisibleTypeAnnotations");
+      const auto& data = get_type_annotations(method.invisible_type_annotations, dummy_labels);
+      attr_buf.write_u16(attr_name);
+      attr_buf.write_u32(static_cast<uint32_t>(data.size() + 2));
+      attr_buf.write_u16(static_cast<uint16_t>(method.invisible_type_annotations.size()));
+      attr_buf.write_all(data);
+      attr_count++;
+    }
+    if (!method.code.empty() || !method.code.visible_type_annotations.empty() ||
+        !method.code.invisible_type_annotations.empty() || !method.code.attributes.empty()) {
+      const auto attr_name = get_utf("Code");
+      const auto& data = write_code(file, method, method.code, oak);
+      attr_buf.write_u16(attr_name);
+      attr_buf.write_u32(static_cast<uint32_t>(data.size()));
+      attr_buf.write_all(data);
+      attr_count++;
+    }
+    for (const auto& attr : method.attributes) {
+      const auto attr_name = get_utf(attr.name);
+      attr_buf.write_u16(attr_name);
+      attr_buf.write_u32(static_cast<uint32_t>(attr.data.size()));
+      attr_buf.write_all(attr.data);
+      attr_count++;
+    }
+    buf.write_u16(attr_count);
+    buf.write_all(attr_buf.data());
+  }
+}
+std::vector<int8_t> class_writer::write_code(const class_file& file, const method& method, const code& c, bool oak) {
+  auto max_stack = c.max_stack;
+  auto max_locals = c.max_locals;
+  std::vector<std::pair<label, frame>> frames = c.frames;
+  std::vector<std::pair<code::const_iterator, label>> inject_labels;
+
+  if ((flags_ & compute_maxes) != 0) {
+    basic_block_graph graph(c);
+    const auto [locals, stack] = graph.compute_maxes(basic_block_graph::get_start_locals(method));
+    max_stack = stack;
+    max_locals = locals;
+  } else if ((flags_ & compute_frames) != 0) {
+    basic_block_graph graph(c);
+    if (tree_ == nullptr) {
+      const auto [locals, stack] = graph.compute_maxes(basic_block_graph::get_start_locals(method));
+      max_stack = stack;
+      max_locals = locals;
+    } else {
+      const auto result = graph.compute_frames(*tree_, file.name, basic_block_graph::get_start_locals(file.name, method));
+      max_stack = result.max_stack();
+      max_locals = result.max_locals();
+      frames = result.frames();
+      inject_labels = result.labels();
+    }
+  }
+
+  std::vector<uint8_t> code;
+  std::vector<std::pair<size_t, label>> labels;
+  std::vector<std::tuple<label, size_t, bool, size_t>> branches;
+  std::vector<size_t> switch_pads;
+  const auto shift = [&](size_t start, int32_t offset) {
+    for (auto& pos : switch_pads) {
+      if (pos > start) {
+        pos += offset;
+      }
+    }
+    for (auto& [target, pos, wide, insn_start] : branches) {
+      if (pos >= start) {
+        pos += offset;
+      }
+      if (insn_start >= start) {
+        insn_start += offset;
+      }
+    }
+    for (auto& [pos, target] : labels) {
+      if (pos >= start) {
+        pos += offset;
+      }
+    }
+  };
+  const auto get_label = [&labels](const label& lbl) -> size_t {
+    for (const auto& [pos, label] : labels) {
+      if (label == lbl) {
+        return pos;
+      }
+    }
+    return 0;
+  };
+  size_t last_label = 0;
+  bool first_frame = true;
+  const auto next_delta = [&](const label& target) -> uint16_t {
+    const auto pos = get_label(target);
+    auto delta = static_cast<uint16_t>(pos - last_label);
+    if (first_frame) {
+      first_frame = false;
+    } else {
+      delta--;
+    }
+    last_label = pos;
+    return delta;
+  };
+  const auto write_frame_var = [&](data_writer& buf, const frame_var& var) {
+    std::visit(
+        [&](const auto& arg) {
+          using T = std::decay_t<decltype(arg)>;
+          if constexpr (std::is_same_v<T, top_var>) {
+            buf.write_u8(0);
+          } else if constexpr (std::is_same_v<T, int_var>) {
+            buf.write_u8(1);
+          } else if constexpr (std::is_same_v<T, float_var>) {
+            buf.write_u8(2);
+          } else if constexpr (std::is_same_v<T, null_var>) {
+            buf.write_u8(5);
+          } else if constexpr (std::is_same_v<T, uninitialized_this_var>) {
+            buf.write_u8(6);
+          } else if constexpr (std::is_same_v<T, object_var>) {
+            const auto cpool_index = get_class(arg.type);
+            buf.write_u8(7);
+            buf.write_u16(cpool_index);
+          } else if constexpr (std::is_same_v<T, uninitialized_var>) {
+            const auto offset_pc = get_label(arg.offset);
+            buf.write_u8(8);
+            buf.write_u16(static_cast<uint16_t>(offset_pc));
+          } else if constexpr (std::is_same_v<T, long_var>) {
+            buf.write_u8(4);
+          } else if constexpr (std::is_same_v<T, double_var>) {
+            buf.write_u8(3);
+          }
+        },
+        var);
+  };
+
+  for (auto it = c.begin(); it != c.end(); ++it) {
+    for (const auto& [it2, lbl] : inject_labels) {
+      if (it == it2) {
+        labels.emplace_back(code.size(), lbl);
+      }
+    }
+    const auto& i = *it;
+    std::visit(
+        [&](auto&& arg) {
+          using T = std::decay_t<decltype(arg)>;
+          if constexpr (std::is_same_v<T, label>) {
+            labels.emplace_back(code.size(), arg);
+          }
+          if constexpr (std::is_same_v<T, insn>) {
+            code.emplace_back(arg.opcode);
+          }
+          if constexpr (std::is_same_v<T, var_insn>) {
+            const auto opcode = arg.opcode;
+            const auto index = arg.index;
+            if (index <= 3) {
+              switch (opcode) {
+                case op::iload:
+                  code.emplace_back(op::iload_0 + index);
+                  return;
+                case op::fload:
+                  code.emplace_back(op::fload_0 + index);
+                  return;
+                case op::aload:
+                  code.emplace_back(op::aload_0 + index);
+                  return;
+                case op::dload:
+                  code.emplace_back(op::dload_0 + index);
+                  return;
+                case op::lload:
+                  code.emplace_back(op::lload_0 + index);
+                  return;
+                case op::istore:
+                  code.emplace_back(op::istore_0 + index);
+                  return;
+                case op::fstore:
+                  code.emplace_back(op::fstore_0 + index);
+                  return;
+                case op::astore:
+                  code.emplace_back(op::astore_0 + index);
+                  return;
+                case op::dstore:
+                  code.emplace_back(op::dstore_0 + index);
+                  return;
+                case op::lstore:
+                  code.emplace_back(op::lstore_0 + index);
+                  return;
+                default:
+                  break;
+              }
+            }
+            const auto wide = index > std::numeric_limits<uint8_t>::max();
+            if (wide) {
+              code.emplace_back(op::wide);
+            }
+            code.emplace_back(opcode);
+            if (wide) {
+              code.emplace_back(static_cast<uint8_t>((index >> 8) & 0xff));
+              code.emplace_back(static_cast<uint8_t>(index & 0xff));
+            } else {
+              code.emplace_back(static_cast<uint8_t>(index));
+            }
+          }
+          if constexpr (std::is_same_v<T, type_insn>) {
+            const auto index = get_class(arg.type);
+            code.emplace_back(arg.opcode);
+            code.emplace_back(static_cast<uint8_t>((index >> 8) & 0xff));
+            code.emplace_back(static_cast<uint8_t>(index & 0xff));
+          }
+          if constexpr (std::is_same_v<T, field_insn>) {
+            const auto index = get_field_ref(arg.owner, arg.name, arg.desc);
+            code.emplace_back(arg.opcode);
+            code.emplace_back(static_cast<uint8_t>((index >> 8) & 0xff));
+            code.emplace_back(static_cast<uint8_t>(index & 0xff));
+          }
+          if constexpr (std::is_same_v<T, method_insn>) {
+            auto index = arg.interface ? get_interface_method_ref(arg.owner, arg.name, arg.desc)
+                                       : get_method_ref(arg.owner, arg.name, arg.desc);
+            code.emplace_back(arg.opcode);
+            code.emplace_back(static_cast<uint8_t>((index >> 8) & 0xff));
+            code.emplace_back(static_cast<uint8_t>(index & 0xff));
+            if (arg.opcode == op::invokeinterface) {
+              const type type(arg.desc);
+              const auto parsed_arg = type.parameter_types();
+              auto size = 1;
+              for (const auto& t : parsed_arg) {
+                size += t.size();
+              }
+              code.emplace_back(static_cast<uint8_t>(size));
+              code.emplace_back(0);
+            }
+          }
+          if constexpr (std::is_same_v<T, iinc_insn>) {
+            const auto index = arg.index;
+            const auto value = arg.value;
+            const auto wide = index > std::numeric_limits<uint8_t>::max() ||
+                              value > std::numeric_limits<int8_t>::max() || value < std::numeric_limits<int8_t>::min();
+
+            if (wide) {
+              code.emplace_back(op::wide);
+            }
+            code.emplace_back(op::iinc);
+            if (wide) {
+              code.emplace_back(static_cast<uint8_t>((index >> 8) & 0xff));
+              code.emplace_back(static_cast<uint8_t>(index & 0xff));
+              code.emplace_back(static_cast<uint8_t>((value >> 8) & 0xff));
+              code.emplace_back(static_cast<uint8_t>(value & 0xff));
+            } else {
+              code.emplace_back(static_cast<uint8_t>(index));
+              code.emplace_back(static_cast<uint8_t>(value));
+            }
+          }
+          if constexpr (std::is_same_v<T, push_insn>) {
+            const auto& val = arg.value;
+            const auto opcode = arg.opcode();
+            if (opcode == op::bipush) {
+              code.emplace_back(opcode);
+              code.emplace_back(static_cast<int8_t>(std::get<int32_t>(val)));
+            } else if (opcode == op::sipush) {
+              const auto value = static_cast<int16_t>(std::get<int32_t>(val));
+              code.emplace_back(opcode);
+              code.emplace_back(static_cast<uint8_t>((value >> 8) & 0xff));
+              code.emplace_back(static_cast<uint8_t>(value & 0xff));
+            } else if (opcode != op::ldc) {
+              code.emplace_back(opcode);
+            } else {
+              const auto index = get_value(val);
+              if (std::holds_alternative<int64_t>(val) || std::holds_alternative<double>(val)) {
+                code.emplace_back(op::ldc2_w);
+                code.emplace_back(static_cast<uint8_t>((index >> 8) & 0xff));
+                code.emplace_back(static_cast<uint8_t>(index & 0xff));
+              } else if (index > std::numeric_limits<int8_t>::max()) {
+                code.emplace_back(op::ldc_w);
+                code.emplace_back(static_cast<uint8_t>((index >> 8) & 0xff));
+                code.emplace_back(static_cast<uint8_t>(index & 0xff));
+              } else {
+                code.emplace_back(op::ldc);
+                code.emplace_back(static_cast<int8_t>(index));
+              }
+            }
+          }
+          if constexpr (std::is_same_v<T, branch_insn>) {
+            auto opcode = arg.opcode;
+            const auto target = arg.target;
+            const auto jmp = opcode == op::goto_ || opcode == op::jsr || opcode == op::jsr_w || opcode == op::goto_w;
+            if (jmp) {
+              const auto est = get_label(target);
+              if (est != 0) {
+                const auto offset = static_cast<int32_t>(est) - static_cast<int32_t>(code.size());
+                if (offset > std::numeric_limits<int16_t>::max() || offset < std::numeric_limits<int16_t>::min()) {
+                  if (opcode == op::goto_ || opcode == op::goto_w) {
+                    opcode = op::goto_w;
+                  } else {
+                    opcode = op::jsr_w;
+                  }
+                }
+              }
+            }
+            code.emplace_back(opcode);
+            branches.emplace_back(target, code.size(), opcode == op::goto_w || opcode == op::jsr_w, code.size() - 1);
+            code.emplace_back(0);
+            code.emplace_back(0);
+            if (opcode == op::goto_w || opcode == op::jsr_w) {
+              code.emplace_back(0);
+              code.emplace_back(0);
+            }
+          }
+          if constexpr (std::is_same_v<T, lookup_switch_insn>) {
+            const auto default_target = arg.default_target;
+            const auto& targets = arg.targets;
+            const auto insn_pos = code.size();
+            code.emplace_back(op::lookupswitch);
+            switch_pads.emplace_back(code.size());
+            branches.emplace_back(default_target, code.size(), true, insn_pos);
+            code.insert(code.end(), 4, 0);
+            const auto target_size = targets.size();
+            code.emplace_back(static_cast<uint8_t>((target_size >> 24) & 0xff));
+            code.emplace_back(static_cast<uint8_t>((target_size >> 16) & 0xff));
+            code.emplace_back(static_cast<uint8_t>((target_size >> 8) & 0xff));
+            code.emplace_back(static_cast<uint8_t>(target_size & 0xff));
+            for (const auto& [key, target] : targets) {
+              code.emplace_back(static_cast<uint8_t>((key >> 24) & 0xff));
+              code.emplace_back(static_cast<uint8_t>((key >> 16) & 0xff));
+              code.emplace_back(static_cast<uint8_t>((key >> 8) & 0xff));
+              code.emplace_back(static_cast<uint8_t>(key & 0xff));
+              branches.emplace_back(target, code.size(), true, insn_pos);
+              code.insert(code.end(), 4, 0);
+            }
+          }
+          if constexpr (std::is_same_v<T, table_switch_insn>) {
+            const auto default_target = arg.default_target;
+            const auto low = arg.low;
+            const auto high = arg.high;
+            const auto& targets = arg.targets;
+            const auto insn_pos = code.size();
+            code.emplace_back(op::tableswitch);
+            switch_pads.emplace_back(code.size());
+            branches.emplace_back(default_target, code.size(), true, insn_pos);
+            code.insert(code.end(), 4, 0);
+            code.emplace_back(static_cast<uint8_t>((low >> 24) & 0xff));
+            code.emplace_back(static_cast<uint8_t>((low >> 16) & 0xff));
+            code.emplace_back(static_cast<uint8_t>((low >> 8) & 0xff));
+            code.emplace_back(static_cast<uint8_t>(low & 0xff));
+            code.emplace_back(static_cast<uint8_t>((high >> 24) & 0xff));
+            code.emplace_back(static_cast<uint8_t>((high >> 16) & 0xff));
+            code.emplace_back(static_cast<uint8_t>((high >> 8) & 0xff));
+            code.emplace_back(static_cast<uint8_t>(high & 0xff));
+            for (const auto& target : targets) {
+              branches.emplace_back(target, code.size(), true, insn_pos);
+              code.insert(code.end(), 4, 0);
+            }
+          }
+          if constexpr (std::is_same_v<T, multi_array_insn>) {
+            const auto index = get_class(arg.desc);
+            code.emplace_back(op::multianewarray);
+            code.emplace_back(static_cast<uint8_t>((index >> 8) & 0xff));
+            code.emplace_back(static_cast<uint8_t>(index & 0xff));
+            code.emplace_back(arg.dims);
+          }
+          if constexpr (std::is_same_v<T, array_insn>) {
+            const auto& type = arg.type;
+            if (const auto ty = std::get_if<std::string>(&type)) {
+              const auto index = get_class(*ty);
+              code.emplace_back(op::anewarray);
+              code.emplace_back(static_cast<uint8_t>((index >> 8) & 0xff));
+              code.emplace_back(static_cast<uint8_t>(index & 0xff));
+            } else {
+              const auto array_type = std::get<uint8_t>(type);
+              code.emplace_back(op::newarray);
+              code.emplace_back(array_type);
+            }
+          }
+          if constexpr (std::is_same_v<T, invoke_dynamic_insn>) {
+            const auto index = get_invoke_dynamic(arg.name, arg.desc, arg.handle, arg.args);
+            code.emplace_back(op::invokedynamic);
+            code.emplace_back(static_cast<uint8_t>((index >> 8) & 0xff));
+            code.emplace_back(static_cast<uint8_t>(index & 0xff));
+            code.emplace_back(0);
+            code.emplace_back(0);
+          }
+        },
+        i);
+  }
+
+  std::vector<int32_t> branch_offsets(branches.size());
+  std::vector<uint8_t> pads(switch_pads.size());
+  bool changed = true;
+  while (changed) {
+    changed = false;
+    for (auto& [label, pos, wide, insn_start] : branches) {
+      if (code[insn_start] == op::goto_ || code[insn_start] == op::jsr) {
+        const auto target = get_label(label);
+        const auto offset = static_cast<int32_t>(static_cast<int64_t>(target) - static_cast<int64_t>(pos));
+        if (offset > std::numeric_limits<int16_t>::max() || offset < std::numeric_limits<int16_t>::min()) {
+          if (code[insn_start] == op::goto_) {
+            code[insn_start] = op::goto_w;
+          } else if (code[insn_start] == op::jsr) {
+            code[insn_start] = op::jsr_w;
+          }
+          wide = true;
+          code.insert(code.begin() + pos, 2, 0);
+          shift(pos, 2);
+          changed = true;
+        }
+      }
+    }
+    auto i = 0;
+    for (const auto& pos : switch_pads) {
+      const auto last_pad = pads[i];
+      const auto padding = static_cast<uint8_t>((4 - (pos % 4)) % 4);
+      if (padding != last_pad) {
+        for (auto j = 0; j < last_pad; j++) {
+          code.erase(code.begin() + pos);
+          shift(pos, -1);
+        }
+        code.insert(code.begin() + pos, padding, 0);
+        shift(pos, padding);
+        pads[i] = padding;
+        changed = true;
+      }
+      i++;
+    }
+
+    i = 0;
+    for (const auto& [label, pos, wide, insn_start] : branches) {
+      const auto target = get_label(label);
+      if (wide) {
+        const auto last_offset = branch_offsets[i];
+        const auto offset = static_cast<int32_t>(static_cast<int64_t>(target) - static_cast<int64_t>(insn_start));
+        branch_offsets[i] = offset;
+        changed = changed || offset != last_offset;
+        code[pos] = static_cast<int8_t>((offset >> 24) & 0xff);
+        code[pos + 1] = static_cast<int8_t>((offset >> 16) & 0xff);
+        code[pos + 2] = static_cast<int8_t>((offset >> 8) & 0xff);
+        code[pos + 3] = static_cast<int8_t>(offset & 0xff);
+      } else {
+        const auto last_offset = branch_offsets[i];
+        const auto offset = static_cast<int16_t>(static_cast<int32_t>(target) - static_cast<int32_t>(insn_start));
+        branch_offsets[i] = offset;
+        changed = changed || offset != last_offset;
+        code[pos] = static_cast<int8_t>((offset >> 8) & 0xff);
+        code[pos + 1] = static_cast<int8_t>(offset & 0xff);
+      }
+      i++;
+    }
+  }
+
+  data_writer buf;
+  if (oak) {
+    buf.write_u8(static_cast<uint8_t>(max_stack));
+    buf.write_u8(static_cast<uint8_t>(max_locals));
+    buf.write_u16(static_cast<uint16_t>(code.size()));
+  } else {
+    buf.write_u16(max_stack);
+    buf.write_u16(max_locals);
+    buf.write_u32(static_cast<uint32_t>(code.size()));
+  }
+  buf.write_all(code);
+  buf.write_u16(static_cast<uint16_t>(c.tcbs.size()));
+  for (const auto& tcb : c.tcbs) {
+    const auto start_pc = get_label(tcb.start);
+    const auto end_pc = get_label(tcb.end);
+    const auto handler_pc = get_label(tcb.handler);
+    const auto catch_type = tcb.type ? get_class(*tcb.type) : 0;
+    buf.write_u16(static_cast<uint16_t>(start_pc));
+    buf.write_u16(static_cast<uint16_t>(end_pc));
+    buf.write_u16(static_cast<uint16_t>(handler_pc));
+    buf.write_u16(catch_type);
+  }
+
+  uint16_t attr_count = 0;
+  data_writer attr_buf;
+  if (!c.line_numbers.empty()) {
+    const auto attr_name = get_utf("LineNumberTable");
+    attr_buf.write_u16(attr_name);
+    attr_buf.write_u32(static_cast<uint32_t>(c.line_numbers.size() * 4 + 2));
+    attr_buf.write_u16(static_cast<uint16_t>(c.line_numbers.size()));
+    for (const auto& [line, start] : c.line_numbers) {
+      const auto start_pc = get_label(start);
+      attr_buf.write_u16(static_cast<uint16_t>(start_pc));
+      attr_buf.write_u16(line);
+    }
+    attr_count++;
+  }
+
+  data_writer local_buf;
+  data_writer local_type_buf;
+  uint16_t local_count = 0;
+  uint16_t local_type_count = 0;
+  for (const auto& local : c.locals) {
+    const auto start_pc = get_label(local.start);
+    const auto length = get_label(local.end) - start_pc;
+    const auto name_index = get_utf(local.name);
+    const auto desc_index = local.desc.empty() ? 0 : get_utf(local.desc);
+    const auto signature_index = local.signature.empty() ? 0 : get_utf(local.signature);
+    if (desc_index != 0) {
+      local_count++;
+      local_buf.write_u16(static_cast<uint16_t>(start_pc));
+      local_buf.write_u16(static_cast<uint16_t>(length));
+      local_buf.write_u16(name_index);
+      local_buf.write_u16(desc_index);
+      local_buf.write_u16(local.index);
+    }
+
+    if (signature_index != 0) {
+      local_type_count++;
+      local_type_buf.write_u16(static_cast<uint16_t>(start_pc));
+      local_type_buf.write_u16(static_cast<uint16_t>(length));
+      local_type_buf.write_u16(name_index);
+      local_type_buf.write_u16(signature_index);
+      local_type_buf.write_u16(local.index);
+    }
+  }
+  if (local_count != 0) {
+    const auto attr_name = get_utf("LocalVariableTable");
+    const auto& data = local_buf.data();
+    attr_buf.write_u16(attr_name);
+    attr_buf.write_u32(static_cast<uint32_t>(data.size() + 2));
+    attr_buf.write_u16(local_count);
+    attr_buf.write_all(data);
+    attr_count++;
+  }
+  if (local_type_count != 0) {
+    const auto attr_name = get_utf("LocalVariableTypeTable");
+    const auto& data = local_type_buf.data();
+    attr_buf.write_u16(attr_name);
+    attr_buf.write_u32(static_cast<uint32_t>(data.size() + 2));
+    attr_buf.write_u16(local_type_count);
+    attr_buf.write_all(data);
+    attr_count++;
+  }
+  if (!frames.empty()) {
+    const auto attr_name = get_utf("StackMapTable");
+    data_writer frame_buf;
+    attr_buf.write_u16(attr_name);
+    frame_buf.write_u16(static_cast<uint16_t>(frames.size()));
+    for (const auto& [target, frame] : frames) {
+      const auto delta = next_delta(target);
+      std::visit(
+          [&](auto&& arg) {
+            using T = std::decay_t<decltype(arg)>;
+            if constexpr (std::is_same_v<T, same_frame>) {
+              if (const auto stack_opt = arg.stack) {
+                if (delta <= 63) {
+                  frame_buf.write_u8(static_cast<uint8_t>(delta + 64));
+                } else {
+                  frame_buf.write_u8(247);
+                  frame_buf.write_u16(delta);
+                }
+                write_frame_var(frame_buf, *stack_opt);
+              } else {
+                if (delta <= 63) {
+                  frame_buf.write_u8(static_cast<uint8_t>(delta));
+                } else {
+                  frame_buf.write_u8(251);
+                  frame_buf.write_u16(delta);
+                }
+              }
+            } else if constexpr (std::is_same_v<T, full_frame>) {
+              frame_buf.write_u8(255);
+              frame_buf.write_u16(delta);
+              frame_buf.write_u16(static_cast<uint16_t>(arg.locals.size()));
+              for (const auto& local : arg.locals) {
+                write_frame_var(frame_buf, local);
+              }
+              frame_buf.write_u16(static_cast<uint16_t>(arg.stack.size()));
+              for (const auto& stack : arg.stack) {
+                write_frame_var(frame_buf, stack);
+              }
+            } else if constexpr (std::is_same_v<T, chop_frame>) {
+              frame_buf.write_u8(static_cast<uint8_t>(251 - arg.size));
+              frame_buf.write_u16(delta);
+            } else if constexpr (std::is_same_v<T, append_frame>) {
+              frame_buf.write_u8(static_cast<uint8_t>(arg.locals.size() + 251));
+              frame_buf.write_u16(delta);
+              for (const auto& local : arg.locals) {
+                write_frame_var(frame_buf, local);
+              }
+            }
+          },
+          frame);
+    }
+    const auto data = frame_buf.data();
+    attr_buf.write_u32(static_cast<uint32_t>(data.size()));
+    attr_buf.write_all(data);
+    attr_count++;
+  }
+  if (!c.visible_type_annotations.empty()) {
+    const auto attr_name = get_utf("RuntimeVisibleTypeAnnotations");
+    const auto& data = get_type_annotations(c.visible_type_annotations, labels);
+    attr_buf.write_u16(attr_name);
+    attr_buf.write_u32(static_cast<uint32_t>(data.size() + 2));
+    attr_buf.write_u16(static_cast<uint16_t>(c.visible_type_annotations.size()));
+    attr_buf.write_all(data);
+    attr_count++;
+  }
+  if (!c.invisible_type_annotations.empty()) {
+    const auto attr_name = get_utf("RuntimeInvisibleTypeAnnotations");
+    const auto& data = get_type_annotations(c.invisible_type_annotations, labels);
+    attr_buf.write_u16(attr_name);
+    attr_buf.write_u32(static_cast<uint32_t>(data.size() + 2));
+    attr_buf.write_u16(static_cast<uint16_t>(c.invisible_type_annotations.size()));
+    attr_buf.write_all(data);
+    attr_count++;
+  }
+  for (const auto& attr : c.attributes) {
+    const auto attr_name = get_utf(attr.name);
+    attr_buf.write_u16(attr_name);
+    attr_buf.write_u32(static_cast<uint32_t>(attr.data.size()));
+    attr_buf.write_all(attr.data);
+    attr_count++;
+  }
+  buf.write_u16(attr_count);
+  buf.write_all(attr_buf.data());
+  return buf.data();
 }
 uint16_t class_writer::get_class(const std::string_view& name) {
   const auto utf_index = get_utf(name);
@@ -938,9 +1084,9 @@ uint16_t class_writer::get_class(const std::string_view& name) {
   return static_cast<uint32_t>(index);
 }
 uint16_t class_writer::get_field_ref(const std::string_view& owner, const std::string_view& name,
-                                     const std::string_view& descriptor) {
+                                     const std::string_view& desc) {
   const auto class_index = get_class(owner);
-  const auto nat_index = get_name_and_type(name, descriptor);
+  const auto nat_index = get_name_and_type(name, desc);
   for (uint16_t i = 1; i < static_cast<uint16_t>(pool_.size()); i++) {
     if (const auto field = std::get_if<cp::field_ref_info>(&pool_.at(i))) {
       if (field->class_index == class_index && field->name_and_type_index == nat_index) {
@@ -953,9 +1099,9 @@ uint16_t class_writer::get_field_ref(const std::string_view& owner, const std::s
   return static_cast<uint16_t>(index);
 }
 uint16_t class_writer::get_method_ref(const std::string_view& owner, const std::string_view& name,
-                                      const std::string_view& descriptor) {
+                                      const std::string_view& desc) {
   const auto class_index = get_class(owner);
-  const auto nat_index = get_name_and_type(name, descriptor);
+  const auto nat_index = get_name_and_type(name, desc);
   for (uint16_t i = 1; i < static_cast<uint16_t>(pool_.size()); i++) {
     if (const auto method = std::get_if<cp::method_ref_info>(&pool_.at(i))) {
       if (method->class_index == class_index && method->name_and_type_index == nat_index) {
@@ -968,9 +1114,9 @@ uint16_t class_writer::get_method_ref(const std::string_view& owner, const std::
   return static_cast<uint16_t>(index);
 }
 uint16_t class_writer::get_interface_method_ref(const std::string_view& owner, const std::string_view& name,
-                                                const std::string_view& descriptor) {
+                                                const std::string_view& desc) {
   const auto class_index = get_class(owner);
-  const auto nat_index = get_name_and_type(name, descriptor);
+  const auto nat_index = get_name_and_type(name, desc);
   for (uint16_t i = 1; i < static_cast<uint16_t>(pool_.size()); i++) {
     if (const auto method = std::get_if<cp::interface_method_ref_info>(&pool_.at(i))) {
       if (method->class_index == class_index && method->name_and_type_index == nat_index) {
@@ -1045,18 +1191,18 @@ uint16_t class_writer::get_double(double value) {
   pool_.emplace_back(cp::pad_info{});
   return static_cast<uint16_t>(index);
 }
-uint16_t class_writer::get_name_and_type(const std::string_view& name, const std::string_view& descriptor) {
+uint16_t class_writer::get_name_and_type(const std::string_view& name, const std::string_view& desc) {
   const auto name_index = get_utf(name);
-  const auto descriptor_index = get_utf(descriptor);
+  const auto desc_index = get_utf(desc);
   for (uint16_t i = 1; i < static_cast<uint16_t>(pool_.size()); i++) {
     if (const auto nat = std::get_if<cp::name_and_type_info>(&pool_.at(i))) {
-      if (nat->name_index == name_index && nat->descriptor_index == descriptor_index) {
+      if (nat->name_index == name_index && nat->desc_index == desc_index) {
         return i;
       }
     }
   }
   const auto index = pool_.size();
-  pool_.emplace_back(cp::name_and_type_info{name_index, descriptor_index});
+  pool_.emplace_back(cp::name_and_type_info{name_index, desc_index});
   return static_cast<uint16_t>(index);
 }
 uint16_t class_writer::get_utf(const std::string_view& utf) {
@@ -1072,26 +1218,19 @@ uint16_t class_writer::get_utf(const std::string_view& utf) {
   return static_cast<uint16_t>(index);
 }
 uint16_t class_writer::get_method_handle(uint8_t kind, const std::string_view& owner, const std::string_view& name,
-                                         const std::string_view& descriptor) {
+                                         const std::string_view& desc, bool interface) {
   uint16_t reference_index;
   switch (kind) {
     case reference_kind::get_field:
     case reference_kind::get_static:
     case reference_kind::put_field:
     case reference_kind::put_static:
-      reference_index = get_field_ref(owner, name, descriptor);
+      reference_index = get_field_ref(owner, name, desc);
       break;
-    case reference_kind::invoke_virtual:
-    case reference_kind::new_invoke_special:
-    case reference_kind::invoke_static:
-    case reference_kind::invoke_special:
-      reference_index = get_method_ref(owner, name, descriptor);
-      break;
-    case reference_kind::invoke_interface:
-      reference_index = get_interface_method_ref(owner, name, descriptor);
       break;
     default:
-      throw std::invalid_argument("Invalid reference kind");
+      reference_index = interface ? get_interface_method_ref(owner, name, desc) : get_method_ref(owner, name, desc);
+      break;
   }
   for (uint16_t i = 1; i < static_cast<uint16_t>(pool_.size()); i++) {
     if (const auto handle = std::get_if<cp::method_handle_info>(&pool_.at(i))) {
@@ -1104,11 +1243,11 @@ uint16_t class_writer::get_method_handle(uint8_t kind, const std::string_view& o
   pool_.emplace_back(cp::method_handle_info{kind, reference_index});
   return static_cast<uint16_t>(index);
 }
-uint16_t class_writer::get_method_type(const std::string_view& descriptor) {
-  const auto utf_index = get_utf(descriptor);
+uint16_t class_writer::get_method_type(const std::string_view& desc) {
+  const auto utf_index = get_utf(desc);
   for (uint16_t i = 1; i < static_cast<uint16_t>(pool_.size()); i++) {
     if (const auto type = std::get_if<cp::method_type_info>(&pool_.at(i))) {
-      if (type->descriptor_index == utf_index) {
+      if (type->desc_index == utf_index) {
         return i;
       }
     }
@@ -1117,10 +1256,10 @@ uint16_t class_writer::get_method_type(const std::string_view& descriptor) {
   pool_.emplace_back(cp::method_type_info{utf_index});
   return static_cast<uint16_t>(index);
 }
-uint16_t class_writer::get_dynamic(const std::string_view& name, const std::string_view& descriptor,
+uint16_t class_writer::get_dynamic(const std::string_view& name, const std::string_view& desc,
                                    const method_handle& handle, const std::vector<value>& args) {
   const auto bsm_index = get_bsm(handle, args);
-  const auto nat_index = get_name_and_type(name, descriptor);
+  const auto nat_index = get_name_and_type(name, desc);
   for (uint16_t i = 1; i < static_cast<uint16_t>(pool_.size()); i++) {
     if (const auto dynamic = std::get_if<cp::dynamic_info>(&pool_.at(i))) {
       if (dynamic->bootstrap_method_attr_index == bsm_index && dynamic->name_and_type_index == nat_index) {
@@ -1132,10 +1271,10 @@ uint16_t class_writer::get_dynamic(const std::string_view& name, const std::stri
   pool_.emplace_back(cp::dynamic_info{bsm_index, nat_index});
   return static_cast<uint16_t>(index);
 }
-uint16_t class_writer::get_invoke_dynamic(const std::string_view& name, const std::string_view& descriptor,
+uint16_t class_writer::get_invoke_dynamic(const std::string_view& name, const std::string_view& desc,
                                           const method_handle& handle, const std::vector<value>& args) {
   const auto bsm_index = get_bsm(handle, args);
-  const auto nat_index = get_name_and_type(name, descriptor);
+  const auto nat_index = get_name_and_type(name, desc);
   for (uint16_t i = 1; i < static_cast<uint16_t>(pool_.size()); i++) {
     if (const auto invoke = std::get_if<cp::invoke_dynamic_info>(&pool_.at(i))) {
       if (invoke->bootstrap_method_attr_index == bsm_index && invoke->name_and_type_index == nat_index) {
@@ -1185,22 +1324,22 @@ uint16_t class_writer::get_value(const value& val) {
           return get_long(arg);
         } else if constexpr (std::is_same_v<T, double>) {
           return get_double(arg);
-        } else if constexpr (std::is_same_v<T, class_value>) {
+        } else if constexpr (std::is_same_v<T, type>) {
           return get_class(arg.get());
         } else if constexpr (std::is_same_v<T, std::string>) {
           return get_string(arg);
         } else if constexpr (std::is_same_v<T, method_handle>) {
-          return get_method_handle(arg.kind, arg.owner, arg.name, arg.descriptor);
+          return get_method_handle(arg.kind, arg.owner, arg.name, arg.desc, arg.interface);
         } else if constexpr (std::is_same_v<T, method_type>) {
-          return get_method_type(arg.descriptor);
+          return get_method_type(arg.desc);
         } else if constexpr (std::is_same_v<T, dynamic>) {
-          return get_dynamic(arg.name, arg.descriptor, arg.handle, arg.args);
+          return get_dynamic(arg.name, arg.desc, arg.handle, arg.args);
         }
       },
       val);
 }
 uint16_t class_writer::get_bsm(const method_handle& handle, const std::vector<value>& args) {
-  const auto handle_index = get_method_handle(handle.kind, handle.owner, handle.name, handle.descriptor);
+  const auto handle_index = get_method_handle(handle.kind, handle.owner, handle.name, handle.desc, handle.interface);
   std::vector<uint16_t> arg_indices;
   arg_indices.reserve(args.size());
   for (const auto& arg : args) {
@@ -1215,21 +1354,21 @@ uint16_t class_writer::get_bsm(const method_handle& handle, const std::vector<va
   bsm_buffer_.emplace_back(handle_index, arg_indices);
   return static_cast<uint16_t>(index);
 }
-std::vector<int8_t> class_writer::get_annotation(const annotation& anno) {
-  const auto type_index = get_utf(anno.descriptor);
-  bytebuf buf;
-  buf.write_u16(type_index);
-  buf.write_u16(static_cast<uint16_t>(anno.values.size()));
-  for (const auto& [name, value] : anno.values) {
-    const auto element_name_index = get_utf(name);
-    const auto element_value = get_element_value(value);
-    buf.write_u16(element_name_index);
-    buf.write_all(element_value);
+std::vector<int8_t> class_writer::get_annotations(const std::vector<annotation>& annos) {
+  data_writer buf;
+  for (const auto& anno : annos) {
+    const auto type_index = get_utf(anno.desc);
+    buf.write_u16(type_index);
+    buf.write_u16(static_cast<uint16_t>(anno.values.size()));
+    for (const auto& [name, value] : anno.values) {
+      const auto element_name_index = get_utf(name);
+      buf.write_u16(element_name_index);
+      get_element_value(buf, value);
+    }
   }
   return buf.data();
 }
-std::vector<int8_t> class_writer::get_element_value(const element_value& value) {
-  bytebuf buf;
+void class_writer::get_element_value(data_writer& buf, const element_value& value) {
   std::visit(
       [this, &buf](auto&& arg) {
         using T = std::decay_t<decltype(arg)>;
@@ -1259,30 +1398,29 @@ std::vector<int8_t> class_writer::get_element_value(const element_value& value) 
           buf.write_u16(get_int(arg));
         } else if constexpr (std::is_same_v<T, std::string>) {
           buf.write_u8('s');
-          buf.write_u16(get_string(arg));
+          buf.write_u16(get_utf(arg));
         } else if constexpr (std::is_same_v<T, std::pair<std::string, std::string>>) {
           buf.write_u8('e');
           buf.write_u16(get_utf(arg.first));
           buf.write_u16(get_utf(arg.second));
-        } else if constexpr (std::is_same_v<T, class_value>) {
+        } else if constexpr (std::is_same_v<T, type>) {
           buf.write_u8('c');
-          buf.write_u16(get_class(arg.get()));
+          buf.write_u16(get_utf(arg.get()));
         } else if constexpr (std::is_same_v<T, annotation>) {
           buf.write_u8('@');
-          buf.write_all(get_annotation(arg));
+          buf.write_all(get_annotations({arg}));
         } else if constexpr (std::is_same_v<T, std::vector<element_value>>) {
           buf.write_u8('[');
           buf.write_u16(static_cast<uint16_t>(arg.size()));
           for (const auto& elem : arg) {
-            buf.write_all(get_element_value(elem));
+            get_element_value(buf, elem);
           }
         }
       },
       value.value);
-  return buf.data();
 }
-std::vector<int8_t> class_writer::get_type_annotation(const type_annotation& anno,
-                                                      const std::vector<std::pair<size_t, label>>& labels) {
+std::vector<int8_t> class_writer::get_type_annotations(const std::vector<type_annotation>& annos,
+                                                       const std::vector<std::pair<size_t, label>>& labels) {
   const auto get_label = [&labels](const label& lbl) -> size_t {
     for (const auto& [idx, label] : labels) {
       if (lbl == label) {
@@ -1291,546 +1429,153 @@ std::vector<int8_t> class_writer::get_type_annotation(const type_annotation& ann
     }
     return 0;
   };
-  bytebuf buf;
-  buf.write_u8(anno.target_type);
-  std::visit(
-      [this, &buf, &get_label](auto&& arg) {
-        using T = std::decay_t<decltype(arg)>;
-        if constexpr (std::is_same_v<T, target::type_parameter>) {
-          buf.write_u8(arg.index);
-        } else if constexpr (std::is_same_v<T, target::supertype>) {
-          buf.write_u16(arg.index);
-        } else if constexpr (std::is_same_v<T, target::type_parameter_bound>) {
-          buf.write_u8(arg.type_parameter_index);
-          buf.write_u8(arg.bound_index);
-        } else if constexpr (std::is_same_v<T, target::empty>) {
-          // Do nothing
-        } else if constexpr (std::is_same_v<T, target::formal_parameter>) {
-          buf.write_u8(arg.index);
-        } else if constexpr (std::is_same_v<T, target::throws>) {
-          buf.write_u16(arg.index);
-        } else if constexpr (std::is_same_v<T, target::localvar>) {
-          buf.write_u16(static_cast<uint16_t>(arg.table.size()));
-          for (const auto& local : arg.table) {
-            const auto start_pc = get_label(local.start);
-            const auto end_pc = get_label(local.end);
-            const auto length = end_pc - start_pc;
-            buf.write_u16(static_cast<uint16_t>(start_pc));
-            buf.write_u16(static_cast<uint16_t>(length));
-            buf.write_u16(local.index);
+  data_writer buf;
+  for (const auto& anno : annos) {
+    buf.write_u8(anno.target_type);
+    std::visit(
+        [this, &buf, &get_label](auto&& arg) {
+          using T = std::decay_t<decltype(arg)>;
+          if constexpr (std::is_same_v<T, target::type_parameter>) {
+            buf.write_u8(arg.index);
+          } else if constexpr (std::is_same_v<T, target::supertype>) {
+            buf.write_u16(arg.index);
+          } else if constexpr (std::is_same_v<T, target::type_parameter_bound>) {
+            buf.write_u8(arg.type_parameter_index);
+            buf.write_u8(arg.bound_index);
+          } else if constexpr (std::is_same_v<T, target::empty>) {
+            // Do nothing
+          } else if constexpr (std::is_same_v<T, target::formal_parameter>) {
+            buf.write_u8(arg.index);
+          } else if constexpr (std::is_same_v<T, target::throws>) {
+            buf.write_u16(arg.index);
+          } else if constexpr (std::is_same_v<T, target::localvar>) {
+            buf.write_u16(static_cast<uint16_t>(arg.table.size()));
+            for (const auto& local : arg.table) {
+              const auto start_pc = get_label(local.start);
+              const auto end_pc = get_label(local.end);
+              const auto length = end_pc - start_pc;
+              buf.write_u16(static_cast<uint16_t>(start_pc));
+              buf.write_u16(static_cast<uint16_t>(length));
+              buf.write_u16(local.index);
+            }
+          } else if constexpr (std::is_same_v<T, target::catch_target>) {
+            buf.write_u16(arg.index);
+          } else if constexpr (std::is_same_v<T, target::offset_target>) {
+            const auto offset_pc = get_label(arg.offset);
+            buf.write_u16(static_cast<uint16_t>(offset_pc));
+          } else if constexpr (std::is_same_v<T, target::type_argument>) {
+            const auto offset_pc = get_label(arg.offset);
+            buf.write_u16(static_cast<uint16_t>(offset_pc));
+            buf.write_u8(arg.index);
           }
-        } else if constexpr (std::is_same_v<T, target::catch_target>) {
-          buf.write_u16(arg.index);
-        } else if constexpr (std::is_same_v<T, target::offset_target>) {
-          const auto offset_pc = get_label(arg.offset);
-          buf.write_u16(static_cast<uint16_t>(offset_pc));
-        } else if constexpr (std::is_same_v<T, target::type_argument>) {
-          const auto offset_pc = get_label(arg.offset);
-          buf.write_u16(static_cast<uint16_t>(offset_pc));
-          buf.write_u8(arg.index);
-        }
-      },
-      anno.target_info);
-  buf.write_u8(static_cast<uint8_t>(anno.target_path.path.size()));
-  for (const auto& [kind, index] : anno.target_path.path) {
-    buf.write_u8(kind);
-    buf.write_u8(index);
-  }
-  const auto type_index = get_utf(anno.descriptor);
-  buf.write_u16(type_index);
-  buf.write_u16(static_cast<uint16_t>(anno.values.size()));
-  for (const auto& [name, value] : anno.values) {
-    const auto element_name_index = get_utf(name);
-    const auto element_value = get_element_value(value);
-    buf.write_u16(element_name_index);
-    buf.write_all(element_value);
+        },
+        anno.target_info);
+    buf.write_u8(static_cast<uint8_t>(anno.target_path.path.size()));
+    for (const auto& [kind, index] : anno.target_path.path) {
+      buf.write_u8(kind);
+      buf.write_u8(index);
+    }
+    const auto type_index = get_utf(anno.desc);
+    buf.write_u16(type_index);
+    buf.write_u16(static_cast<uint16_t>(anno.values.size()));
+    for (const auto& [name, value] : anno.values) {
+      const auto element_name_index = get_utf(name);
+      buf.write_u16(element_name_index);
+      get_element_value(buf, value);
+    }
   }
   return buf.data();
 }
-void record_component_writer::visit_end() {
-  if (visible_annotations_count_ > 0) {
-    const auto attr_name = writer_.get_utf("RuntimeVisibleAnnotations");
+std::vector<int8_t> class_writer::write(const class_file& file) {
+  pool_.clear();
+  bsm_buffer_.clear();
+  attributes_.clear();
+  attributes_count_ = 0;
+  fields_.clear();
+  methods_.clear();
+  pool_.emplace_back(cp::pad_info{});
+  uint16_t this_class = get_class(file.name);
+  uint16_t super_class = file.super_name ? get_class(*file.super_name) : 0;
+  std::vector<uint16_t> interfaces;
+  interfaces.reserve(file.interfaces.size());
+  for (const auto& i : file.interfaces) {
+    interfaces.emplace_back(get_class(i));
+  }
+  if (file.source_file) {
+    write_source_file(*file.source_file);
+  }
+  if (file.signature) {
+    write_signature(*file.signature);
+  }
+  if (!file.inner_classes.empty()) {
+    write_inner_classes(file.inner_classes);
+  }
+  if (file.enclosing_method) {
+    const auto& [owner, method] = *file.enclosing_method;
+    write_enclosing_method(owner, method);
+  }
+  if (file.source_debug_extension) {
+    write_source_debug_extension(*file.source_debug_extension);
+  }
+  if (file.module) {
+    write_module(*file.module);
+  }
+  if (!file.module_packages.empty()) {
+    write_module_packages(file.module_packages);
+  }
+  if (file.module_main_class) {
+    write_module_main_class(*file.module_main_class);
+  }
+  if (file.nest_host) {
+    write_nest_host(*file.nest_host);
+  }
+  if (!file.nest_members.empty()) {
+    write_nest_members(file.nest_members);
+  }
+  if (!file.record_components.empty()) {
+    write_record(file.record_components);
+  }
+  if (!file.permitted_subclasses.empty()) {
+    write_permitted_subclasses(file.permitted_subclasses);
+  }
+  if (file.synthetic) {
+    databuf buf(attributes_);
+    buf.write_u16(get_utf("Synthetic"));
+    buf.write_u32(0);
     attributes_count_++;
-    bytebuf buf;
-    buf.write_u16(attr_name);
-    buf.write_u32(visible_annotations_count_ + 2);
-    buf.write_u16(visible_annotations_count_);
-    buf.write_all(visible_annotations_);
-    const auto data = buf.data();
-    attributes_.insert(attributes_.end(), data.begin(), data.end());
   }
-  if (invisible_annotations_count_ > 0) {
-    const auto attr_name = writer_.get_utf("RuntimeInvisibleAnnotations");
+  if (file.deprecated) {
+    databuf buf(attributes_);
+    buf.write_u16(get_utf("Deprecated"));
+    buf.write_u32(0);
     attributes_count_++;
-    bytebuf buf;
-    buf.write_u16(attr_name);
-    buf.write_u32(invisible_annotations_count_ + 2);
-    buf.write_u16(invisible_annotations_count_);
-    buf.write_all(invisible_annotations_);
-    const auto data = buf.data();
-    attributes_.insert(attributes_.end(), data.begin(), data.end());
   }
-  if (visible_type_annotations_count_ > 0) {
-    const auto attr_name = writer_.get_utf("RuntimeVisibleTypeAnnotations");
+  if (!file.visible_annotations.empty()) {
+    write_annotations(file.visible_annotations, true);
+  }
+  if (!file.invisible_annotations.empty()) {
+    write_annotations(file.invisible_annotations, false);
+  }
+  if (!file.visible_type_annotations.empty()) {
+    write_type_annotations(file.visible_type_annotations, true);
+  }
+  if (!file.invisible_type_annotations.empty()) {
+    write_type_annotations(file.invisible_type_annotations, false);
+  }
+  for (const auto& attr : file.attributes) {
+    const auto attr_name = get_utf(attr.name);
+    databuf buf(attributes_);
+    buf.write_u16(attr_name);
+    buf.write_u16(static_cast<uint16_t>(attr.data.size()));
+    buf.write_all(attr.data);
     attributes_count_++;
-    bytebuf buf;
-    buf.write_u16(attr_name);
-    buf.write_u32(visible_type_annotations_count_ + 2);
-    buf.write_u16(visible_type_annotations_count_);
-    buf.write_all(visible_type_annotations_);
-    const auto data = buf.data();
-    attributes_.insert(attributes_.end(), data.begin(), data.end());
   }
-  if (invisible_type_annotations_count_ > 0) {
-    const auto attr_name = writer_.get_utf("RuntimeInvisibleTypeAnnotations");
-    attributes_count_++;
-    bytebuf buf;
-    buf.write_u16(attr_name);
-    buf.write_u32(invisible_type_annotations_count_ + 2);
-    buf.write_u16(invisible_type_annotations_count_);
-    buf.write_all(invisible_type_annotations_);
-    const auto data = buf.data();
-    attributes_.insert(attributes_.end(), data.begin(), data.end());
-  }
-  bytebuf buf;
-  buf.write_u16(name_index_);
-  buf.write_u16(descriptor_index_);
-  buf.write_u16(attributes_count_);
-  buf.write_all(attributes_);
-  const auto data = buf.data();
-  writer_.record_components_count_++;
-  writer_.record_components_bin_.insert(writer_.record_components_bin_.end(), data.begin(), data.end());
-}
-void module_writer::visit_end() {
-  const auto attr_name = writer_.get_utf("Module");
-  bytebuf buf;
-  buf.write_u16(name_index_);
-  buf.write_u16(module_flags_);
-  buf.write_u16(version_index_);
-  buf.write_u16(requires_count_);
-  buf.write_all(requires_);
-  buf.write_u16(exports_count_);
-  buf.write_all(exports_);
-  buf.write_u16(opens_count_);
-  buf.write_all(opens_);
-  buf.write_u16(static_cast<uint16_t>(uses_.size()));
-  for (const auto& use : uses_) {
-    buf.write_u16(use);
-  }
-  buf.write_u16(provides_count_);
-  buf.write_all(provides_);
-  const auto data = buf.data();
-  bytebuf attrbuf;
-  attrbuf.write_u16(attr_name);
-  attrbuf.write_u32(static_cast<uint32_t>(data.size()));
-  attrbuf.write_all(data);
-  const auto mod = attrbuf.data();
-  writer_.attributes_count_++;
-  writer_.attributes_.insert(writer_.attributes_.end(), mod.begin(), mod.end());
-}
-void code_writer::visit_end() {
-  for (auto& [label, pos, wide, insn_start] : branches_) {
-    if (code_[insn_start] == op::goto_ || code_[insn_start] == op::jsr) {
-      const auto est = get_estimated(label);
-      const auto offset = static_cast<int32_t>(est - pos);
-      if (offset > std::numeric_limits<int16_t>::max() || offset < std::numeric_limits<int16_t>::min()) {
-        if (code_[insn_start] == op::goto_) {
-          code_[insn_start] = op::goto_w;
-        } else if (code_[insn_start] == op::jsr) {
-          code_[insn_start] = op::jsr_w;
-        }
-        wide = true;
-        code_.insert(code_.begin() + pos, 2, 0);
-        shift(pos, 2);
-      }
-    }
-  }
-  for (const auto& pos : switch_pads_) {
-    const auto padding = (4 - (pos % 4)) % 4;
-    if (padding > 0) {
-      code_.insert(code_.begin() + pos, padding, 0);
-      shift(pos, padding);
-    }
-  }
-  for (const auto& [label, pos, wide, insn_start] : branches_) {
-    const auto target = get_label(label);
-    if (wide) {
-      const auto offset = static_cast<int32_t>(target - insn_start);
-      code_[pos] = static_cast<int8_t>((offset >> 24) & 0xff);
-      code_[pos + 1] = static_cast<int8_t>((offset >> 16) & 0xff);
-      code_[pos + 2] = static_cast<int8_t>((offset >> 8) & 0xff);
-      code_[pos + 3] = static_cast<int8_t>(offset & 0xff);
-    } else {
-      const auto offset = static_cast<int16_t>(target - insn_start);
-      code_[pos] = static_cast<int8_t>((offset >> 8) & 0xff);
-      code_[pos + 1] = static_cast<int8_t>(offset & 0xff);
-    }
-  }
+  write_fields(file.fields);
+  write_methods(file, file.methods, file.version < class_version::v1_1);
 
-  finish_attributes();
-
-  if (line_numbers_count_ > 0) {
-    bytebuf attrbuf;
-    const auto attr_name = writer_.get_utf("LineNumberTable");
-    attrbuf.write_u16(attr_name);
-    attrbuf.write_u32(static_cast<uint32_t>(line_numbers_.size() + 2));
-    attrbuf.write_u16(line_numbers_count_);
-    attrbuf.write_all(line_numbers_);
-    const auto data = attrbuf.data();
-    attributes_count_++;
-    attributes_.insert(attributes_.end(), data.begin(), data.end());
-  }
-  if (local_vars_count_ > 0) {
-    bytebuf attrbuf;
-    const auto attr_name = writer_.get_utf("LocalVariableTable");
-    attrbuf.write_u16(attr_name);
-    attrbuf.write_u32(static_cast<uint32_t>(local_vars_.size() + 2));
-    attrbuf.write_u16(local_vars_count_);
-    attrbuf.write_all(local_vars_);
-    const auto data = attrbuf.data();
-    attributes_count_++;
-    attributes_.insert(attributes_.end(), data.begin(), data.end());
-  }
-  if (local_type_vars_count_ > 0) {
-    bytebuf attrbuf;
-    const auto attr_name = writer_.get_utf("LocalVariableTypeTable");
-    attrbuf.write_u16(attr_name);
-    attrbuf.write_u32(static_cast<uint32_t>(local_type_vars_.size() + 2));
-    attrbuf.write_u16(local_type_vars_count_);
-    attrbuf.write_all(local_type_vars_);
-    const auto data = attrbuf.data();
-    attributes_count_++;
-    attributes_.insert(attributes_.end(), data.begin(), data.end());
-  }
-  if (frames_count_ > 0) {
-    bytebuf attrbuf;
-    const auto attr_name = writer_.get_utf("StackMapTable");
-    attrbuf.write_u16(attr_name);
-    attrbuf.write_u32(static_cast<uint32_t>(frames_.size() + 2));
-    attrbuf.write_u16(frames_count_);
-    attrbuf.write_all(frames_);
-    const auto data = attrbuf.data();
-    attributes_count_++;
-    attributes_.insert(attributes_.end(), data.begin(), data.end());
-  }
-  if (visible_type_annotations_count_ > 0) {
-    bytebuf attrbuf;
-    const auto attr_name = writer_.get_utf("RuntimeVisibleTypeAnnotations");
-    attrbuf.write_u16(attr_name);
-    attrbuf.write_u32(static_cast<uint32_t>(visible_type_annotations_.size() + 2));
-    attrbuf.write_u16(visible_type_annotations_count_);
-    attrbuf.write_all(visible_type_annotations_);
-    const auto data = attrbuf.data();
-    attributes_count_++;
-    attributes_.insert(attributes_.end(), data.begin(), data.end());
-  }
-  if (invisible_type_annotations_count_ > 0) {
-    bytebuf attrbuf;
-    const auto attr_name = writer_.get_utf("RuntimeInvisibleTypeAnnotations");
-    attrbuf.write_u16(attr_name);
-    attrbuf.write_u32(static_cast<uint32_t>(invisible_type_annotations_.size() + 2));
-    attrbuf.write_u16(invisible_type_annotations_count_);
-    attrbuf.write_all(invisible_type_annotations_);
-    const auto data = attrbuf.data();
-    attributes_count_++;
-    attributes_.insert(attributes_.end(), data.begin(), data.end());
-  }
-  const auto oak = writer_.version_ < class_version::v1_1;
-  bytebuf codebuf;
-  if (oak) {
-    codebuf.write_u8(static_cast<uint8_t>(max_stack_));
-    codebuf.write_u8(static_cast<uint8_t>(max_locals_));
-    codebuf.write_u16(static_cast<uint16_t>(code_.size()));
-  } else {
-    codebuf.write_u16(max_stack_);
-    codebuf.write_u16(max_locals_);
-    codebuf.write_u32(static_cast<uint32_t>(code_.size()));
-  }
-  codebuf.write_all(code_);
-  codebuf.write_u16(exception_table_count_);
-  codebuf.write_all(exception_table_);
-  codebuf.write_u16(attributes_count_);
-  codebuf.write_all(attributes_);
-
-  const auto result = codebuf.data();
-  const auto attr_name = writer_.get_utf("Code");
-  bytebuf buf;
-  buf.write_u16(attr_name);
-  buf.write_u32(static_cast<uint32_t>(result.size()));
-  buf.write_all(result);
-  const auto code_attr = buf.data();
-  parent_.attributes_count_++;
-  parent_.attributes_.insert(parent_.attributes_.end(), code_attr.begin(), code_attr.end());
-}
-void field_writer::visit_end() {
-  if (visible_annotations_count_ > 0) {
-    const auto attr_name = writer_.get_utf("RuntimeVisibleAnnotations");
-    attributes_count_++;
-    bytebuf buf;
-    buf.write_u16(attr_name);
-    buf.write_u32(static_cast<uint32_t>(visible_annotations_.size() + 2));
-    buf.write_u16(visible_annotations_count_);
-    buf.write_all(visible_annotations_);
-    const auto data = buf.data();
-    attributes_.insert(attributes_.end(), data.begin(), data.end());
-  }
-  if (invisible_annotations_count_ > 0) {
-    const auto attr_name = writer_.get_utf("RuntimeInvisibleAnnotations");
-    attributes_count_++;
-    bytebuf buf;
-    buf.write_u16(attr_name);
-    buf.write_u32(static_cast<uint32_t>(invisible_annotations_.size() + 2));
-    buf.write_u16(invisible_annotations_count_);
-    buf.write_all(invisible_annotations_);
-    const auto data = buf.data();
-    attributes_.insert(attributes_.end(), data.begin(), data.end());
-  }
-  if (visible_type_annotations_count_ > 0) {
-    const auto attr_name = writer_.get_utf("RuntimeVisibleTypeAnnotations");
-    attributes_count_++;
-    bytebuf buf;
-    buf.write_u16(attr_name);
-    buf.write_u32(static_cast<uint32_t>(visible_type_annotations_.size() + 2));
-    buf.write_u16(visible_type_annotations_count_);
-    buf.write_all(visible_type_annotations_);
-    const auto data = buf.data();
-    attributes_.insert(attributes_.end(), data.begin(), data.end());
-  }
-  if (invisible_type_annotations_count_ > 0) {
-    const auto attr_name = writer_.get_utf("RuntimeInvisibleTypeAnnotations");
-    attributes_count_++;
-    bytebuf buf;
-    buf.write_u16(attr_name);
-    buf.write_u32(static_cast<uint32_t>(invisible_type_annotations_.size() + 2));
-    buf.write_u16(invisible_type_annotations_count_);
-    buf.write_all(invisible_type_annotations_);
-    const auto data = buf.data();
-    attributes_.insert(attributes_.end(), data.begin(), data.end());
-  }
-  bytebuf buf;
-  buf.write_u16(access_flags_);
-  buf.write_u16(name_index_);
-  buf.write_u16(descriptor_index_);
-  buf.write_u16(attributes_count_);
-  buf.write_all(attributes_);
-  const auto data = buf.data();
-  writer_.fields_count_++;
-  writer_.fields_bin_.insert(writer_.fields_bin_.end(), data.begin(), data.end());
-}
-void method_writer::visit_end() {
-  if (!exceptions_.empty()) {
-    const auto attr_name = writer_.get_utf("Exceptions");
-    attributes_count_++;
-    bytebuf buf;
-    buf.write_u16(attr_name);
-    buf.write_u32(static_cast<uint32_t>((exceptions_.size() * 2) + 2));
-    buf.write_u16(static_cast<uint16_t>(exceptions_.size()));
-    for (const auto& i : exceptions_) {
-      buf.write_u16(i);
-    }
-    const auto data = buf.data();
-    attributes_.insert(attributes_.end(), data.begin(), data.end());
-  }
-  if (!visible_parameter_annotations_count_.empty()) {
-    const auto attr_name = writer_.get_utf("RuntimeVisibleParameterAnnotations");
-    attributes_count_++;
-    bytebuf buf;
-    const auto num_params = static_cast<uint8_t>(visible_parameter_annotations_count_.size());
-    buf.write_u8(num_params);
-    for (auto i = 0; i < num_params; i++) {
-      buf.write_u16(visible_parameter_annotations_count_[i]);
-      buf.write_all(visible_parameter_annotations_[i]);
-    }
-    const auto data = buf.data();
-    bytebuf attrbuf;
-    attrbuf.write_u16(attr_name);
-    attrbuf.write_u32(static_cast<uint32_t>(data.size()));
-    attrbuf.write_all(data);
-    const auto attr = attrbuf.data();
-    attributes_.insert(attributes_.end(), attr.begin(), attr.end());
-  }
-  if (!invisible_parameter_annotations_count_.empty()) {
-    const auto attr_name = writer_.get_utf("RuntimeInvisibleParameterAnnotations");
-    attributes_count_++;
-    bytebuf buf;
-    const auto num_params = static_cast<uint8_t>(invisible_parameter_annotations_.size());
-    buf.write_u8(num_params);
-    for (auto i = 0; i < num_params; i++) {
-      buf.write_u16(invisible_parameter_annotations_count_[i]);
-      buf.write_all(invisible_parameter_annotations_[i]);
-    }
-    const auto data = buf.data();
-    bytebuf attrbuf;
-    attrbuf.write_u16(attr_name);
-    attrbuf.write_u32(static_cast<uint32_t>(data.size()));
-    attrbuf.write_all(data);
-    const auto attr = attrbuf.data();
-    attributes_.insert(attributes_.end(), attr.begin(), attr.end());
-  }
-  if (visible_annotations_count_ > 0) {
-    const auto attr_name = writer_.get_utf("RuntimeVisibleAnnotations");
-    attributes_count_++;
-    bytebuf buf;
-    buf.write_u16(attr_name);
-    buf.write_u32(static_cast<uint32_t>(visible_annotations_.size() + 2));
-    buf.write_u16(visible_annotations_count_);
-    buf.write_all(visible_annotations_);
-    const auto data = buf.data();
-    attributes_.insert(attributes_.end(), data.begin(), data.end());
-  }
-  if (invisible_annotations_count_ > 0) {
-    const auto attr_name = writer_.get_utf("RuntimeInvisibleAnnotations");
-    attributes_count_++;
-    bytebuf buf;
-    buf.write_u16(attr_name);
-    buf.write_u32(static_cast<uint32_t>(invisible_annotations_.size() + 2));
-    buf.write_u16(invisible_annotations_count_);
-    buf.write_all(invisible_annotations_);
-    const auto data = buf.data();
-    attributes_.insert(attributes_.end(), data.begin(), data.end());
-  }
-  if (visible_type_annotations_count_ > 0) {
-    const auto attr_name = writer_.get_utf("RuntimeVisibleTypeAnnotations");
-    attributes_count_++;
-    bytebuf buf;
-    buf.write_u16(attr_name);
-    buf.write_u32(static_cast<uint32_t>(visible_type_annotations_.size() + 2));
-    buf.write_u16(visible_type_annotations_count_);
-    buf.write_all(visible_type_annotations_);
-    const auto data = buf.data();
-    attributes_.insert(attributes_.end(), data.begin(), data.end());
-  }
-  if (invisible_type_annotations_count_ > 0) {
-    const auto attr_name = writer_.get_utf("RuntimeInvisibleTypeAnnotations");
-    attributes_count_++;
-    bytebuf buf;
-    buf.write_u16(attr_name);
-    buf.write_u32(static_cast<uint32_t>(invisible_type_annotations_.size() + 2));
-    buf.write_u16(invisible_type_annotations_count_);
-    buf.write_all(invisible_type_annotations_);
-    const auto data = buf.data();
-    attributes_.insert(attributes_.end(), data.begin(), data.end());
-  }
-  if (parameters_count_ > 0) {
-    const auto attr_name = writer_.get_utf("MethodParameters");
-    attributes_count_++;
-    bytebuf buf;
-    buf.write_u16(attr_name);
-    buf.write_u32(static_cast<uint32_t>(parameters_.size() + 1));
-    buf.write_u8(parameters_count_);
-    buf.write_all(parameters_);
-    const auto data = buf.data();
-    attributes_.insert(attributes_.end(), data.begin(), data.end());
-  }
-  bytebuf buf;
-  buf.write_u16(access_flags_);
-  buf.write_u16(name_index_);
-  buf.write_u16(descriptor_index_);
-  buf.write_u16(attributes_count_);
-  buf.write_all(attributes_);
-  const auto data = buf.data();
-  writer_.method_count_++;
-  writer_.methods_bin_.insert(writer_.methods_bin_.end(), data.begin(), data.end());
-}
-void class_writer::visit_end() {
-  if (!module_packages_.empty()) {
-    const auto attr_name = get_utf("ModulePackages");
-    attributes_count_++;
-    bytebuf buf;
-    buf.write_u16(attr_name);
-    buf.write_u32(static_cast<uint32_t>((module_packages_.size() * 2) + 2));
-    buf.write_u16(static_cast<uint16_t>(module_packages_.size()));
-    for (const auto& i : module_packages_) {
-      buf.write_u16(i);
-    }
-    const auto data = buf.data();
-    attributes_.insert(attributes_.end(), data.begin(), data.end());
-  }
-  if (!nest_members_.empty()) {
-    const auto attr_name = get_utf("NestMembers");
-    attributes_count_++;
-    bytebuf buf;
-    buf.write_u16(attr_name);
-    buf.write_u32(static_cast<uint32_t>((nest_members_.size() * 2) + 2));
-    buf.write_u16(static_cast<uint16_t>(nest_members_.size()));
-    for (const auto& i : nest_members_) {
-      buf.write_u16(i);
-    }
-    const auto data = buf.data();
-    attributes_.insert(attributes_.end(), data.begin(), data.end());
-  }
-  if (!permitted_subclasses_.empty()) {
-    const auto attr_name = get_utf("PermittedSubclasses");
-    attributes_count_++;
-    bytebuf buf;
-    buf.write_u16(attr_name);
-    buf.write_u32(static_cast<uint32_t>((permitted_subclasses_.size() * 2) + 2));
-    buf.write_u16(static_cast<uint16_t>(permitted_subclasses_.size()));
-    for (const auto& i : permitted_subclasses_) {
-      buf.write_u16(i);
-    }
-    const auto data = buf.data();
-    attributes_.insert(attributes_.end(), data.begin(), data.end());
-  }
-  if (visible_annotations_count_ > 0) {
-    const auto attr_name = get_utf("RuntimeVisibleAnnotations");
-    attributes_count_++;
-    bytebuf buf;
-    buf.write_u16(attr_name);
-    buf.write_u32(static_cast<uint32_t>(visible_annotations_.size() + 2));
-    buf.write_u16(visible_annotations_count_);
-    buf.write_all(visible_annotations_);
-    const auto data = buf.data();
-    attributes_.insert(attributes_.end(), data.begin(), data.end());
-  }
-  if (invisible_annotations_count_ > 0) {
-    const auto attr_name = get_utf("RuntimeInvisibleAnnotations");
-    attributes_count_++;
-    bytebuf buf;
-    buf.write_u16(attr_name);
-    buf.write_u32(static_cast<uint32_t>(invisible_annotations_.size() + 2));
-    buf.write_u16(invisible_annotations_count_);
-    buf.write_all(invisible_annotations_);
-    const auto data = buf.data();
-    attributes_.insert(attributes_.end(), data.begin(), data.end());
-  }
-  if (visible_type_annotations_count_ > 0) {
-    const auto attr_name = get_utf("RuntimeVisibleTypeAnnotations");
-    attributes_count_++;
-    bytebuf buf;
-    buf.write_u16(attr_name);
-    buf.write_u32(static_cast<uint32_t>(visible_type_annotations_.size() + 2));
-    buf.write_u16(visible_type_annotations_count_);
-    buf.write_all(visible_type_annotations_);
-    const auto data = buf.data();
-    attributes_.insert(attributes_.end(), data.begin(), data.end());
-  }
-  if (invisible_type_annotations_count_ > 0) {
-    const auto attr_name = get_utf("RuntimeInvisibleTypeAnnotations");
-    attributes_count_++;
-    bytebuf buf;
-    buf.write_u16(attr_name);
-    buf.write_u32(static_cast<uint32_t>(invisible_type_annotations_.size() + 2));
-    buf.write_u16(invisible_type_annotations_count_);
-    buf.write_all(invisible_type_annotations_);
-    const auto data = buf.data();
-    attributes_.insert(attributes_.end(), data.begin(), data.end());
-  }
-  if (record_components_count_ > 0) {
-    const auto attr_name = get_utf("Record");
-    attributes_count_++;
-    bytebuf buf;
-    buf.write_u16(attr_name);
-    buf.write_u32(static_cast<uint32_t>(record_components_bin_.size() + 2));
-    buf.write_u16(record_components_count_);
-    buf.write_all(record_components_bin_);
-    const auto data = buf.data();
-    attributes_.insert(attributes_.end(), data.begin(), data.end());
-  }
   if (!bsm_buffer_.empty()) {
     const auto attr_name = get_utf("BootstrapMethods");
-    attributes_count_++;
-    bytebuf attrbuf;
+    data_writer attrbuf;
     attrbuf.write_u16(static_cast<uint16_t>(bsm_buffer_.size()));
     for (const auto& [ref, args] : bsm_buffer_) {
       attrbuf.write_u16(ref);
@@ -1840,35 +1585,17 @@ void class_writer::visit_end() {
       }
     }
     const auto attr = attrbuf.data();
-    bytebuf buf;
+    databuf buf(attributes_);
     buf.write_u16(attr_name);
     buf.write_u32(static_cast<uint32_t>(attr.size()));
     buf.write_all(attr);
-    const auto data = buf.data();
-    attributes_.insert(attributes_.end(), data.begin(), data.end());
-  }
-  if (!inner_classes_.empty()) {
-    const auto attr_name = get_utf("InnerClasses");
     attributes_count_++;
-    bytebuf buf;
-    buf.write_u16(attr_name);
-    buf.write_u32(static_cast<uint32_t>((inner_classes_.size() * 8) + 2));
-    buf.write_u16(static_cast<uint16_t>(inner_classes_.size()));
-    for (const auto& [name, outer, inner, access] : inner_classes_) {
-      buf.write_u16(name);
-      buf.write_u16(outer);
-      buf.write_u16(inner);
-      buf.write_u16(access);
-    }
-    const auto data = buf.data();
-    attributes_.insert(attributes_.end(), data.begin(), data.end());
   }
-}
-std::vector<int8_t> class_writer::write() const {
-  bytebuf buf;
+
+  data_writer buf;
   buf.write_u32(0xcafebabe);
-  buf.write_u16(static_cast<uint16_t>(version_ & 0xffff));
-  buf.write_u16(static_cast<uint16_t>(version_ >> 16));
+  buf.write_u16(static_cast<uint16_t>(file.version & 0xffff));
+  buf.write_u16(static_cast<uint16_t>(file.version >> 16));
   uint16_t pool_count = 1;
   for (const auto& info : pool_) {
     if (std::holds_alternative<cp::pad_info>(info)) {
@@ -1883,17 +1610,17 @@ std::vector<int8_t> class_writer::write() const {
   for (const auto& info : pool_) {
     std::visit(constant_pool_visitor(buf), info);
   }
-  buf.write_u16(access_flags_);
-  buf.write_u16(this_class_);
-  buf.write_u16(super_class_);
-  buf.write_u16(static_cast<uint16_t>(interfaces_.size()));
-  for (const auto& i : interfaces_) {
+  buf.write_u16(file.access_flags);
+  buf.write_u16(this_class);
+  buf.write_u16(super_class);
+  buf.write_u16(static_cast<uint16_t>(interfaces.size()));
+  for (const auto& i : interfaces) {
     buf.write_u16(i);
   }
-  buf.write_u16(fields_count_);
-  buf.write_all(fields_bin_);
-  buf.write_u16(method_count_);
-  buf.write_all(methods_bin_);
+  buf.write_u16(static_cast<uint16_t>(file.fields.size()));
+  buf.write_all(fields_);
+  buf.write_u16(static_cast<uint16_t>(file.methods.size()));
+  buf.write_all(methods_);
   buf.write_u16(attributes_count_);
   buf.write_all(attributes_);
   return buf.data();

@@ -7,43 +7,24 @@
 #include "cafe/constants.hpp"
 
 namespace cafe {
-class_value::class_value(const std::string_view& value) {
-  auto internal = std::string(value);
-  auto binary = internal;
-  std::replace(internal.begin(), internal.end(), '.', '/');
-  std::replace(binary.begin(), binary.end(), '/', '.');
-  this->internal_ = internal;
-  this->binary_ = binary;
-}
-std::string class_value::get() const {
-  return internal_;
-}
-std::string class_value::binary() const {
-  return binary_;
-}
-void class_value::set(const std::string_view& value) {
-  auto internal = std::string(value);
-  auto binary = internal;
-  std::replace(internal.begin(), internal.end(), '.', '/');
-  std::replace(binary.begin(), binary.end(), '/', '.');
-  this->internal_ = internal;
-  this->binary_ = binary;
+method_handle::method_handle(uint8_t kind, const std::string_view& owner, const std::string_view& name,
+                             const std::string_view& desc) : kind(kind), owner(owner), name(name), desc(desc), interface(kind == reference_kind::invoke_interface) {
 }
 method_handle::method_handle(uint8_t kind, const std::string_view& owner, const std::string_view& name,
-                             const std::string_view& descriptor) :
-    kind(kind), owner(owner), name(name), descriptor(descriptor) {
+                             const std::string_view& desc, bool interface) : kind(kind), owner(owner), name(name),
+                                                                           desc(desc), interface(interface) {
 }
-method_type::method_type(const std::string_view& descriptor) : descriptor(descriptor) {
+method_type::method_type(const std::string_view& desc) : desc(desc) {
 }
-dynamic::dynamic(const std::string_view& name, const std::string_view& descriptor, method_handle handle,
+dynamic::dynamic(const std::string_view& name, const std::string_view& desc, method_handle handle,
                  const std::vector<value>& args) :
-    name(name), descriptor(descriptor), handle(std::move(handle)), args(args) {
+    name(name), desc(desc), handle(std::move(handle)), args(args) {
 }
 std::string to_string(const value& v) {
   return std::visit(
       [](const auto& arg) -> std::string {
         using T = std::decay_t<decltype(arg)>;
-        if constexpr (std::is_same_v<T, class_value>) {
+        if constexpr (std::is_same_v<T, type>) {
           return arg.get();
         } else if constexpr (std::is_same_v<T, std::string>) {
           std::ostringstream oss;
@@ -52,13 +33,13 @@ std::string to_string(const value& v) {
         } else if constexpr (std::is_same_v<T, method_handle>) {
           std::ostringstream oss;
           oss << "method_handle(" << reference_kind_name(arg.kind) << ", " << '"' << arg.owner << '"' << ", " << '"'
-              << arg.name << '"' << ", " << '"' << arg.descriptor << '"' << ")";
+              << arg.name << '"' << ", " << '"' << arg.desc << '"' << ")";
           return oss.str();
         } else if constexpr (std::is_same_v<T, method_type>) {
-          return "method_type(\"" + arg.descriptor + "\")";
+          return "method_type(\"" + arg.desc + "\")";
         } else if constexpr (std::is_same_v<T, dynamic>) {
           std::ostringstream oss;
-          oss << "dynamic(" << '"' << arg.name << '"' << ", " << '"' << arg.descriptor << '"' << ", "
+          oss << "dynamic(" << '"' << arg.name << '"' << ", " << '"' << arg.desc << '"' << ", "
               << to_string(arg.handle) << ", [";
           bool first = true;
           for (const auto& a : arg.args) {
@@ -77,87 +58,127 @@ std::string to_string(const value& v) {
       v);
 }
 
-class_descriptor::class_descriptor(const std::string_view& name) : descriptor_(name) {
-  update();
+type::type(const std::string_view& value) : value_(value), kind_(get_kind(value)) {
 }
-std::string class_descriptor::to_string() const {
-  return descriptor_;
+
+type::type(type_kind kind, const std::string_view& value) : value_(value), kind_(kind) {
 }
-uint8_t class_descriptor::size() const {
-  return 1;
+bool type::operator==(const type& other) const {
+  return kind() == other.kind() && internal() == other.internal();
 }
-uint8_t class_descriptor::dims() const {
-  return dims_;
+bool type::operator!=(const type& other) const {
+  return !(*this == other);
 }
-bool class_descriptor::is_array() const {
-  return dims_ > 0;
-}
-void class_descriptor::set(const std::string_view& name) {
-  descriptor_ = name;
-  update();
-}
-void class_descriptor::update() {
-  dims_ = 0;
-  for (const auto& c : descriptor_) {
-    if (c == '[') {
-      dims_++;
-    } else {
-      break;
-    }
+std::vector<type> type::parameter_types() const {
+  if (kind_ != type_kind::method || value_.empty() || value_[0] != '(') {
+    return {};
   }
-}
-std::string to_string(const descriptor& d) {
-  return std::visit([](const auto& arg) -> std::string { return arg.to_string(); }, d);
-}
-uint8_t size(const descriptor& d) {
-  return std::visit([](const auto& arg) -> uint8_t { return arg.size(); }, d);
-}
-descriptor parse_descriptor(const std::string_view& descriptor) {
-  switch (descriptor[0]) {
-    case 'V':
-      return void_descriptor();
-    case 'Z':
-      return boolean_descriptor();
-    case 'B':
-      return byte_descriptor();
-    case 'C':
-      return char_descriptor();
-    case 'S':
-      return short_descriptor();
-    case 'I':
-      return int_descriptor();
-    case 'J':
-      return long_descriptor();
-    case 'F':
-      return float_descriptor();
-    case 'D':
-      return double_descriptor();
-    case '[':
-    case 'L': {
-      std::string internal;
-      for (const auto& c : descriptor) {
-        internal.push_back(c);
-        if (c == ';') {
-          break;
-        }
-      }
-      return class_descriptor(internal);
+  std::vector<type> types;
+  size_t i = 1;
+  while (value_[i] != ')') {
+    size_t j = i;
+    while (value_[j] == '[') {
+      j++;
     }
-    default:
-      throw std::invalid_argument("invalid descriptor");
-  }
-}
-std::pair<std::vector<descriptor>, descriptor> parse_method_descriptor(const std::string_view& descriptor) {
-  std::vector<cafe::descriptor> args;
-  std::string_view::size_type i = 1;
-  while (descriptor[i] != ')') {
-    std::string_view::size_type j = i;
-    if (descriptor[j] == 'L' || descriptor[j] == '[') {
-      j = descriptor.find(';', j);
+    if (value_[j] == 'L') {
+      j = value_.find(';', j);
     }
-    args.push_back(parse_descriptor(descriptor.substr(i, j - i + 1)));
+    types.emplace_back(value_.substr(i, j - i + 1));
     i = j + 1;
   }
-  return {args, parse_descriptor(descriptor.substr(i + 1))};
+  return types;
+}
+
+type type::return_type() const {
+  if (kind_ != type_kind::method) {
+    return *this;
+  }
+  const auto i = value_.find(')') + 1;
+  return {value_.substr(i)};
+}
+
+type type::array_type() const {
+  if (kind_ != type_kind::array || value_.empty() || value_[0] != '[') {
+    return *this;
+  }
+  return {value_.substr(1)};
+}
+
+uint8_t type::dimensions() const {
+  auto i = 0;
+  if (!value_.empty()) {
+    while (value_[i] == '[') {
+      i++;
+    }
+  }
+  return i;
+}
+
+uint8_t type::size() const {
+  switch (kind_) {
+    case type_kind::void_:
+      return 0;
+    case type_kind::long_:
+    case type_kind::double_:
+      return 2;
+    default:
+      return 1;
+  }
+}
+
+std::string_view type::internal() const {
+  if (kind_ != type_kind::object || value_.length() < 3) {
+    return value_;
+  }
+  return {value_.data() + 1, value_.length() - 2};
+}
+
+std::string type::desc() const {
+  if (kind_ != type_kind::internal) {
+    return value_;
+  }
+  std::string res;
+  res.reserve(value_.size() + 2);
+  res.push_back('L');
+  res.append(value_);
+  res.push_back(';');
+  return res;
+}
+
+type_kind type::kind() const {
+  return kind_ == type_kind::internal ? type_kind::object : kind_;
+}
+const std::string& type::get() const {
+  return value_;
+}
+type_kind type::get_kind(const std::string_view& value) {
+  switch (value.empty() ? 0 : value[0]) {
+    case 'V':
+      return type_kind::void_;
+    case 'Z':
+      return type_kind::boolean;
+    case 'B':
+      return type_kind::byte;
+    case 'C':
+      return type_kind::char_;
+    case 'S':
+      return type_kind::short_;
+    case 'I':
+      return type_kind::int_;
+    case 'J':
+      return type_kind::long_;
+    case 'F':
+      return type_kind::float_;
+    case 'D':
+      return type_kind::double_;
+    case '(':
+      return type_kind::method;
+    case '[':
+      return type_kind::array;
+    case 'L':
+      return type_kind::object;
+    default:
+      return type_kind::internal;
+  }
 }
 } // namespace cafe
