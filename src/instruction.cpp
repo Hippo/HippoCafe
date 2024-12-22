@@ -7,6 +7,12 @@
 namespace cafe {
 insn::insn(uint8_t opcode) : opcode(opcode) {
 }
+bool insn::operator==(const insn& other) const {
+  return opcode == other.opcode;
+}
+bool insn::operator!=(const insn& other) const {
+  return opcode != other.opcode;
+}
 std::string insn::to_string() const {
   std::ostringstream oss;
   oss << "insn(" << opcode_name(opcode) << ")";
@@ -32,6 +38,18 @@ bool var_insn::is_store() const {
 bool var_insn::is_wide() const {
   return opcode == op::dload || opcode == op::lload || opcode == op::dstore || opcode == op::lstore;
 }
+bool var_insn::operator==(const var_insn& other) const {
+  return opcode == other.opcode && index == other.index;
+}
+bool var_insn::operator!=(const var_insn& other) const {
+  return !(*this == other);
+}
+bool type_insn::operator==(const type_insn& other) const {
+  return opcode == other.opcode && type == other.type;
+}
+bool type_insn::operator!=(const type_insn& other) const {
+  return !(*this == other);
+}
 std::string var_insn::to_string() const {
   std::ostringstream oss;
   oss << "var_insn(" << opcode_name(opcode) << ", " << index << ")";
@@ -47,6 +65,12 @@ std::string type_insn::to_string() const {
 field_insn::field_insn(uint8_t opcode, const std::string_view& owner, const std::string_view& name,
                        const std::string_view& desc) : insn(opcode), owner(owner), name(name), desc(desc) {
 }
+bool field_insn::operator==(const field_insn& other) const {
+  return opcode == other.opcode && owner == other.owner && name == other.name && desc == other.desc;
+}
+bool field_insn::operator!=(const field_insn& other) const {
+  return !(*this == other);
+}
 std::string field_insn::to_string() const {
   std::ostringstream oss;
   oss << "field_insn(" << opcode_name(opcode) << ", " << owner << ", " << name << ", " << desc << ")";
@@ -56,7 +80,14 @@ method_insn::method_insn(uint8_t opcode, const std::string_view& owner, const st
                          const std::string_view& desc) : insn(opcode), owner(owner), name(name), desc(desc), interface(opcode == op::invokeinterface) {
 }
 method_insn::method_insn(uint8_t opcode, const std::string_view& owner, const std::string_view& name,
-                         const std::string_view& desc, bool interface) : insn(opcode), owner(owner), name(name), desc(desc), interface(interface) {
+                         const std::string_view& desc, bool interface) :
+    insn(opcode), owner(owner), name(name), desc(desc), interface(interface) {
+}
+bool method_insn::operator==(const method_insn& other) const {
+  return opcode == other.opcode && owner == other.owner && name == other.name && desc == other.desc && interface == other.interface;
+}
+bool method_insn::operator!=(const method_insn& other) const {
+  return !(*this == other);
 }
 std::string method_insn::to_string() const {
   std::ostringstream oss;
@@ -69,6 +100,12 @@ std::string method_insn::to_string() const {
 }
 iinc_insn::iinc_insn(uint16_t index, int16_t value) : index(index), value(value) {
 }
+bool iinc_insn::operator==(const iinc_insn& other) const {
+  return index == other.index && value == other.value;
+}
+bool iinc_insn::operator!=(const iinc_insn& other) const {
+  return !(*this == other);
+}
 std::string iinc_insn::to_string() const {
   std::ostringstream oss;
   oss << "iinc_insn(" << index << ", " << value << ")";
@@ -78,6 +115,12 @@ push_insn::push_insn(cafe::value value) : value(std::move(value)) {
 }
 bool push_insn::is_wide() const {
   return std::holds_alternative<int64_t>(value) || std::holds_alternative<double>(value);
+}
+bool push_insn::operator==(const push_insn& other) const {
+  return value == other.value;
+}
+bool push_insn::operator!=(const push_insn& other) const {
+  return value != other.value;
 }
 uint8_t push_insn::opcode() const {
   return opcode_of(value);
@@ -137,6 +180,12 @@ std::string push_insn::to_string() const {
 }
 branch_insn::branch_insn(uint8_t opcode, label target) : insn(opcode), target(std::move(target)) {
 }
+bool branch_insn::operator==(const branch_insn& other) const {
+  return opcode == other.opcode && target == other.target;
+}
+bool branch_insn::operator!=(const branch_insn& other) const {
+  return !(*this == other);
+}
 std::string branch_insn::to_string() const {
   std::ostringstream oss;
   oss << "branch_insn(" << opcode_name(opcode) << ", " << target.to_string() << ")";
@@ -144,6 +193,12 @@ std::string branch_insn::to_string() const {
 }
 lookup_switch_insn::lookup_switch_insn(label default_target, const std::vector<std::pair<int32_t, label>>& targets) :
     default_target(std::move(default_target)), targets(targets) {
+}
+bool lookup_switch_insn::operator==(const lookup_switch_insn& other) const {
+  return default_target == other.default_target && targets == other.targets;
+}
+bool lookup_switch_insn::operator!=(const lookup_switch_insn& other) const {
+  return !(*this == other);
 }
 std::string lookup_switch_insn::to_string() const {
   std::ostringstream oss;
@@ -163,6 +218,12 @@ table_switch_insn::table_switch_insn(label default_target, int32_t low, int32_t 
                                      const std::vector<label>& targets) :
     default_target(std::move(default_target)), low(low), high(high), targets(targets) {
 }
+bool table_switch_insn::operator==(const table_switch_insn& other) const {
+  return default_target == other.default_target && low == other.low && high == other.high && targets == other.targets;
+}
+bool table_switch_insn::operator!=(const table_switch_insn& other) const {
+  return !(*this == other);
+}
 std::string table_switch_insn::to_string() const {
   std::ostringstream oss;
   oss << "table_switch_insn(" << default_target.to_string() << ", " << low << ", " << high << ", [";
@@ -177,8 +238,13 @@ std::string table_switch_insn::to_string() const {
   oss << "])";
   return oss.str();
 }
-multi_array_insn::multi_array_insn(const std::string_view& desc, uint8_t dims) :
-    desc(desc), dims(dims) {
+multi_array_insn::multi_array_insn(const std::string_view& desc, uint8_t dims) : desc(desc), dims(dims) {
+}
+bool multi_array_insn::operator==(const multi_array_insn& other) const {
+  return desc == other.desc && dims == other.dims;
+}
+bool multi_array_insn::operator!=(const multi_array_insn& other) const {
+  return !(*this == other);
 }
 std::string multi_array_insn::to_string() const {
   std::ostringstream oss;
@@ -186,6 +252,12 @@ std::string multi_array_insn::to_string() const {
   return oss.str();
 }
 array_insn::array_insn(const std::variant<uint8_t, std::string>& type) : type(type) {
+}
+bool array_insn::operator==(const array_insn& other) const {
+  return type == other.type;
+}
+bool array_insn::operator!=(const array_insn& other) const {
+  return type != other.type;
 }
 std::string array_insn::to_string() const {
   std::ostringstream oss;
@@ -206,6 +278,12 @@ std::string array_insn::to_string() const {
 invoke_dynamic_insn::invoke_dynamic_insn(const std::string_view& name, const std::string_view& desc,
                                          method_handle handle, const std::vector<value>& args) :
     name(name), desc(desc), handle(std::move(handle)), args(args) {
+}
+bool invoke_dynamic_insn::operator==(const invoke_dynamic_insn& other) const {
+  return name == other.name && desc == other.desc && handle == other.handle && args == other.args;
+}
+bool invoke_dynamic_insn::operator!=(const invoke_dynamic_insn& other) const {
+  return !(*this == other);
 }
 std::string invoke_dynamic_insn::to_string() const {
   std::ostringstream oss;

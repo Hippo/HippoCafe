@@ -181,4 +181,22 @@ type_kind type::get_kind(const std::string_view& value) {
       return type_kind::internal;
   }
 }
+bool method_handle::operator==(const method_handle& other) const {
+  return kind == other.kind && owner == other.owner && name == other.name && desc == other.desc && interface == other.interface;
+}
+bool method_handle::operator!=(const method_handle& other) const {
+  return !(*this == other);
+}
+bool method_type::operator==(const method_type& other) const {
+  return desc == other.desc;
+}
+bool method_type::operator!=(const method_type& other) const {
+  return desc != other.desc;
+}
+bool dynamic::operator==(const dynamic& other) const {
+  return name == other.name && desc == other.desc && handle == other.handle && args == other.args;
+}
+bool dynamic::operator!=(const dynamic& other) const {
+  return !(*this == other);
+}
 } // namespace cafe

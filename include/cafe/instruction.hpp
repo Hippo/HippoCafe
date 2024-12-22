@@ -22,6 +22,9 @@ public:
   insn& operator=(const insn&) = default;
   insn& operator=(insn&&) = default;
 
+  bool operator==(const insn& other) const;
+  bool operator!=(const insn& other) const;
+
 
   virtual std::string to_string() const;
 };
@@ -41,6 +44,9 @@ public:
   bool is_store() const;
   bool is_wide() const;
 
+  bool operator==(const var_insn& other) const;
+  bool operator!=(const var_insn& other) const;
+
   std::string to_string() const override;
 };
 
@@ -54,6 +60,9 @@ public:
   type_insn(type_insn&&) = default;
   type_insn& operator=(const type_insn&) = default;
   type_insn& operator=(type_insn&&) = default;
+
+  bool operator==(const type_insn& other) const;
+  bool operator!=(const type_insn& other) const;
 
   std::string to_string() const override;
 };
@@ -71,6 +80,9 @@ public:
   field_insn(field_insn&&) = default;
   field_insn& operator=(const field_insn&) = default;
   field_insn& operator=(field_insn&&) = default;
+
+  bool operator==(const field_insn& other) const;
+  bool operator!=(const field_insn& other) const;
 
   std::string to_string() const override;
 };
@@ -92,6 +104,9 @@ public:
   method_insn& operator=(const method_insn&) = default;
   method_insn& operator=(method_insn&&) = default;
 
+  bool operator==(const method_insn& other) const;
+  bool operator!=(const method_insn& other) const;
+
   std::string to_string() const override;
 };
 
@@ -107,6 +122,8 @@ public:
   iinc_insn& operator=(const iinc_insn&) = default;
   iinc_insn& operator=(iinc_insn&&) = default;
 
+  bool operator==(const iinc_insn& other) const;
+  bool operator!=(const iinc_insn& other) const;
 
   std::string to_string() const;
 };
@@ -124,6 +141,9 @@ public:
 
   bool is_wide() const;
 
+  bool operator==(const push_insn& other) const;
+  bool operator!=(const push_insn& other) const;
+
   uint8_t opcode() const;
   std::string to_string() const;
 
@@ -140,6 +160,8 @@ public:
   branch_insn(branch_insn&&) = default;
   branch_insn& operator=(const branch_insn&) = default;
   branch_insn& operator=(branch_insn&&) = default;
+  bool operator==(const branch_insn& other) const;
+  bool operator!=(const branch_insn& other) const;
   std::string to_string() const override;
 };
 
@@ -154,7 +176,8 @@ public:
   lookup_switch_insn(lookup_switch_insn&&) = default;
   lookup_switch_insn& operator=(const lookup_switch_insn&) = default;
   lookup_switch_insn& operator=(lookup_switch_insn&&) = default;
-
+  bool operator==(const lookup_switch_insn& other) const;
+  bool operator!=(const lookup_switch_insn& other) const;
   std::string to_string() const;
 };
 
@@ -171,6 +194,8 @@ public:
   table_switch_insn(table_switch_insn&&) = default;
   table_switch_insn& operator=(const table_switch_insn&) = default;
   table_switch_insn& operator=(table_switch_insn&&) = default;
+  bool operator==(const table_switch_insn& other) const;
+  bool operator!=(const table_switch_insn& other) const;
 
   std::string to_string() const;
 };
@@ -186,7 +211,8 @@ public:
   multi_array_insn(multi_array_insn&&) = default;
   multi_array_insn& operator=(const multi_array_insn&) = default;
   multi_array_insn& operator=(multi_array_insn&&) = default;
-
+  bool operator==(const multi_array_insn& other) const;
+  bool operator!=(const multi_array_insn& other) const;
   std::string to_string() const;
 };
 
@@ -200,7 +226,8 @@ public:
   array_insn(array_insn&&) = default;
   array_insn& operator=(const array_insn&) = default;
   array_insn& operator=(array_insn&&) = default;
-
+  bool operator==(const array_insn& other) const;
+  bool operator!=(const array_insn& other) const;
   std::string to_string() const;
 };
 
@@ -218,6 +245,8 @@ public:
   invoke_dynamic_insn(invoke_dynamic_insn&&) = default;
   invoke_dynamic_insn& operator=(const invoke_dynamic_insn&) = default;
   invoke_dynamic_insn& operator=(invoke_dynamic_insn&&) = default;
+  bool operator==(const invoke_dynamic_insn& other) const;
+  bool operator!=(const invoke_dynamic_insn& other) const;
 
   std::string to_string() const;
 };

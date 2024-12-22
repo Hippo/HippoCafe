@@ -28,6 +28,11 @@ public:
 
   std::vector<frame_var> locals() const;
   std::vector<frame_var> stack() const;
+  int32_t max_locals() const;
+  int32_t max_stack() const;
+
+  const std::vector<code::const_iterator>& instructions() const;
+  const std::unordered_map<basic_block*, std::vector<std::string>>& successors() const;
 
   friend class basic_block_graph;
 private:

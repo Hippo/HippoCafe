@@ -206,15 +206,4 @@ class_file::class_file(const std::string_view& name, const std::optional<std::st
 class_file::class_file(const std::string_view& name, std::vector<method>&& methods) :
     version(class_version::v8), access_flags(access_flag::acc_public), name(name), super_name("java/lang/Object"), methods(std::move(methods)) {
 }
-std::istream& operator>>(std::istream& is, class_file& cf) {
-  class_reader reader;
-  reader.read(is, cf);
-  return is;
-}
-std::ostream& operator<<(std::ostream& os, const class_file& cf) {
-  class_writer writer;
-  const auto data = writer.write(cf);
-  os.write(reinterpret_cast<const char*>(data.data()), static_cast<std::streamsize>(data.size()));
-  return os;
-}
 } // namespace cafe

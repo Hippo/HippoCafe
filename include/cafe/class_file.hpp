@@ -301,7 +301,4 @@ public:
   class_file& operator=(const class_file& other) = default;
   class_file& operator=(class_file&& other) noexcept = default;
 };
-
-CAFE_API std::istream& operator>>(std::istream& is, class_file& cf);
-CAFE_API std::ostream& operator<<(std::ostream& os, const class_file& cf);
 } // namespace cafe

@@ -1094,6 +1094,18 @@ std::vector<frame_var> basic_block::stack() const {
   }
   return stack;
 }
+int32_t basic_block::max_locals() const {
+  return max_locals_;
+}
+int32_t basic_block::max_stack() const {
+  return max_stack_;
+}
+const std::vector<code::const_iterator>& basic_block::instructions() const {
+  return instructions_;
+}
+const std::unordered_map<basic_block*, std::vector<std::string>>& basic_block::successors() const {
+  return successors_;
+}
 frame_compute_result::frame_compute_result(uint16_t max_locals, uint16_t max_stack) : max_locals_(max_locals), max_stack_(max_stack) {
 }
 frame_compute_result::frame_compute_result(std::vector<std::pair<code::const_iterator, label>>&& labels,
@@ -1455,18 +1467,9 @@ frame_compute_result basic_block_graph::compute_frames(const class_tree& tree, c
           frames.emplace_back(get_label(&block), chop_frame(static_cast<uint8_t>(locals.size() - block_locals.size())));
           written = true;
         }
-      } else if (locals.size() == block_locals.size()) {
-        bool same = true;
-        for (auto j = 0; j < locals.size(); j++) {
-          if (locals[j] != block_locals[j]) {
-            same = false;
-            break;
-          }
-        }
-        if (same) {
-          frames.emplace_back(get_label(&block), same_frame());
-          written = true;
-        }
+      } else if (locals == block_locals) {
+        frames.emplace_back(get_label(&block), same_frame());
+        written = true;
       }
     } else if (block_stack.size() == 1 && locals == block_locals) {
       frames.emplace_back(get_label(&block), same_frame(block_stack[0]));

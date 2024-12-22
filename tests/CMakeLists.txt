@@ -7,7 +7,7 @@ FetchContent_Declare(
 set(gtest_force_shared_crt ON CACHE BOOL "" FORCE)
 FetchContent_MakeAvailable(googletest)
 
-add_executable(libcafe_test
+add_executable(hippocafe_test
         class_reader_test.cpp
         class_writer_test.cpp
         desc_parse_test.cpp
@@ -16,11 +16,11 @@ add_executable(libcafe_test
 )
 
 enable_testing()
-add_test(NAME libcafe_test COMMAND libcafe_test)
-target_link_libraries(libcafe_test PRIVATE gtest_main libcafe::cafe)
+add_test(NAME hippocafe_test COMMAND hippocafe_test)
+target_link_libraries(hippocafe_test PRIVATE gtest_main hippocafe)
 
 
-add_custom_command(TARGET libcafe_test POST_BUILD
+add_custom_command(TARGET hippocafe_test POST_BUILD
         COMMAND ${CMAKE_COMMAND} -E copy_directory
         ${CMAKE_CURRENT_SOURCE_DIR}/data
         ${CMAKE_CURRENT_BINARY_DIR}/data)

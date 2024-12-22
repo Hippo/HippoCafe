@@ -1,6 +1,5 @@
 #include "cafe/data_writer.hpp"
 
-#include <stdexcept>
 #include <cmath>
 
 namespace cafe {
@@ -13,25 +12,25 @@ inline size_t to_utf8m_len(const std::string_view& input) {
       new_length += 1 + (byte == 0);
     } else if ((byte & 0xE0) == 0xC0) {
       if (i + 1 >= length || (input[i + 1] & 0xC0) != 0x80) {
-        throw std::runtime_error("Unexpected end of input during 2-byte encoding");
+        return length;
       }
       i++;
       new_length += 2;
     } else if ((byte & 0xF0) == 0xE0) {
       if (i + 2 >= length || (input[i + 1] & 0xC0) != 0x80 || (input[i + 2] & 0xC0) != 0x80) {
-        throw std::runtime_error("Unexpected end of input during 3-byte encoding");
+        return length;
       }
       i += 2;
       new_length += 3;
     } else if ((byte & 0xF8) == 0xF0) {
       if (i + 3 >= length || (input[i + 1] & 0xC0) != 0x80 || (input[i + 2] & 0xC0) != 0x80 ||
           (input[i + 3] & 0xC0) != 0x80) {
-        throw std::runtime_error("Unexpected end of input during 4-byte encoding");
+        return length;
       }
       i += 3;
       new_length += 6;
     } else {
-      throw std::runtime_error("Invalid UTF-8 encoding");
+      return length;
     }
   }
   return new_length;

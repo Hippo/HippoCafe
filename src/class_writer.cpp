@@ -12,7 +12,7 @@
 namespace cafe {
 class_writer::class_writer(uint8_t flags) : flags_(flags) {
 }
-class_writer::class_writer(const class_tree& tree, uint8_t flags) : flags_(flags), tree_(&tree) {
+class_writer::class_writer(const class_tree& tree) : flags_(compute_frames), tree_(&tree) {
 }
 void class_writer::write_source_file(const std::string_view& source_file) {
   const auto attr_name = get_utf("SourceFile");

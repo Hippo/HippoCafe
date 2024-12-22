@@ -71,6 +71,9 @@ public:
   method_handle(method_handle&&) = default;
   method_handle& operator=(const method_handle&) = default;
   method_handle& operator=(method_handle&&) = default;
+
+  bool operator==(const method_handle& other) const;
+  bool operator!=(const method_handle& other) const;
 };
 
 class CAFE_API method_type {
@@ -83,6 +86,9 @@ public:
   method_type(method_type&&) = default;
   method_type& operator=(const method_type&) = default;
   method_type& operator=(method_type&&) = default;
+
+  bool operator==(const method_type& other) const;
+  bool operator!=(const method_type& other) const;
 };
 
 class dynamic;
@@ -104,6 +110,9 @@ public:
   dynamic(dynamic&&) = default;
   dynamic& operator=(const dynamic&) = default;
   dynamic& operator=(dynamic&&) = default;
+
+  bool operator==(const dynamic& other) const;
+  bool operator!=(const dynamic& other) const;
 };
 
 } // namespace cafe

@@ -3,7 +3,7 @@
 #include <fstream>
 #include <sstream>
 
-#include <cafe/cafe.hpp>
+#include <hippo/cafe.hpp>
 #include <zip.h>
 
 void read_zip(cafe::class_tree& tree, const std::string_view& path) {
@@ -33,11 +33,11 @@ void read_zip(cafe::class_tree& tree, const std::string_view& path) {
     zip_fclose(file);
 
     if (std::string(name).find(".class") != std::string::npos) {
-      try {
-        cafe::class_reader reader;
-        tree.put(reader.read(content));
-      } catch (const std::exception& e) {
-        std::cerr << name << " " << e.what() << std::endl;
+      cafe::class_reader reader;
+      if (const auto res = reader.read(content)) {
+        tree.put(res.value());
+      } else {
+        std::cerr << res.error_message() << std::endl;
       }
     }
   }

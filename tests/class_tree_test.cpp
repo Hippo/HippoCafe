@@ -1,4 +1,4 @@
-#include <../include/cafe/cafe.hpp>
+#include <hippo/cafe.hpp>
 #include <gtest/gtest.h>
 
 TEST(class_tree_test, assignable_from) {

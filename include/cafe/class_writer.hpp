@@ -13,7 +13,7 @@ class CAFE_API class_writer {
 public:
   class_writer() = default;
   explicit class_writer(uint8_t flags);
-  class_writer(const class_tree& tree, uint8_t flags);
+  explicit class_writer(const class_tree& tree);
   ~class_writer() = default;
   class_writer(const class_writer&) = delete;
   class_writer(class_writer&&) = default;

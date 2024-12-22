@@ -1,6 +1,6 @@
 #include <gtest/gtest.h>
 
-#include <../include/cafe/cafe.hpp>
+#include <hippo/cafe.hpp>
 
 static void test_desc(const std::string_view& desc) {
   cafe::type t(desc);
@@ -25,4 +25,7 @@ TEST(desc, parse) {
   test_desc(desc2);
   std::cout << "desc3: " << desc3 << std::endl;
   test_desc(desc3);
+
+  cafe::class_tree tree;
+  tree.put("my/ThisClass", "my/SuperClass", {"my/Interface1", "my/Interface2"});
 }

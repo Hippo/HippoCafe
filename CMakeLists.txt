@@ -1,17 +1,13 @@
 cmake_minimum_required(VERSION 3.10)
-project(libcafe)
+project(hippocafe)
 
 set(CMAKE_CXX_STANDARD 17)
 
-if (${CMAKE_SOURCE_DIR} STREQUAL ${CMAKE_CURRENT_SOURCE_DIR})
-    set(CAFE_STANDALONE ON)
-else ()
-    set(CAFE_STANDALONE OFF)
-endif ()
-
 option(BUILD_SHARED_LIBS "Build as a shared library" OFF)
-option(CAFE_BUILD_TESTS "Build tests" ${CAFE_STANDALONE})
-option(CAFE_BUILD_GEN "Build the class tree generator" ${CAFE_STANDALONE})
+option(CAFE_BUILD_TESTS "Build tests" OFF)
+option(CAFE_BUILD_GEN "Build the class tree generator" OFF)
+
+include(GNUInstallDirs)
 
 if (${CAFE_BUILD_TESTS})
     add_subdirectory(tests)
@@ -34,10 +30,11 @@ set(CAFE_HEADERS
         include/cafe/class_writer.hpp
         include/cafe/data_writer.hpp
         src/visitor.hpp
-        include/cafe/cafe.hpp
+        include/hippo/cafe.hpp
         include/cafe/class_tree.hpp
         include/cafe/data_reader.hpp
         include/cafe/analysis.hpp
+        include/cafe/result.hpp
 )
 set(CAFE_SOURCES
         src/class_reader.cpp
@@ -53,6 +50,7 @@ set(CAFE_SOURCES
         src/class_tree.cpp
         src/data_reader.cpp
         src/analysis.cpp
+        src/result.cpp
 )
 set(CAFE_GEN_SOURCES
         src/gen/gen_class_tree.cpp src/gen/gen_class_tree.hpp
@@ -91,21 +89,37 @@ set(CAFE_GEN_SOURCES
         src/gen/gen_class_tree_32.cpp
 )
 
-add_library(cafe
+add_library(hippocafe
         ${CAFE_HEADERS}
         ${CAFE_SOURCES}
         ${CAFE_GEN_SOURCES}
 )
 
-add_library(libcafe::cafe ALIAS cafe)
-
 if (${BUILD_SHARED_LIBS} AND ${WIN32})
-    target_compile_definitions(cafe PUBLIC CAFE_SHARED_LIB)
-    target_compile_definitions(cafe PRIVATE CAFE_EXPORTS)
+    target_compile_definitions(hippocafe PUBLIC CAFE_SHARED_LIB)
+    target_compile_definitions(hippocafe PRIVATE CAFE_EXPORTS)
 endif ()
 
 if (${BUILD_SHARED_LIBS})
-    set_property(TARGET cafe PROPERTY POSITION_INDEPENDENT_CODE ON)
+    set_property(TARGET hippocafe PROPERTY POSITION_INDEPENDENT_CODE ON)
 endif ()
 
-target_include_directories(cafe PUBLIC ${PROJECT_SOURCE_DIR}/include)
+target_include_directories(hippocafe PUBLIC
+        $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
+        $<INSTALL_INTERFACE:${CMAKE_INSTALL_INCLUDEDIR}>
+)
+
+install(TARGETS ${PROJECT_NAME}
+        EXPORT ${PROJECT_NAME}
+        LIBRARY DESTINATION ${CMAKE_INSTALL_LIBDIR}
+        ARCHIVE DESTINATION ${CMAKE_INSTALL_LIBDIR}
+        RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR}
+        INCLUDES DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}
+)
+install(DIRECTORY include/ DESTINATION ${CMAKE_INSTALL_INCLUDEDIR})
+
+install(EXPORT ${PROJECT_NAME}
+        FILE ${PROJECT_NAME}-config.cmake
+        NAMESPACE ${PROJECT_NAME}::
+        DESTINATION ${CMAKE_INSTALL_LIBDIR}/cmake/${PROJECT_NAME}
+)
