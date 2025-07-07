@@ -23,7 +23,7 @@ std::ifstream source("data/HelloWorld.class", std::ios::binary);
 class_reader reader;
 result<class_file> read_result = reader.read(source);
 if (!read_result) {
-  std::cerr << read_result.error().message() << std::endl;
+  std::cerr << read_result.err().message() << std::endl;
   return;
 }
 class_file& file = read_result.value();
@@ -31,8 +31,8 @@ class_file& file = read_result.value();
 for (auto& method : file.methods) {
   for (auto& insn : method.code) {
     if (auto* push = std::get_if<push_insn>(&insn)) {
-      if (push->value == value{"Hello World"}) {
-        push->value = "Modified";
+      if (push->operand == value{"Hello World"}) {
+        push->operand = "Modified";
       }
     }
   }
