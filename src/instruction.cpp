@@ -1,5 +1,6 @@
 #include "cafe/instruction.hpp"
 
+#include <limits>
 #include <sstream>
 
 #include "cafe/constants.hpp"
@@ -77,14 +78,16 @@ std::string field_insn::to_string() const {
   return oss.str();
 }
 method_insn::method_insn(uint8_t opcode, const std::string_view& owner, const std::string_view& name,
-                         const std::string_view& desc) : insn(opcode), owner(owner), name(name), desc(desc), interface(opcode == op::invokeinterface) {
+                         const std::string_view& desc) :
+    insn(opcode), owner(owner), name(name), desc(desc), interface(opcode == op::invokeinterface) {
 }
 method_insn::method_insn(uint8_t opcode, const std::string_view& owner, const std::string_view& name,
                          const std::string_view& desc, bool interface) :
     insn(opcode), owner(owner), name(name), desc(desc), interface(interface) {
 }
 bool method_insn::operator==(const method_insn& other) const {
-  return opcode == other.opcode && owner == other.owner && name == other.name && desc == other.desc && interface == other.interface;
+  return opcode == other.opcode && owner == other.owner && name == other.name && desc == other.desc &&
+         interface == other.interface;
 }
 bool method_insn::operator!=(const method_insn& other) const {
   return !(*this == other);
@@ -111,19 +114,19 @@ std::string iinc_insn::to_string() const {
   oss << "iinc_insn(" << index << ", " << value << ")";
   return oss.str();
 }
-push_insn::push_insn(cafe::value value) : value(std::move(value)) {
+push_insn::push_insn(cafe::value operand) : operand(std::move(operand)) {
 }
 bool push_insn::is_wide() const {
-  return std::holds_alternative<int64_t>(value) || std::holds_alternative<double>(value);
+  return std::holds_alternative<int64_t>(operand) || std::holds_alternative<double>(operand);
 }
 bool push_insn::operator==(const push_insn& other) const {
-  return value == other.value;
+  return operand == other.operand;
 }
 bool push_insn::operator!=(const push_insn& other) const {
-  return value != other.value;
+  return operand != other.operand;
 }
 uint8_t push_insn::opcode() const {
-  return opcode_of(value);
+  return opcode_of(operand);
 }
 uint8_t push_insn::opcode_of(const cafe::value& value) {
   return std::visit(
@@ -175,7 +178,7 @@ uint8_t push_insn::opcode_of(const cafe::value& value) {
 }
 std::string push_insn::to_string() const {
   std::ostringstream oss;
-  oss << "push_insn(" << cafe::to_string(value) << ")";
+  oss << "push_insn(" << cafe::to_string(operand) << ")";
   return oss.str();
 }
 branch_insn::branch_insn(uint8_t opcode, label target) : insn(opcode), target(std::move(target)) {
@@ -287,8 +290,8 @@ bool invoke_dynamic_insn::operator!=(const invoke_dynamic_insn& other) const {
 }
 std::string invoke_dynamic_insn::to_string() const {
   std::ostringstream oss;
-  oss << "invoke_dynamic_insn(" << '"' << name << '"' << ", " << '"' << desc << '"' << ", "
-      << cafe::to_string(handle) << ", [";
+  oss << "invoke_dynamic_insn(" << '"' << name << '"' << ", " << '"' << desc << '"' << ", " << cafe::to_string(handle)
+      << ", [";
   bool first = true;
   for (const auto& arg : args) {
     if (!first) {
@@ -421,15 +424,14 @@ chop_frame::chop_frame(uint8_t size) : size(size) {
 }
 append_frame::append_frame(const std::vector<frame_var>& locals) : locals(locals) {
 }
-local_var::local_var(const std::string_view& name, const std::string_view& desc,
-                     const std::string_view& signature, label start, label end, uint16_t index) :
-    name(name), desc(desc), signature(signature), start(std::move(start)), end(std::move(end)),
-    index(index) {
+local_var::local_var(const std::string_view& name, const std::string_view& desc, const std::string_view& signature,
+                     label start, label end, uint16_t index) :
+    name(name), desc(desc), signature(signature), start(std::move(start)), end(std::move(end)), index(index) {
 }
 std::string local_var::to_string() const {
   std::ostringstream oss;
-  oss << "local_var(" << '"' << name << '"' << ", " << '"' << desc << '"' << ", " << '"' << signature << '"'
-      << ", " << start.to_string() << ", " << end.to_string() << ", " << index << ")";
+  oss << "local_var(" << '"' << name << '"' << ", " << '"' << desc << '"' << ", " << '"' << signature << '"' << ", "
+      << start.to_string() << ", " << end.to_string() << ", " << index << ")";
   return oss.str();
 }
 std::string to_string(const frame_var& var) {

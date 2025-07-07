@@ -1,6 +1,7 @@
 #include "cafe/data_writer.hpp"
 
 #include <cmath>
+#include <cstring>
 
 namespace cafe {
 inline size_t to_utf8m_len(const std::string_view& input) {

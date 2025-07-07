@@ -73,8 +73,7 @@ public:
   std::string name;
   std::string desc;
   field_insn() = default;
-  field_insn(uint8_t opcode, const std::string_view& owner, const std::string_view& name,
-             const std::string_view& desc);
+  field_insn(uint8_t opcode, const std::string_view& owner, const std::string_view& name, const std::string_view& desc);
   ~field_insn() override = default;
   field_insn(const field_insn&) = default;
   field_insn(field_insn&&) = default;
@@ -95,9 +94,9 @@ public:
   bool interface{};
   method_insn() = default;
   method_insn(uint8_t opcode, const std::string_view& owner, const std::string_view& name,
-             const std::string_view& desc);
-  method_insn(uint8_t opcode, const std::string_view& owner, const std::string_view& name,
-             const std::string_view& desc, bool interface);
+              const std::string_view& desc);
+  method_insn(uint8_t opcode, const std::string_view& owner, const std::string_view& name, const std::string_view& desc,
+              bool interface);
   ~method_insn() override = default;
   method_insn(const method_insn&) = default;
   method_insn(method_insn&&) = default;
@@ -130,9 +129,9 @@ public:
 
 class CAFE_API push_insn {
 public:
-  value value;
+  value operand;
   push_insn() = default;
-  explicit push_insn(cafe::value value);
+  explicit push_insn(cafe::value operand);
   ~push_insn() = default;
   push_insn(const push_insn&) = default;
   push_insn(push_insn&&) = default;
@@ -252,8 +251,8 @@ public:
 };
 
 using instruction =
-    std::variant<label, insn, var_insn, type_insn, field_insn, method_insn, iinc_insn, push_insn, branch_insn, lookup_switch_insn,
-                 table_switch_insn, multi_array_insn, array_insn, invoke_dynamic_insn>;
+    std::variant<label, insn, var_insn, type_insn, field_insn, method_insn, iinc_insn, push_insn, branch_insn,
+                 lookup_switch_insn, table_switch_insn, multi_array_insn, array_insn, invoke_dynamic_insn>;
 
 CAFE_API int16_t opcode(const instruction& insn);
 CAFE_API int16_t opcode(instruction&& insn);
@@ -283,8 +282,8 @@ public:
   label start;
   label end;
   uint16_t index;
-  local_var(const std::string_view& name, const std::string_view& desc, const std::string_view& signature,
-            label start, label end, uint16_t index);
+  local_var(const std::string_view& name, const std::string_view& desc, const std::string_view& signature, label start,
+            label end, uint16_t index);
   ~local_var() = default;
   local_var(const local_var&) = default;
   local_var(local_var&&) = default;

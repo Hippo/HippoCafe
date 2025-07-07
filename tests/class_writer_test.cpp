@@ -6,13 +6,13 @@
 #include <hippo/cafe.hpp>
 
 TEST(class_writer, test) {
-  std::string test_name = "DoublePrint";
+  std::string test_name = "ForLoopTest";
   std::ifstream stream(std::string("data/") + test_name + ".class", std::ios::binary);
 
   cafe::class_reader reader;
   const auto file_res = reader.read(stream);
   if (!file_res) {
-    std::cerr << file_res.error().message() << std::endl;
+    std::cerr << file_res.err().message() << std::endl;
     return;
   }
   const auto& file = file_res.value();
@@ -29,10 +29,10 @@ TEST(class_writer, test) {
 
   for (const auto& method : file.methods) {
     std::cout << method.name_desc() << std::endl;
-    for (const auto& insn : method.code) {
+    for (const auto& insn : method.body) {
       std::cout << "  " << cafe::to_string(insn) << std::endl;
     }
-    for (const auto& [label, frame] : method.code.frames) {
+    for (const auto& [label, frame] : method.body.frames) {
       std::cout << "  > " << label.to_string() << " " << cafe::to_string(frame) << std::endl;
     }
   }
@@ -42,7 +42,7 @@ TEST(class_writer, test) {
   cafe::class_reader reader2;
   const auto file2_res = reader2.read(data);
   if (!file2_res) {
-    std::cerr << file2_res.error().message() << std::endl;
+    std::cerr << file2_res.err().message() << std::endl;
     return;
   }
   const auto& file2 = file2_res.value();
@@ -54,10 +54,10 @@ TEST(class_writer, test) {
   for (const auto& method : file2.methods) {
 
     std::cout << method.name_desc() << std::endl;
-      for (const auto& insn : method.code) {
+      for (const auto& insn : method.body) {
         std::cout << "  " << cafe::to_string(insn) << std::endl;
       }
-    for (const auto& [label, frame] : method.code.frames) {
+    for (const auto& [label, frame] : method.body.frames) {
       std::cout << "  > " << label.to_string() << " " << cafe::to_string(frame) << std::endl;
     }
   }

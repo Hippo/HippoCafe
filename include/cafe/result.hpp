@@ -18,12 +18,13 @@ public:
   error& operator=(error&& other) noexcept = default;
 
   const std::string& message() const;
+
 private:
   std::string message_;
 };
 
 
-template <typename T>
+template<typename T>
 class result {
 public:
   using value_type = T;
@@ -58,24 +59,25 @@ public:
   T& value() {
     return std::get<T>(value_);
   }
-  const error& error() const {
+  const error& err() const {
     return std::get<cafe::error>(value_);
   }
 
   const std::string& error_message() const {
-    return error().message();
+    return err().message();
   }
 
-  template <typename F, typename... Ts>
-  auto lift(F&& f, const Ts&... ts) const -> result<decltype(f(std::declval<T>(), std::declval<typename Ts::value_type>()...))> {
+  template<typename F, typename... Ts>
+  auto lift(F&& f, const Ts&... ts) const
+      -> result<decltype(f(std::declval<T>(), std::declval<typename Ts::value_type>()...))> {
     using U = decltype(f(std::declval<T>(), std::declval<typename Ts::value_type>()...));
     if (is_error()) {
-      return error();
+      return err();
     }
     const cafe::error* e = nullptr;
     auto check_error = [&](const auto& r) {
       if (!e && r.is_error()) {
-        e = &r.error();
+        e = &r.err();
       }
     };
     (check_error(ts), ...);
@@ -90,15 +92,15 @@ public:
     }
   }
 
-  template <typename F, typename... Ts>
+  template<typename F, typename... Ts>
   auto zip(F&& f, const Ts&... ts) const -> decltype(f(std::declval<T>(), std::declval<typename Ts::value_type>()...)) {
     if (is_error()) {
-      return error();
+      return err();
     }
     const cafe::error* e = nullptr;
     auto check_error = [&](const auto& r) {
       if (!e && r.is_error()) {
-        e = &r.error();
+        e = &r.err();
       }
     };
     (check_error(ts), ...);
@@ -111,7 +113,7 @@ public:
   template<typename F>
   auto and_then(F&& f) const -> decltype(f(std::declval<T>())) {
     if (is_error()) {
-      return error();
+      return err();
     }
     return f(value());
   }
@@ -120,7 +122,7 @@ public:
   auto map(F&& f) const -> result<decltype(f(std::declval<T>()))> {
     using U = decltype(f(std::declval<T>()));
     if (is_error()) {
-      return error();
+      return err();
     }
     if constexpr (std::is_void_v<U>) {
       f(value());
@@ -142,11 +144,12 @@ public:
   T* operator->() {
     return &value();
   }
+
 private:
   std::variant<T, cafe::error> value_;
 };
 
-template <>
+template<>
 class result<void> {
 public:
   using value_type = void;
@@ -170,11 +173,12 @@ public:
   explicit operator bool() const {
     return is_ok();
   }
-  const error& error() const {
+  const error& err() const {
     return error_.value();
   }
+
 private:
   std::optional<cafe::error> error_;
 };
 
-}
+} // namespace cafe

@@ -10,7 +10,7 @@ namespace cafe {
 result<class_file> class_reader::read(data_reader&& reader) {
   class_file file;
   if (const auto res = read(std::move(reader), file); !res) {
-    return res.error();
+    return res.err();
   }
   return file;
 }
@@ -19,47 +19,47 @@ result<void> class_reader::read(data_reader&& reader, class_file& file) {
   pool_.clear();
   label_count_ = 0;
   if (const auto res = read_header(); !res) {
-    return res.error();
+    return res.err();
   }
   file.version = class_version_;
   const auto access_flags = reader_.read_u16();
   if (!access_flags) {
-    return access_flags.error();
+    return access_flags.err();
   }
   file.access_flags = access_flags.value();
   const auto this_class = get_string(reader_.read_u16());
   if (!this_class) {
-    return this_class.error();
+    return this_class.err();
   }
   file.name = this_class.value();
   const auto super_name_index = reader_.read_u16();
   if (!super_name_index) {
-    return super_name_index.error();
+    return super_name_index.err();
   }
   if (super_name_index.value() != 0) {
     const auto super_name = get_string(super_name_index.value());
     if (!super_name) {
-      return super_name.error();
+      return super_name.err();
     }
     file.super_name = super_name.value();
   }
   const auto interfaces_count_res = reader_.read_u16();
   if (!interfaces_count_res) {
-    return interfaces_count_res.error();
+    return interfaces_count_res.err();
   }
   const auto interfaces_count = interfaces_count_res.value();
   file.interfaces.reserve(interfaces_count);
   for (auto i = 0; i < interfaces_count; i++) {
     const auto interface = get_string(reader_.read_u16());
     if (!interface) {
-      return interface.error();
+      return interface.err();
     }
     file.interfaces.emplace_back(interface.value());
   }
 
   const auto fields_count_res = reader_.read_u16();
   if (!fields_count_res) {
-    return fields_count_res.error();
+    return fields_count_res.err();
   }
   const auto fields_count = fields_count_res.value();
   const auto field_offset = reader_.cursor();
@@ -69,7 +69,7 @@ result<void> class_reader::read(data_reader&& reader, class_file& file) {
     }
     const auto attributes_count_res = reader_.read_u16();
     if (!attributes_count_res) {
-      return attributes_count_res.error();
+      return attributes_count_res.err();
     }
     const auto attributes_count = attributes_count_res.value();
     for (auto j = 0; j < attributes_count; j++) {
@@ -78,7 +78,7 @@ result<void> class_reader::read(data_reader&& reader, class_file& file) {
       }
       const auto len = reader_.read_u32();
       if (!len) {
-        return len.error();
+        return len.err();
       }
       if (!reader_.skip(len.value())) {
         return error("Failed to skip field attribute data");
@@ -87,7 +87,7 @@ result<void> class_reader::read(data_reader&& reader, class_file& file) {
   }
   const auto methods_count_res = reader_.read_u16();
   if (!methods_count_res) {
-    return methods_count_res.error();
+    return methods_count_res.err();
   }
   const auto methods_count = methods_count_res.value();
   const auto method_offset = reader_.cursor();
@@ -97,7 +97,7 @@ result<void> class_reader::read(data_reader&& reader, class_file& file) {
     }
     const auto attributes_count_res = reader_.read_u16();
     if (!attributes_count_res) {
-      return attributes_count_res.error();
+      return attributes_count_res.err();
     }
     const auto attributes_count = attributes_count_res.value();
     for (auto j = 0; j < attributes_count; j++) {
@@ -106,7 +106,7 @@ result<void> class_reader::read(data_reader&& reader, class_file& file) {
       }
       const auto len = reader_.read_u32();
       if (!len) {
-        return len.error();
+        return len.err();
       }
       if (!reader_.skip(len.value())) {
         return error("Failed to skip method attribute data");
@@ -116,18 +116,18 @@ result<void> class_reader::read(data_reader&& reader, class_file& file) {
   std::vector<std::pair<size_t, label>> dummy_labels;
   const auto attributes_count_res = reader_.read_u16();
   if (!attributes_count_res) {
-    return attributes_count_res.error();
+    return attributes_count_res.err();
   }
   const auto attributes_count = attributes_count_res.value();
   for (auto i = 0; i < attributes_count; i++) {
     const auto attribute_name_res = get_string(reader_.read_u16());
     if (!attribute_name_res) {
-      return attribute_name_res.error();
+      return attribute_name_res.err();
     }
     const auto& attribute_name = attribute_name_res.value();
     const auto attribute_length_res = reader_.read_u32();
     if (!attribute_length_res) {
-      return attribute_length_res.error();
+      return attribute_length_res.err();
     }
     const auto attribute_length = attribute_length_res.value();
     const auto attribute_start = reader_.cursor();
@@ -385,7 +385,7 @@ result<void> class_reader::read(data_reader&& reader, class_file& file) {
         }
         module.provides.emplace_back(provides_service.value(), std::move(provides_with));
       }
-      file.module = std::move(module);
+      file.mod = std::move(module);
     } else if (attribute_name == "ModulePackages") {
       const auto package_count_res = reader_.read_u16();
       if (!package_count_res) {
@@ -529,10 +529,10 @@ result<void> class_reader::read(data_reader&& reader, class_file& file) {
         file.invisible_type_annotations.emplace_back(anno.value());
       }
     } else {
-      fail:
+    fail:
       auto data = reader_.bytes(attribute_start, attribute_end);
       if (!data) {
-        return data.error();
+        return data.err();
       }
       file.attributes.emplace_back(attribute_name, data.value());
     }
@@ -547,7 +547,7 @@ result<void> class_reader::read(data_reader&& reader, class_file& file) {
   file.fields.reserve(fields_count);
   for (auto i = 0; i < fields_count; i++) {
     if (const auto field = read_field(file); !field) {
-      return field.error();
+      return field.err();
     }
   }
 
@@ -557,7 +557,7 @@ result<void> class_reader::read(data_reader&& reader, class_file& file) {
   file.methods.reserve(methods_count);
   for (auto i = 0; i < methods_count; i++) {
     if (const auto method = read_method(file); !method) {
-      return method.error();
+      return method.err();
     }
   }
   return {};
@@ -571,7 +571,7 @@ result<void> class_reader::read_code(code& code, uint32_t code_length) {
     const auto insn_start = reader_.cursor() - bytecode_start;
     const auto op_res = reader_.read_u8();
     if (!op_res) {
-      return op_res.error();
+      return op_res.err();
     }
     switch (op_res.value()) {
       case op::aload:
@@ -641,7 +641,7 @@ result<void> class_reader::read_code(code& code, uint32_t code_length) {
       case op::jsr: {
         const auto offset = reader_.read_i16();
         if (!offset) {
-          return offset.error();
+          return offset.err();
         }
         get_label(labels, insn_start + offset.value());
         break;
@@ -650,7 +650,7 @@ result<void> class_reader::read_code(code& code, uint32_t code_length) {
       case op::jsr_w: {
         const auto offset = reader_.read_i32();
         if (!offset) {
-          return offset.error();
+          return offset.err();
         }
         get_label(labels, insn_start + offset.value());
         break;
@@ -668,12 +668,12 @@ result<void> class_reader::read_code(code& code, uint32_t code_length) {
         }
         auto offset = reader_.read_i32();
         if (!offset) {
-          return offset.error();
+          return offset.err();
         }
         get_label(labels, insn_start + offset.value());
         const auto npairs_res = reader_.read_i32();
         if (!npairs_res) {
-          return npairs_res.error();
+          return npairs_res.err();
         }
         const auto npairs = npairs_res.value();
         for (auto i = 0; i < npairs; i++) {
@@ -682,7 +682,7 @@ result<void> class_reader::read_code(code& code, uint32_t code_length) {
           }
           offset = reader_.read_i32();
           if (!offset) {
-            return offset.error();
+            return offset.err();
           }
           get_label(labels, insn_start + offset.value());
         }
@@ -701,21 +701,21 @@ result<void> class_reader::read_code(code& code, uint32_t code_length) {
         }
         auto offset = reader_.read_i32();
         if (!offset) {
-          return offset.error();
+          return offset.err();
         }
         get_label(labels, insn_start + offset.value());
         const auto low = reader_.read_i32();
         if (!low) {
-          return low.error();
+          return low.err();
         }
         const auto high = reader_.read_i32();
         if (!high) {
-          return high.error();
+          return high.err();
         }
         for (auto i = low.value(); i <= high.value(); i++) {
           offset = reader_.read_i32();
           if (!offset) {
-            return offset.error();
+            return offset.err();
           }
           get_label(labels, insn_start + offset.value());
         }
@@ -734,35 +734,35 @@ result<void> class_reader::read_code(code& code, uint32_t code_length) {
   }
   const auto exception_table_length_res = reader_.read_u16();
   if (!exception_table_length_res) {
-    return exception_table_length_res.error();
+    return exception_table_length_res.err();
   }
   const auto exception_table_length = exception_table_length_res.value();
   code.tcbs.reserve(exception_table_length);
   for (auto i = 0; i < exception_table_length; i++) {
     auto offset = reader_.read_u16();
     if (!offset) {
-      return offset.error();
+      return offset.err();
     }
     const auto start = get_label(labels, offset.value());
     offset = reader_.read_u16();
     if (!offset) {
-      return offset.error();
+      return offset.err();
     }
     const auto end = get_label(labels, offset.value());
     offset = reader_.read_u16();
     if (!offset) {
-      return offset.error();
+      return offset.err();
     }
     const auto handler = get_label(labels, offset.value());
     const auto catch_type_index = reader_.read_u16();
     if (!catch_type_index) {
-      return catch_type_index.error();
+      return catch_type_index.err();
     }
     std::optional<std::string> catch_type = std::nullopt;
     if (catch_type_index.value() != 0) {
       auto type_res = get_string(catch_type_index.value());
       if (!type_res) {
-        return type_res.error();
+        return type_res.err();
       }
       catch_type = type_res.value();
     }
@@ -770,18 +770,18 @@ result<void> class_reader::read_code(code& code, uint32_t code_length) {
   }
   const auto attributes_count_res = reader_.read_u16();
   if (!attributes_count_res) {
-    return attributes_count_res.error();
+    return attributes_count_res.err();
   }
   const auto attributes_count = attributes_count_res.value();
   bool should_search_local = false;
   for (auto i = 0; i < attributes_count; i++) {
     const auto attribute_name_res = get_string(reader_.read_u16());
     if (!attribute_name_res) {
-      return attribute_name_res.error();
+      return attribute_name_res.err();
     }
     const auto attribute_length_res = reader_.read_u32();
     if (!attribute_length_res) {
-      return attribute_length_res.error();
+      return attribute_length_res.err();
     }
     const auto attribute_length = attribute_length_res.value();
     const auto& attribute_name = attribute_name_res.value();
@@ -1063,10 +1063,10 @@ result<void> class_reader::read_code(code& code, uint32_t code_length) {
         code.visible_type_annotations.emplace_back(anno.value());
       }
     } else {
-      fail:
+    fail:
       auto data = reader_.bytes(attribute_start, attribute_end);
       if (!data) {
-        return data.error();
+        return data.err();
       }
       code.attributes.emplace_back(attribute_name, data.value());
     }
@@ -1088,7 +1088,7 @@ result<void> class_reader::read_code(code& code, uint32_t code_length) {
     }
     const auto opcode_res = reader_.read_u8();
     if (!opcode_res) {
-      return opcode_res.error();
+      return opcode_res.err();
     }
     switch (const auto opcode = opcode_res.value()) {
       case op::aload_0:
@@ -1283,13 +1283,13 @@ result<void> class_reader::read_code(code& code, uint32_t code_length) {
         if (wide > 0) {
           const auto index_res = reader_.read_u16();
           if (!index_res) {
-            return index_res.error();
+            return index_res.err();
           }
           index = index_res.value();
         } else {
           const auto index_res = reader_.read_u8();
           if (!index_res) {
-            return index_res.error();
+            return index_res.err();
           }
           index = index_res.value();
         }
@@ -1299,7 +1299,7 @@ result<void> class_reader::read_code(code& code, uint32_t code_length) {
       case op::anewarray: {
         const auto desc = get_string(reader_.read_u16());
         if (!desc) {
-          return desc.error();
+          return desc.err();
         }
         code.add_array_insn(desc.value());
         break;
@@ -1307,7 +1307,7 @@ result<void> class_reader::read_code(code& code, uint32_t code_length) {
       case op::bipush: {
         const auto value = reader_.read_i8();
         if (!value) {
-          return value.error();
+          return value.err();
         }
         code.add_push_insn(value.value());
         break;
@@ -1315,7 +1315,7 @@ result<void> class_reader::read_code(code& code, uint32_t code_length) {
       case op::sipush: {
         const auto value = reader_.read_i16();
         if (!value) {
-          return value.error();
+          return value.err();
         }
         code.add_push_insn(value.value());
         break;
@@ -1325,7 +1325,7 @@ result<void> class_reader::read_code(code& code, uint32_t code_length) {
       case op::new_: {
         const auto desc = get_string(reader_.read_u16());
         if (!desc) {
-          return desc.error();
+          return desc.err();
         }
         code.add_type_insn(opcode, desc.value());
         break;
@@ -1336,7 +1336,7 @@ result<void> class_reader::read_code(code& code, uint32_t code_length) {
       case op::putstatic: {
         const auto ref = get_ref(reader_.read_u16());
         if (!ref) {
-          return ref.error();
+          return ref.err();
         }
         const auto [owner, name, desc, interface] = ref.value();
         code.add_field_insn(opcode, owner, name, desc);
@@ -1347,7 +1347,7 @@ result<void> class_reader::read_code(code& code, uint32_t code_length) {
       case op::invokevirtual: {
         const auto ref = get_ref(reader_.read_u16());
         if (!ref) {
-          return ref.error();
+          return ref.err();
         }
         const auto [owner, name, desc, interface] = ref.value();
         code.add_method_insn(opcode, owner, name, desc, interface);
@@ -1373,7 +1373,7 @@ result<void> class_reader::read_code(code& code, uint32_t code_length) {
       case op::jsr: {
         const auto offset = reader_.read_i16();
         if (!offset) {
-          return offset.error();
+          return offset.err();
         }
         const auto target = get_label(labels, insn_start + offset.value());
         code.add_branch_insn(opcode, target);
@@ -1383,7 +1383,7 @@ result<void> class_reader::read_code(code& code, uint32_t code_length) {
       case op::jsr_w: {
         const auto offset = reader_.read_i32();
         if (!offset) {
-          return offset.error();
+          return offset.err();
         }
         const auto target = get_label(labels, insn_start + offset.value());
         code.add_branch_insn(opcode, target);
@@ -1394,13 +1394,13 @@ result<void> class_reader::read_code(code& code, uint32_t code_length) {
         if (wide > 0) {
           const auto index_res = reader_.read_u16();
           if (!index_res) {
-            return index_res.error();
+            return index_res.err();
           }
           index = index_res.value();
         } else {
           const auto index_res = reader_.read_u8();
           if (!index_res) {
-            return index_res.error();
+            return index_res.err();
           }
           index = index_res.value();
         }
@@ -1408,13 +1408,13 @@ result<void> class_reader::read_code(code& code, uint32_t code_length) {
         if (wide > 0) {
           const auto value_res = reader_.read_i16();
           if (!value_res) {
-            return value_res.error();
+            return value_res.err();
           }
           value = value_res.value();
         } else {
           const auto value_res = reader_.read_i8();
           if (!value_res) {
-            return value_res.error();
+            return value_res.err();
           }
           value = static_cast<int16_t>(value_res.value());
         }
@@ -1424,7 +1424,7 @@ result<void> class_reader::read_code(code& code, uint32_t code_length) {
       case op::invokedynamic: {
         const auto cp_index = reader_.read_u16();
         if (!cp_index) {
-          return cp_index.error();
+          return cp_index.err();
         }
         if (const auto dyn = std::get_if<cp::invoke_dynamic_info>(&pool_[cp_index.value()])) {
           if (!reader_.skip(2)) {
@@ -1436,11 +1436,11 @@ result<void> class_reader::read_code(code& code, uint32_t code_length) {
           }
           const auto handle = get_method_handle(reader_.read_u16());
           if (!handle) {
-            return handle.error();
+            return handle.err();
           }
           const auto arg_count_res = reader_.read_u16();
           if (!arg_count_res) {
-            return arg_count_res.error();
+            return arg_count_res.err();
           }
           const auto arg_count = arg_count_res.value();
           std::vector<uint16_t> arg_indices;
@@ -1448,7 +1448,7 @@ result<void> class_reader::read_code(code& code, uint32_t code_length) {
           for (auto i = 0; i < arg_count; i++) {
             const auto arg = reader_.read_u16();
             if (!arg) {
-              return arg.error();
+              return arg.err();
             }
             arg_indices.emplace_back(arg.value());
           }
@@ -1460,13 +1460,13 @@ result<void> class_reader::read_code(code& code, uint32_t code_length) {
           for (const auto arg_index : arg_indices) {
             const auto arg = get_constant(arg_index);
             if (!arg) {
-              return arg.error();
+              return arg.err();
             }
             args.emplace_back(arg.value());
           }
           const auto nat = get_name_and_type(dyn->name_and_type_index);
           if (!nat) {
-            return nat.error();
+            return nat.err();
           }
           const auto [name, desc] = nat.value();
           code.add_invoke_dynamic_insn(name, desc, handle.value(), args);
@@ -1477,7 +1477,7 @@ result<void> class_reader::read_code(code& code, uint32_t code_length) {
       case op::invokeinterface: {
         const auto ref = get_ref(reader_.read_u16());
         if (!ref) {
-          return ref.error();
+          return ref.err();
         }
         const auto [owner, name, desc, interface] = ref.value();
         if (!reader_.skip(2)) {
@@ -1489,7 +1489,7 @@ result<void> class_reader::read_code(code& code, uint32_t code_length) {
       case op::ldc: {
         const auto value = get_constant(reader_.read_u8().map([](uint8_t v) { return static_cast<uint16_t>(v); }));
         if (!value) {
-          return value.error();
+          return value.err();
         }
         code.add_push_insn(value.value());
         break;
@@ -1498,7 +1498,7 @@ result<void> class_reader::read_code(code& code, uint32_t code_length) {
       case op::ldc2_w: {
         const auto value = get_constant(reader_.read_u16());
         if (!value) {
-          return value.error();
+          return value.err();
         }
         code.add_push_insn(value.value());
         break;
@@ -1510,24 +1510,24 @@ result<void> class_reader::read_code(code& code, uint32_t code_length) {
         }
         auto offset = reader_.read_i32();
         if (!offset) {
-          return offset.error();
+          return offset.err();
         }
         const auto default_target = get_label(labels, insn_start + offset.value());
         std::vector<std::pair<int32_t, label>> pairs;
         const auto npairs_res = reader_.read_i32();
         if (!npairs_res) {
-          return npairs_res.error();
+          return npairs_res.err();
         }
         const auto npairs = npairs_res.value();
         pairs.reserve(npairs);
         for (auto i = 0; i < npairs; i++) {
           const auto match = reader_.read_i32();
           if (!match) {
-            return match.error();
+            return match.err();
           }
           offset = reader_.read_i32();
           if (!offset) {
-            return offset.error();
+            return offset.err();
           }
           const auto target = get_label(labels, insn_start + offset.value());
           pairs.emplace_back(match.value(), target);
@@ -1538,11 +1538,11 @@ result<void> class_reader::read_code(code& code, uint32_t code_length) {
       case op::multianewarray: {
         const auto desc = get_string(reader_.read_u16());
         if (!desc) {
-          return desc.error();
+          return desc.err();
         }
         const auto dimensions = reader_.read_u8();
         if (!dimensions) {
-          return dimensions.error();
+          return dimensions.err();
         }
         code.add_multi_array_insn(desc.value(), dimensions.value());
         break;
@@ -1550,7 +1550,7 @@ result<void> class_reader::read_code(code& code, uint32_t code_length) {
       case op::newarray: {
         const auto ty = reader_.read_u8();
         if (!ty) {
-          return ty.error();
+          return ty.err();
         }
         code.add_array_insn(ty.value());
         break;
@@ -1562,16 +1562,16 @@ result<void> class_reader::read_code(code& code, uint32_t code_length) {
         }
         auto offset = reader_.read_i32();
         if (!offset) {
-          return offset.error();
+          return offset.err();
         }
         const auto default_target = get_label(labels, insn_start + offset.value());
         const auto low_res = reader_.read_i32();
         if (!low_res) {
-          return low_res.error();
+          return low_res.err();
         }
         const auto high_res = reader_.read_i32();
         if (!high_res) {
-          return high_res.error();
+          return high_res.err();
         }
         const auto low = low_res.value();
         const auto high = high_res.value();
@@ -1580,7 +1580,7 @@ result<void> class_reader::read_code(code& code, uint32_t code_length) {
         for (auto i = low; i <= high; i++) {
           offset = reader_.read_i32();
           if (!offset) {
-            return offset.error();
+            return offset.err();
           }
           targets.emplace_back(get_label(labels, insn_start + offset.value()));
         }
@@ -1590,7 +1590,8 @@ result<void> class_reader::read_code(code& code, uint32_t code_length) {
       case op::wide:
         wide = 2;
         break;
-      default: return error("Unknown opcode: " + std::to_string(opcode));
+      default:
+        return error("Unknown opcode: " + std::to_string(opcode));
     }
     if (wide > 0) {
       wide--;
@@ -1608,32 +1609,32 @@ result<void> class_reader::read_method(class_file& file) {
   label_count_ = 0;
   const auto access_flags = reader_.read_u16();
   if (!access_flags) {
-    return access_flags.error();
+    return access_flags.err();
   }
   const auto name = get_string(reader_.read_u16());
   if (!name) {
-    return name.error();
+    return name.err();
   }
   const auto desc = get_string(reader_.read_u16());
   if (!desc) {
-    return desc.error();
+    return desc.err();
   }
   method method(access_flags.value(), name.value(), desc.value());
   const auto attributes_count_res = reader_.read_u16();
   if (!attributes_count_res) {
-    return attributes_count_res.error();
+    return attributes_count_res.err();
   }
   const auto attributes_count = attributes_count_res.value();
   std::vector<std::pair<size_t, label>> dummy_labels;
   for (auto i = 0; i < attributes_count; i++) {
     const auto attribute_name_res = get_string(reader_.read_u16());
     if (!attribute_name_res) {
-      return attribute_name_res.error();
+      return attribute_name_res.err();
     }
     const auto& attribute_name = attribute_name_res.value();
     const auto attribute_length_res = reader_.read_u32();
     if (!attribute_length_res) {
-      return attribute_length_res.error();
+      return attribute_length_res.err();
     }
     const auto attribute_length = attribute_length_res.value();
     const auto attribute_start = reader_.cursor();
@@ -1676,8 +1677,8 @@ result<void> class_reader::read_method(class_file& file) {
         max_locals = max_locals_res.value();
         code_length = code_length_res.value();
       }
-      method.code = code(max_stack, max_locals);
-      auto res = read_code(method.code, code_length);
+      method.body = code(max_stack, max_locals);
+      auto res = read_code(method.body, code_length);
       if (!res) {
         goto fail;
       }
@@ -1847,10 +1848,10 @@ result<void> class_reader::read_method(class_file& file) {
         method.invisible_type_annotations.emplace_back(anno.value());
       }
     } else {
-      fail:
+    fail:
       auto data = reader_.bytes(attribute_start, attribute_end);
       if (!data) {
-        return data.error();
+        return data.err();
       }
       method.attributes.emplace_back(attribute_name, data.value());
     }
@@ -1864,32 +1865,32 @@ result<void> class_reader::read_method(class_file& file) {
 result<void> class_reader::read_field(class_file& file) {
   const auto access_flags = reader_.read_u16();
   if (!access_flags) {
-    return access_flags.error();
+    return access_flags.err();
   }
   const auto name = get_string(reader_.read_u16());
   if (!name) {
-    return name.error();
+    return name.err();
   }
   const auto desc = get_string(reader_.read_u16());
   if (!desc) {
-    return desc.error();
+    return desc.err();
   }
   field field(access_flags.value(), name.value(), desc.value());
   const auto attributes_count_res = reader_.read_u16();
   if (!attributes_count_res) {
-    return attributes_count_res.error();
+    return attributes_count_res.err();
   }
   const auto attributes_count = attributes_count_res.value();
   std::vector<std::pair<size_t, label>> dummy_labels;
   for (auto i = 0; i < attributes_count; i++) {
     const auto attribute_name_res = get_string(reader_.read_u16());
     if (!attribute_name_res) {
-      return attribute_name_res.error();
+      return attribute_name_res.err();
     }
     const auto& attribute_name = attribute_name_res.value();
     const auto attribute_length_res = reader_.read_u32();
     if (!attribute_length_res) {
-      return attribute_length_res.error();
+      return attribute_length_res.err();
     }
     const auto attribute_length = attribute_length_res.value();
     const auto attribute_start = reader_.cursor();
@@ -1974,10 +1975,10 @@ result<void> class_reader::read_field(class_file& file) {
         field.invisible_type_annotations.emplace_back(anno.value());
       }
     } else {
-      fail:
+    fail:
       auto data = reader_.bytes(attribute_start, attribute_end);
       if (!data) {
-        return data.error();
+        return data.err();
       }
       field.attributes.emplace_back(attribute_name, data.value());
     }
@@ -1991,7 +1992,7 @@ result<void> class_reader::read_field(class_file& file) {
 result<void> class_reader::read_record(class_file& file) {
   const auto component_count_res = reader_.read_u16();
   if (!component_count_res) {
-    return component_count_res.error();
+    return component_count_res.err();
   }
   const auto component_count = component_count_res.value();
   std::vector<std::pair<size_t, label>> dummy_labels;
@@ -1999,27 +2000,27 @@ result<void> class_reader::read_record(class_file& file) {
   for (auto i = 0; i < component_count; i++) {
     const auto name = get_string(reader_.read_u16());
     if (!name) {
-      return name.error();
+      return name.err();
     }
     const auto desc = get_string(reader_.read_u16());
     if (!desc) {
-      return desc.error();
+      return desc.err();
     }
     record_component component(name.value(), desc.value());
     const auto attribute_count_res = reader_.read_u16();
     if (!attribute_count_res) {
-      return attribute_count_res.error();
+      return attribute_count_res.err();
     }
     const auto attribute_count = attribute_count_res.value();
     for (auto j = 0; j < attribute_count; j++) {
       const auto attribute_name_res = get_string(reader_.read_u16());
       if (!attribute_name_res) {
-        return attribute_name_res.error();
+        return attribute_name_res.err();
       }
       const auto& attribute_name = attribute_name_res.value();
       const auto attribute_length_res = reader_.read_u32();
       if (!attribute_length_res) {
-        return attribute_length_res.error();
+        return attribute_length_res.err();
       }
       const auto attribute_length = attribute_length_res.value();
       const auto attribute_start = reader_.cursor();
@@ -2094,10 +2095,10 @@ result<void> class_reader::read_record(class_file& file) {
           component.invisible_type_annotations.emplace_back(anno.value());
         }
       } else {
-        fail:
+      fail:
         auto data = reader_.bytes(attribute_start, attribute_end);
         if (!data) {
-          return data.error();
+          return data.err();
         }
         component.attributes.emplace_back(attribute_name, data.value());
       }
@@ -2117,11 +2118,11 @@ result<void> class_reader::read_header() {
 
   const auto minor_version_res = reader_.read_u16();
   if (!minor_version_res) {
-    return minor_version_res.error();
+    return minor_version_res.err();
   }
   const auto major_version_res = reader_.read_u16();
   if (!major_version_res) {
-    return major_version_res.error();
+    return major_version_res.err();
   }
   const auto minor_version = minor_version_res.value();
   const auto major_version = major_version_res.value();
@@ -2129,7 +2130,7 @@ result<void> class_reader::read_header() {
   class_version_ = major_version << 16 | minor_version;
   const auto constant_pool_count_res = reader_.read_u16();
   if (!constant_pool_count_res) {
-    return constant_pool_count_res.error();
+    return constant_pool_count_res.err();
   }
   const auto constant_pool_count = constant_pool_count_res.value();
   pool_.reserve(constant_pool_count);
@@ -2137,14 +2138,14 @@ result<void> class_reader::read_header() {
   for (auto i = 1; i < constant_pool_count; i++) {
     const auto tag_res = reader_.read_u8();
     if (!tag_res) {
-      return tag_res.error();
+      return tag_res.err();
     }
     const auto tag = tag_res.value();
     switch (tag) {
       case cp::utf8_info::tag: {
         const auto utf = reader_.read_utf();
         if (!utf) {
-          return utf.error();
+          return utf.err();
         }
         pool_.emplace_back(cp::utf8_info{utf.value()});
         break;
@@ -2152,7 +2153,7 @@ result<void> class_reader::read_header() {
       case cp::integer_info::tag: {
         const auto value = reader_.read_i32();
         if (!value) {
-          return value.error();
+          return value.err();
         }
         pool_.emplace_back(cp::integer_info{value.value()});
         break;
@@ -2160,7 +2161,7 @@ result<void> class_reader::read_header() {
       case cp::float_info::tag: {
         const auto value = reader_.read_f32();
         if (!value) {
-          return value.error();
+          return value.err();
         }
         pool_.emplace_back(cp::float_info{value.value()});
         break;
@@ -2168,7 +2169,7 @@ result<void> class_reader::read_header() {
       case cp::long_info::tag: {
         const auto value = reader_.read_i64();
         if (!value) {
-          return value.error();
+          return value.err();
         }
         pool_.emplace_back(cp::long_info{value.value()});
         pool_.emplace_back(cp::pad_info{});
@@ -2178,7 +2179,7 @@ result<void> class_reader::read_header() {
       case cp::double_info::tag: {
         const auto value = reader_.read_f64();
         if (!value) {
-          return value.error();
+          return value.err();
         }
         pool_.emplace_back(cp::double_info{value.value()});
         pool_.emplace_back(cp::pad_info{});
@@ -2188,7 +2189,7 @@ result<void> class_reader::read_header() {
       case cp::class_info::tag: {
         const auto name_index = reader_.read_u16();
         if (!name_index) {
-          return name_index.error();
+          return name_index.err();
         }
         pool_.emplace_back(cp::class_info{name_index.value()});
         break;
@@ -2196,7 +2197,7 @@ result<void> class_reader::read_header() {
       case cp::string_info::tag: {
         const auto string_index = reader_.read_u16();
         if (!string_index) {
-          return string_index.error();
+          return string_index.err();
         }
         pool_.emplace_back(cp::string_info{string_index.value()});
         break;
@@ -2204,11 +2205,11 @@ result<void> class_reader::read_header() {
       case cp::field_ref_info::tag: {
         const auto class_index = reader_.read_u16();
         if (!class_index) {
-          return class_index.error();
+          return class_index.err();
         }
         const auto name_and_type_index = reader_.read_u16();
         if (!name_and_type_index) {
-          return name_and_type_index.error();
+          return name_and_type_index.err();
         }
         pool_.emplace_back(cp::field_ref_info{class_index.value(), name_and_type_index.value()});
 
@@ -2217,11 +2218,11 @@ result<void> class_reader::read_header() {
       case cp::method_ref_info::tag: {
         const auto class_index = reader_.read_u16();
         if (!class_index) {
-          return class_index.error();
+          return class_index.err();
         }
         const auto name_and_type_index = reader_.read_u16();
         if (!name_and_type_index) {
-          return name_and_type_index.error();
+          return name_and_type_index.err();
         }
         pool_.emplace_back(cp::method_ref_info{class_index.value(), name_and_type_index.value()});
 
@@ -2231,11 +2232,11 @@ result<void> class_reader::read_header() {
       case cp::interface_method_ref_info::tag: {
         const auto class_index = reader_.read_u16();
         if (!class_index) {
-          return class_index.error();
+          return class_index.err();
         }
         const auto name_and_type_index = reader_.read_u16();
         if (!name_and_type_index) {
-          return name_and_type_index.error();
+          return name_and_type_index.err();
         }
         pool_.emplace_back(cp::interface_method_ref_info{class_index.value(), name_and_type_index.value()});
         break;
@@ -2243,11 +2244,11 @@ result<void> class_reader::read_header() {
       case cp::name_and_type_info::tag: {
         const auto name_index = reader_.read_u16();
         if (!name_index) {
-          return name_index.error();
+          return name_index.err();
         }
         const auto desc_index = reader_.read_u16();
         if (!desc_index) {
-          return desc_index.error();
+          return desc_index.err();
         }
         pool_.emplace_back(cp::name_and_type_info{name_index.value(), desc_index.value()});
         break;
@@ -2255,11 +2256,11 @@ result<void> class_reader::read_header() {
       case cp::method_handle_info::tag: {
         const auto reference_kind = reader_.read_u8();
         if (!reference_kind) {
-          return reference_kind.error();
+          return reference_kind.err();
         }
         const auto reference_index = reader_.read_u16();
         if (!reference_index) {
-          return reference_index.error();
+          return reference_index.err();
         }
         pool_.emplace_back(cp::method_handle_info{reference_kind.value(), reference_index.value()});
         break;
@@ -2267,7 +2268,7 @@ result<void> class_reader::read_header() {
       case cp::method_type_info::tag: {
         const auto desc_index = reader_.read_u16();
         if (!desc_index) {
-          return desc_index.error();
+          return desc_index.err();
         }
         pool_.emplace_back(cp::method_type_info{desc_index.value()});
         break;
@@ -2275,11 +2276,11 @@ result<void> class_reader::read_header() {
       case cp::dynamic_info::tag: {
         const auto bootstrap_method_attr_index = reader_.read_u16();
         if (!bootstrap_method_attr_index) {
-          return bootstrap_method_attr_index.error();
+          return bootstrap_method_attr_index.err();
         }
         const auto name_and_type_index = reader_.read_u16();
         if (!name_and_type_index) {
-          return name_and_type_index.error();
+          return name_and_type_index.err();
         }
         pool_.emplace_back(cp::dynamic_info{bootstrap_method_attr_index.value(), name_and_type_index.value()});
         break;
@@ -2287,11 +2288,11 @@ result<void> class_reader::read_header() {
       case cp::invoke_dynamic_info::tag: {
         const auto bootstrap_method_attr_index = reader_.read_u16();
         if (!bootstrap_method_attr_index) {
-          return bootstrap_method_attr_index.error();
+          return bootstrap_method_attr_index.err();
         }
         const auto name_and_type_index = reader_.read_u16();
         if (!name_and_type_index) {
-          return name_and_type_index.error();
+          return name_and_type_index.err();
         }
         pool_.emplace_back(cp::invoke_dynamic_info{bootstrap_method_attr_index.value(), name_and_type_index.value()});
         break;
@@ -2299,7 +2300,7 @@ result<void> class_reader::read_header() {
       case cp::module_info::tag: {
         const auto name_index = reader_.read_u16();
         if (!name_index) {
-          return name_index.error();
+          return name_index.err();
         }
         pool_.emplace_back(cp::module_info{name_index.value()});
         break;
@@ -2307,7 +2308,7 @@ result<void> class_reader::read_header() {
       case cp::package_info::tag: {
         const auto name_index = reader_.read_u16();
         if (!name_index) {
-          return name_index.error();
+          return name_index.err();
         }
         pool_.emplace_back(cp::package_info{name_index.value()});
         break;
@@ -2328,11 +2329,11 @@ result<annotation> class_reader::read_annotation() {
         for (auto i = 0; i < num_element_value_pairs; i++) {
           const auto element_name = get_string(reader_.read_u16());
           if (!element_name) {
-            return element_name.error();
+            return element_name.err();
           }
           const auto value = read_element_value();
           if (!value) {
-            return value.error();
+            return value.err();
           }
           anno.values.emplace_back(element_name.value(), value.value());
         }
@@ -2343,7 +2344,7 @@ result<annotation> class_reader::read_annotation() {
 result<type_annotation> class_reader::read_type_annotation(std::vector<std::pair<size_t, label>>& labels) {
   const auto target_type_res = reader_.read_u8();
   if (!target_type_res) {
-    return target_type_res.error();
+    return target_type_res.err();
   }
   const auto target_type = target_type_res.value();
   type_annotation_target target = target::empty{};
@@ -2352,7 +2353,7 @@ result<type_annotation> class_reader::read_type_annotation(std::vector<std::pair
     case 0x01: {
       const auto index = reader_.read_u8();
       if (!index) {
-        return index.error();
+        return index.err();
       }
       target = target::type_parameter{index.value()};
       break;
@@ -2360,7 +2361,7 @@ result<type_annotation> class_reader::read_type_annotation(std::vector<std::pair
     case 0x10: {
       const auto index = reader_.read_u16();
       if (!index) {
-        return index.error();
+        return index.err();
       }
       target = target::supertype{index.value()};
       break;
@@ -2369,11 +2370,11 @@ result<type_annotation> class_reader::read_type_annotation(std::vector<std::pair
     case 0x12: {
       const auto type_parameter_index = reader_.read_u8();
       if (!type_parameter_index) {
-        return type_parameter_index.error();
+        return type_parameter_index.err();
       }
       const auto bound_index = reader_.read_u8();
       if (!bound_index) {
-        return bound_index.error();
+        return bound_index.err();
       }
       target = target::type_parameter_bound{type_parameter_index.value(), bound_index.value()};
       break;
@@ -2386,7 +2387,7 @@ result<type_annotation> class_reader::read_type_annotation(std::vector<std::pair
     case 0x16: {
       const auto index = reader_.read_u8();
       if (!index) {
-        return index.error();
+        return index.err();
       }
       target = target::formal_parameter{index.value()};
       break;
@@ -2394,7 +2395,7 @@ result<type_annotation> class_reader::read_type_annotation(std::vector<std::pair
     case 0x17: {
       const auto index = reader_.read_u16();
       if (!index) {
-        return index.error();
+        return index.err();
       }
       target = target::throws{index.value()};
       break;
@@ -2403,7 +2404,7 @@ result<type_annotation> class_reader::read_type_annotation(std::vector<std::pair
     case 0x41: {
       const auto table_length_res = reader_.read_u16();
       if (!table_length_res) {
-        return table_length_res.error();
+        return table_length_res.err();
       }
       const auto table_length = table_length_res.value();
       std::vector<target::local> table;
@@ -2411,19 +2412,19 @@ result<type_annotation> class_reader::read_type_annotation(std::vector<std::pair
       for (auto i = 0; i < table_length; i++) {
         const auto start_pc_res = reader_.read_u16();
         if (!start_pc_res) {
-          return start_pc_res.error();
+          return start_pc_res.err();
         }
         const auto start_pc = start_pc_res.value();
         const auto end_pc_res = reader_.read_u16();
         if (!end_pc_res) {
-          return end_pc_res.error();
+          return end_pc_res.err();
         }
         const auto end_pc = end_pc_res.value() + start_pc;
         const auto start = get_label(labels, start_pc);
         const auto end = get_label(labels, end_pc);
         const auto index = reader_.read_u16();
         if (!index) {
-          return index.error();
+          return index.err();
         }
         table.emplace_back(start, end, index.value());
       }
@@ -2433,7 +2434,7 @@ result<type_annotation> class_reader::read_type_annotation(std::vector<std::pair
     case 0x42: {
       const auto index = reader_.read_u16();
       if (!index) {
-        return index.error();
+        return index.err();
       }
       target = target::catch_target{index.value()};
       break;
@@ -2444,7 +2445,7 @@ result<type_annotation> class_reader::read_type_annotation(std::vector<std::pair
     case 0x46: {
       const auto offset_res = reader_.read_u16();
       if (!offset_res) {
-        return offset_res.error();
+        return offset_res.err();
       }
       const auto offset = get_label(labels, offset_res.value());
       target = target::offset_target{offset};
@@ -2457,12 +2458,12 @@ result<type_annotation> class_reader::read_type_annotation(std::vector<std::pair
     case 0x4B: {
       const auto offset_res = reader_.read_u16();
       if (!offset_res) {
-        return offset_res.error();
+        return offset_res.err();
       }
       const auto offset = get_label(labels, offset_res.value());
       const auto index = reader_.read_u8();
       if (!index) {
-        return index.error();
+        return index.err();
       }
       target = target::type_argument{offset, index.value()};
       break;
@@ -2472,7 +2473,7 @@ result<type_annotation> class_reader::read_type_annotation(std::vector<std::pair
   }
   const auto target_path_length_res = reader_.read_u8();
   if (!target_path_length_res) {
-    return target_path_length_res.error();
+    return target_path_length_res.err();
   }
   const auto target_path_length = target_path_length_res.value();
   std::vector<std::pair<uint8_t, uint8_t>> path;
@@ -2480,33 +2481,33 @@ result<type_annotation> class_reader::read_type_annotation(std::vector<std::pair
   for (auto i = 0; i < target_path_length; i++) {
     const auto type_kind = reader_.read_u8();
     if (!type_kind) {
-      return type_kind.error();
+      return type_kind.err();
     }
     const auto type_index = reader_.read_u8();
     if (!type_index) {
-      return type_index.error();
+      return type_index.err();
     }
     path.emplace_back(type_kind.value(), type_index.value());
   }
   const auto desc = get_string(reader_.read_u16());
   if (!desc) {
-    return desc.error();
+    return desc.err();
   }
   type_annotation anno(target_type, target, type_path(path), desc.value());
   const auto num_element_value_pairs_res = reader_.read_u16();
   if (!num_element_value_pairs_res) {
-    return num_element_value_pairs_res.error();
+    return num_element_value_pairs_res.err();
   }
   const auto num_element_value_pairs = num_element_value_pairs_res.value();
   anno.values.reserve(num_element_value_pairs);
   for (auto i = 0; i < num_element_value_pairs; i++) {
     const auto element_name = get_string(reader_.read_u16());
     if (!element_name) {
-      return element_name.error();
+      return element_name.err();
     }
     const auto value = read_element_value();
     if (!value) {
-      return value.error();
+      return value.err();
     }
     anno.values.emplace_back(element_name.value(), value.value());
   }
@@ -2515,7 +2516,7 @@ result<type_annotation> class_reader::read_type_annotation(std::vector<std::pair
 result<element_value> class_reader::read_element_value() {
   const auto tag_res = reader_.read_u8();
   if (!tag_res) {
-    return tag_res.error();
+    return tag_res.err();
   }
   switch (const auto tag = tag_res.value(); tag) {
     case 'B':
@@ -2560,7 +2561,7 @@ result<element_value> class_reader::read_element_value() {
     case '[': {
       const auto num_values_res = reader_.read_u16();
       if (!num_values_res) {
-        return num_values_res.error();
+        return num_values_res.err();
       }
       const auto num_values = num_values_res.value();
       std::vector<element_value> values;
@@ -2568,7 +2569,7 @@ result<element_value> class_reader::read_element_value() {
       for (auto i = 0; i < num_values; i++) {
         const auto val = read_element_value();
         if (!val) {
-          return val.error();
+          return val.err();
         }
         values.emplace_back(val.value());
       }
@@ -2581,7 +2582,7 @@ result<element_value> class_reader::read_element_value() {
 result<frame_var> class_reader::read_frame_var(std::vector<std::pair<size_t, label>>& labels) {
   const auto tag_res = reader_.read_u8();
   if (!tag_res) {
-    return tag_res.error();
+    return tag_res.err();
   }
   switch (const auto tag = tag_res.value(); tag) {
     case 0:
@@ -2688,11 +2689,11 @@ result<std::pair<std::string, std::string>> class_reader::get_name_and_type(uint
   if (const auto name_and_type = std::get_if<cp::name_and_type_info>(&pool_.at(index))) {
     const auto name = get_string(name_and_type->name_index);
     if (!name) {
-      return name.error();
+      return name.err();
     }
     const auto desc = get_string(name_and_type->desc_index);
     if (!desc) {
-      return desc.error();
+      return desc.err();
     }
     return std::make_pair(name.value(), desc.value());
   }
@@ -2705,36 +2706,36 @@ result<std::tuple<std::string, std::string, std::string, bool>> class_reader::ge
   if (const auto method = std::get_if<cp::method_ref_info>(&pool_.at(index))) {
     const auto nat_res = get_name_and_type(method->name_and_type_index);
     if (!nat_res) {
-      return nat_res.error();
+      return nat_res.err();
     }
     const auto [name, desc] = nat_res.value();
     const auto owner = get_string(method->class_index);
     if (!owner) {
-      return owner.error();
+      return owner.err();
     }
     return std::make_tuple(owner.value(), name, desc, false);
   }
   if (const auto field = std::get_if<cp::field_ref_info>(&pool_.at(index))) {
     const auto nat_res = get_name_and_type(field->name_and_type_index);
     if (!nat_res) {
-      return nat_res.error();
+      return nat_res.err();
     }
     const auto [name, desc] = nat_res.value();
     const auto owner = get_string(field->class_index);
     if (!owner) {
-      return owner.error();
+      return owner.err();
     }
     return std::make_tuple(owner.value(), name, desc, false);
   }
   if (const auto interface_method = std::get_if<cp::interface_method_ref_info>(&pool_.at(index))) {
     const auto nat_res = get_name_and_type(interface_method->name_and_type_index);
     if (!nat_res) {
-      return nat_res.error();
+      return nat_res.err();
     }
     const auto [name, desc] = nat_res.value();
     const auto owner = get_string(interface_method->class_index);
     if (!owner) {
-      return owner.error();
+      return owner.err();
     }
     return std::make_tuple(owner.value(), name, desc, true);
   }
@@ -2747,7 +2748,7 @@ result<method_handle> class_reader::get_method_handle(uint16_t index) {
   if (const auto mh = std::get_if<cp::method_handle_info>(&pool_.at(index))) {
     const auto ref = get_ref(mh->reference_index);
     if (!ref) {
-      return ref.error();
+      return ref.err();
     }
     const auto [owner, name, desc, interface] = ref.value();
     return method_handle{mh->reference_kind, owner, name, desc, interface};
@@ -2779,7 +2780,7 @@ result<value> class_reader::get_constant(uint16_t index) {
   if (const auto mh = std::get_if<cp::method_handle_info>(&pool_.at(index))) {
     const auto ref = get_ref(mh->reference_index);
     if (!ref) {
-      return ref.error();
+      return ref.err();
     }
     const auto [owner, name, desc, interface] = ref.value();
     return {method_handle(mh->reference_kind, owner, name, desc, interface)};
@@ -2794,12 +2795,12 @@ result<value> class_reader::get_constant(uint16_t index) {
     }
     const auto handle_res = get_method_handle(reader_.read_u16());
     if (!handle_res) {
-      return handle_res.error();
+      return handle_res.err();
     }
     const auto& handle = handle_res.value();
     const auto arg_count_res = reader_.read_u16();
     if (!arg_count_res) {
-      return arg_count_res.error();
+      return arg_count_res.err();
     }
     const auto arg_count = arg_count_res.value();
     std::vector<uint16_t> arg_indices;
@@ -2807,7 +2808,7 @@ result<value> class_reader::get_constant(uint16_t index) {
     for (auto i = 0; i < arg_count; i++) {
       const auto arg = reader_.read_u16();
       if (!arg) {
-        return arg.error();
+        return arg.err();
       }
       arg_indices.emplace_back(arg.value());
     }
@@ -2819,13 +2820,13 @@ result<value> class_reader::get_constant(uint16_t index) {
     for (const auto arg_index : arg_indices) {
       const auto arg = get_constant(arg_index);
       if (!arg) {
-        return arg.error();
+        return arg.err();
       }
       args.emplace_back(arg.value());
     }
     const auto nat_res = get_name_and_type(dyn->name_and_type_index);
     if (!nat_res) {
-      return nat_res.error();
+      return nat_res.err();
     }
     const auto [name, desc] = nat_res.value();
     return {dynamic(name, desc, handle, args)};

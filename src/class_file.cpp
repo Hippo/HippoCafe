@@ -1,5 +1,6 @@
 #include "cafe/class_file.hpp"
 
+#include <algorithm>
 #include <sstream>
 
 #include "cafe/class_writer.hpp"
@@ -12,7 +13,8 @@ attribute::attribute(const std::string_view& name, const std::vector<int8_t>& da
 record_component::record_component(const std::string_view& name, const std::string_view& desc) :
     name(name), desc(desc) {
 }
-module_require::module_require(const std::string_view& module, uint16_t access_flags, const std::optional<std::string>& version) :
+module_require::module_require(const std::string_view& module, uint16_t access_flags,
+                               const std::optional<std::string>& version) :
     module(module), access_flags(access_flags), version(version) {
 }
 module_export::module_export(const std::string_view& package, uint16_t access_flags,
@@ -40,15 +42,12 @@ code::code(size_type count, const instruction& value) : list(count, value) {
 }
 code::code(const list& insns) : list(insns) {
 }
-code::code(const list& insns, const std::_Identity_t<std::allocator<instruction>>& allocator) : list(insns, allocator) {
-}
 code::code(list&& insns) : list(insns) {
-}
-code::code(list&& insns, const std::_Identity_t<std::allocator<instruction>>& allocator) : list(insns, allocator) {
 }
 code::code(const std::initializer_list<instruction>& insns) : list(insns) {
 }
-code::code(const std::initializer_list<instruction>& insns, const std::allocator<instruction>& allocator) : list(insns, allocator) {
+code::code(const std::initializer_list<instruction>& insns, const std::allocator<instruction>& allocator) :
+    list(insns, allocator) {
 }
 code::code(uint16_t max_stack, uint16_t max_locals) : max_stack(max_stack), max_locals(max_locals) {
 }
@@ -140,11 +139,11 @@ field::field(uint16_t access_flags, const std::string_view& name, const std::str
 method::method(uint16_t access_flags, const std::string_view& name, const std::string_view& desc) :
     access_flags(access_flags), name(name), desc(desc) {
 }
-method::method(uint16_t access_flags, const std::string_view& name, const std::string_view& desc, cafe::code&& code) :
-    access_flags(access_flags), name(name), desc(desc), code(std::move(code)) {
+method::method(uint16_t access_flags, const std::string_view& name, const std::string_view& desc, cafe::code&& body) :
+    access_flags(access_flags), name(name), desc(desc), body(std::move(body)) {
 }
 method::method(uint16_t access_flags, const std::string_view& name, const std::string_view& desc,
-               const cafe::code& code) : access_flags(access_flags), name(name), desc(desc), code(code) {
+               const cafe::code& body) : access_flags(access_flags), name(name), desc(desc), body(body) {
 }
 std::string method::name_desc(const std::string_view& separator) const {
   std::ostringstream oss;
@@ -154,7 +153,8 @@ std::string method::name_desc(const std::string_view& separator) const {
 std::string method::name_desc() const {
   return name_desc("");
 }
-inner_class::inner_class(const std::string_view& name, const std::optional<std::string>& outer_name, const std::optional<std::string>& inner_name, uint16_t access_flags) :
+inner_class::inner_class(const std::string_view& name, const std::optional<std::string>& outer_name,
+                         const std::optional<std::string>& inner_name, uint16_t access_flags) :
     name(name), outer_name(outer_name), inner_name(inner_name), access_flags(access_flags) {
 }
 class_file::class_file(uint32_t version, uint16_t access_flags, const std::string_view& name,
@@ -162,48 +162,70 @@ class_file::class_file(uint32_t version, uint16_t access_flags, const std::strin
     version(version), access_flags(access_flags), name(name), super_name(super_name) {
 }
 class_file::class_file(uint16_t access_flags, const std::string_view& name,
-                       const std::optional<std::string>& super_name) : version(class_version::v8), access_flags(access_flags), name(name), super_name(super_name) {
+                       const std::optional<std::string>& super_name) :
+    version(class_version::v8), access_flags(access_flags), name(name), super_name(super_name) {
 }
-class_file::class_file(const std::string_view& name, const std::optional<std::string>& super_name) : version(class_version::v8), access_flags(access_flag::acc_public), name(name), super_name(super_name) {
+class_file::class_file(const std::string_view& name, const std::optional<std::string>& super_name) :
+    version(class_version::v8), access_flags(access_flag::acc_public), name(name), super_name(super_name) {
 }
 class_file::class_file(const std::string_view& name) :
     version(class_version::v8), access_flags(access_flag::acc_public), name(name), super_name("java/lang/Object") {
 }
 class_file::class_file(uint32_t version, uint16_t access_flags, const std::string_view& name,
-                       const std::optional<std::string>& super_name, std::vector<field>&& fields) : version(version), access_flags(access_flags), name(name), super_name(super_name), fields(std::move(fields)) {
+                       const std::optional<std::string>& super_name, std::vector<field>&& fields) :
+    version(version), access_flags(access_flags), name(name), super_name(super_name), fields(std::move(fields)) {
 }
 class_file::class_file(uint16_t access_flags, const std::string_view& name,
-                       const std::optional<std::string>& super_name, std::vector<field>&& fields) : version(class_version::v8), access_flags(access_flags), name(name), super_name(super_name), fields(std::move(fields)) {
+                       const std::optional<std::string>& super_name, std::vector<field>&& fields) :
+    version(class_version::v8), access_flags(access_flags), name(name), super_name(super_name),
+    fields(std::move(fields)) {
 }
 class_file::class_file(const std::string_view& name, const std::optional<std::string>& super_name,
-                       std::vector<field>&& fields) : version(class_version::v8), access_flags(access_flag::acc_public), name(name), super_name(super_name), fields(std::move(fields)) {
+                       std::vector<field>&& fields) :
+    version(class_version::v8), access_flags(access_flag::acc_public), name(name), super_name(super_name),
+    fields(std::move(fields)) {
 }
-class_file::class_file(const std::string_view& name, std::vector<field>&& fields) : version(class_version::v8), access_flags(access_flag::acc_public), name(name), super_name("java/lang/Object"), fields(std::move(fields)) {
+class_file::class_file(const std::string_view& name, std::vector<field>&& fields) :
+    version(class_version::v8), access_flags(access_flag::acc_public), name(name), super_name("java/lang/Object"),
+    fields(std::move(fields)) {
 }
 class_file::class_file(uint32_t version, uint16_t access_flags, const std::string_view& name,
                        const std::optional<std::string>& super_name, std::vector<field>&& fields,
-                       std::vector<method>&& methods) : version(version), access_flags(access_flags), name(name), super_name(super_name), fields(std::move(fields)), methods(std::move(methods)) {
+                       std::vector<method>&& methods) :
+    version(version), access_flags(access_flags), name(name), super_name(super_name), fields(std::move(fields)),
+    methods(std::move(methods)) {
 }
 class_file::class_file(uint16_t access_flags, const std::string_view& name,
                        const std::optional<std::string>& super_name, std::vector<field>&& fields,
-                       std::vector<method>&& methods) : version(class_version::v8), access_flags(access_flags), name(name), super_name(super_name), fields(std::move(fields)), methods(std::move(methods)) {
+                       std::vector<method>&& methods) :
+    version(class_version::v8), access_flags(access_flags), name(name), super_name(super_name),
+    fields(std::move(fields)), methods(std::move(methods)) {
 }
 class_file::class_file(const std::string_view& name, const std::optional<std::string>& super_name,
-                       std::vector<field>&& fields, std::vector<method>&& methods) : version(class_version::v8), access_flags(access_flag::acc_public), name(name), super_name(super_name), fields(std::move(fields)), methods(std::move(methods)) {
+                       std::vector<field>&& fields, std::vector<method>&& methods) :
+    version(class_version::v8), access_flags(access_flag::acc_public), name(name), super_name(super_name),
+    fields(std::move(fields)), methods(std::move(methods)) {
 }
 class_file::class_file(const std::string_view& name, std::vector<field>&& fields, std::vector<method>&& methods) :
-    version(class_version::v8), access_flags(access_flag::acc_public), name(name), super_name("java/lang/Object"), fields(std::move(fields)), methods(std::move(methods)) {
+    version(class_version::v8), access_flags(access_flag::acc_public), name(name), super_name("java/lang/Object"),
+    fields(std::move(fields)), methods(std::move(methods)) {
 }
 class_file::class_file(uint32_t version, uint16_t access_flags, const std::string_view& name,
-                       const std::optional<std::string>& super_name, std::vector<method>&& methods) : version(version), access_flags(access_flags), name(name), super_name(super_name), methods(std::move(methods)) {
+                       const std::optional<std::string>& super_name, std::vector<method>&& methods) :
+    version(version), access_flags(access_flags), name(name), super_name(super_name), methods(std::move(methods)) {
 }
 class_file::class_file(uint16_t access_flags, const std::string_view& name,
-                       const std::optional<std::string>& super_name, std::vector<method>&& methods) : version(class_version::v8), access_flags(access_flags), name(name), super_name(super_name), methods(std::move(methods)) {
+                       const std::optional<std::string>& super_name, std::vector<method>&& methods) :
+    version(class_version::v8), access_flags(access_flags), name(name), super_name(super_name),
+    methods(std::move(methods)) {
 }
 class_file::class_file(const std::string_view& name, const std::optional<std::string>& super_name,
-                       std::vector<method>&& methods) : version(class_version::v8), access_flags(access_flag::acc_public), name(name), super_name(super_name), methods(std::move(methods)) {
+                       std::vector<method>&& methods) :
+    version(class_version::v8), access_flags(access_flag::acc_public), name(name), super_name(super_name),
+    methods(std::move(methods)) {
 }
 class_file::class_file(const std::string_view& name, std::vector<method>&& methods) :
-    version(class_version::v8), access_flags(access_flag::acc_public), name(name), super_name("java/lang/Object"), methods(std::move(methods)) {
+    version(class_version::v8), access_flags(access_flag::acc_public), name(name), super_name("java/lang/Object"),
+    methods(std::move(methods)) {
 }
 } // namespace cafe

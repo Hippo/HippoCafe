@@ -1,14 +1,14 @@
 #pragma once
 
 #include <cstdint>
+#include <list>
 #include <optional>
 #include <string>
 #include <string_view>
 #include <vector>
-#include <list>
 
-#include "apidef.hpp"
 #include "annotation.hpp"
+#include "apidef.hpp"
 #include "instruction.hpp"
 
 namespace cafe {
@@ -105,8 +105,7 @@ public:
   std::string name;
   uint16_t access_flags{};
   std::optional<std::string> version;
-  std::vector<module_require>
-    mod_requires;
+  std::vector<module_require> mod_requires;
   std::vector<module_export> exports;
   std::vector<module_open> opens;
   std::vector<std::string> uses;
@@ -134,13 +133,10 @@ public:
   code() = default;
   explicit code(const std::allocator<instruction>& allocator);
   explicit code(size_type count);
-  code(size_type count,
-       const std::allocator<instruction>& allocator);
+  code(size_type count, const std::allocator<instruction>& allocator);
   code(size_type count, const instruction& value);
   code(const list& insns);
-  code(const list& insns, const std::_Identity_t<std::allocator<instruction>>& allocator);
   code(list&& insns);
-  code(list&& insns, const std::_Identity_t<std::allocator<instruction>>& allocator);
   code(const std::initializer_list<instruction>& insns);
   code(const std::initializer_list<instruction>& insns, const std::allocator<instruction>& allocator);
   code(uint16_t max_stack, uint16_t max_locals);
@@ -157,19 +153,18 @@ public:
   void add_field_insn(uint8_t opcode, const std::string_view& owner, const std::string_view& name,
                       const std::string_view& descriptor);
   void add_method_insn(uint8_t opcode, const std::string_view& owner, const std::string_view& name,
-                      const std::string_view& descriptor);
+                       const std::string_view& descriptor);
   void add_method_insn(uint8_t opcode, const std::string_view& owner, const std::string_view& name,
-                      const std::string_view& descriptor, bool interface);
+                       const std::string_view& descriptor, bool interface);
   void add_iinc_insn(uint16_t index, int16_t value);
   void add_push_insn(value value);
   void add_branch_insn(uint8_t opcode, label target);
   void add_lookup_switch_insn(label default_target, const std::vector<std::pair<int32_t, label>>& targets);
-  void add_table_switch_insn(label default_target, int32_t low, int32_t high,
-                               const std::vector<label>& targets);
+  void add_table_switch_insn(label default_target, int32_t low, int32_t high, const std::vector<label>& targets);
   void add_multi_array_insn(const std::string_view& descriptor, uint8_t dims);
   void add_array_insn(const std::variant<uint8_t, std::string>& type);
   void add_invoke_dynamic_insn(const std::string_view& name, const std::string_view& descriptor, method_handle handle,
-                                 const std::vector<value>& args);
+                               const std::vector<value>& args);
 
   const_iterator find_label(const label& lbl) const;
   iterator find_label(const label& lbl);
@@ -206,7 +201,7 @@ public:
   uint16_t access_flags{};
   std::string name;
   std::string desc;
-  code code;
+  code body;
   std::vector<std::string> exceptions;
   std::vector<std::vector<annotation>> visible_parameter_annotations;
   std::vector<std::vector<annotation>> invisible_parameter_annotations;
@@ -222,8 +217,8 @@ public:
   std::vector<attribute> attributes;
   method() = default;
   method(uint16_t access_flags, const std::string_view& name, const std::string_view& desc);
-  method(uint16_t access_flags, const std::string_view& name, const std::string_view& desc, cafe::code&& code);
-  method(uint16_t access_flags, const std::string_view& name, const std::string_view& desc, const cafe::code& code);
+  method(uint16_t access_flags, const std::string_view& name, const std::string_view& desc, cafe::code&& body);
+  method(uint16_t access_flags, const std::string_view& name, const std::string_view& desc, const cafe::code& body);
   ~method() = default;
   method(const method& other) = default;
   method(method&& other) noexcept = default;
@@ -241,8 +236,8 @@ public:
   std::optional<std::string> inner_name;
   uint16_t access_flags{};
   inner_class() = default;
-  inner_class(const std::string_view& name, const std::optional<std::string>& outer_name, const std::optional<std::string>& inner_name,
-              uint16_t access_flags);
+  inner_class(const std::string_view& name, const std::optional<std::string>& outer_name,
+              const std::optional<std::string>& inner_name, uint16_t access_flags);
   ~inner_class() = default;
   inner_class(const inner_class& other) = default;
   inner_class(inner_class&& other) noexcept = default;
@@ -263,7 +258,7 @@ public:
   std::vector<inner_class> inner_classes;
   std::optional<std::pair<std::string, std::optional<std::pair<std::string, std::string>>>> enclosing_method;
   std::optional<std::string> source_debug_extension;
-  std::optional<module> module;
+  std::optional<module> mod;
   std::vector<std::string> module_packages;
   std::optional<std::string> module_main_class;
   std::optional<std::string> nest_host;
@@ -279,20 +274,28 @@ public:
   std::vector<type_annotation> invisible_type_annotations;
   std::vector<attribute> attributes;
   class_file() = default;
-  class_file(uint32_t version, uint16_t access_flags, const std::string_view& name, const std::optional<std::string>& super_name);
+  class_file(uint32_t version, uint16_t access_flags, const std::string_view& name,
+             const std::optional<std::string>& super_name);
   class_file(uint16_t access_flags, const std::string_view& name, const std::optional<std::string>& super_name);
   class_file(const std::string_view& name, const std::optional<std::string>& super_name);
   explicit class_file(const std::string_view& name);
-  class_file(uint32_t version, uint16_t access_flags, const std::string_view& name, const std::optional<std::string>& super_name, std::vector<field>&& fields);
-  class_file(uint16_t access_flags, const std::string_view& name, const std::optional<std::string>& super_name, std::vector<field>&& fields);
+  class_file(uint32_t version, uint16_t access_flags, const std::string_view& name,
+             const std::optional<std::string>& super_name, std::vector<field>&& fields);
+  class_file(uint16_t access_flags, const std::string_view& name, const std::optional<std::string>& super_name,
+             std::vector<field>&& fields);
   class_file(const std::string_view& name, const std::optional<std::string>& super_name, std::vector<field>&& fields);
   class_file(const std::string_view& name, std::vector<field>&& fields);
-  class_file(uint32_t version, uint16_t access_flags, const std::string_view& name, const std::optional<std::string>& super_name, std::vector<field>&& fields, std::vector<method>&& methods);
-  class_file(uint16_t access_flags, const std::string_view& name, const std::optional<std::string>& super_name, std::vector<field>&& fields, std::vector<method>&& methods);
-  class_file(const std::string_view& name, const std::optional<std::string>& super_name, std::vector<field>&& fields, std::vector<method>&& methods);
+  class_file(uint32_t version, uint16_t access_flags, const std::string_view& name,
+             const std::optional<std::string>& super_name, std::vector<field>&& fields, std::vector<method>&& methods);
+  class_file(uint16_t access_flags, const std::string_view& name, const std::optional<std::string>& super_name,
+             std::vector<field>&& fields, std::vector<method>&& methods);
+  class_file(const std::string_view& name, const std::optional<std::string>& super_name, std::vector<field>&& fields,
+             std::vector<method>&& methods);
   class_file(const std::string_view& name, std::vector<field>&& fields, std::vector<method>&& methods);
-  class_file(uint32_t version, uint16_t access_flags, const std::string_view& name, const std::optional<std::string>& super_name, std::vector<method>&& methods);
-  class_file(uint16_t access_flags, const std::string_view& name, const std::optional<std::string>& super_name, std::vector<method>&& methods);
+  class_file(uint32_t version, uint16_t access_flags, const std::string_view& name,
+             const std::optional<std::string>& super_name, std::vector<method>&& methods);
+  class_file(uint16_t access_flags, const std::string_view& name, const std::optional<std::string>& super_name,
+             std::vector<method>&& methods);
   class_file(const std::string_view& name, const std::optional<std::string>& super_name, std::vector<method>&& methods);
   class_file(const std::string_view& name, std::vector<method>&& methods);
   ~class_file() = default;

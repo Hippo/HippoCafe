@@ -1,5 +1,6 @@
 #pragma once
 
+#include <cstdint>
 #include <string>
 #include <string_view>
 #include <variant>
@@ -48,6 +49,7 @@ public:
   const std::string& get() const;
 
   static type_kind get_kind(const std::string_view& value);
+
 private:
   std::string value_;
   type_kind kind_;
@@ -64,8 +66,8 @@ public:
   method_handle() = default;
   method_handle(uint8_t kind, const std::string_view& owner, const std::string_view& name,
                 const std::string_view& desc);
-  method_handle(uint8_t kind, const std::string_view& owner, const std::string_view& name,
-                const std::string_view& desc, bool interface);
+  method_handle(uint8_t kind, const std::string_view& owner, const std::string_view& name, const std::string_view& desc,
+                bool interface);
   ~method_handle() = default;
   method_handle(const method_handle&) = default;
   method_handle(method_handle&&) = default;
@@ -92,8 +94,7 @@ public:
 };
 
 class dynamic;
-using value =
-    std::variant<int32_t, float, int64_t, double, type, std::string, method_handle, method_type, dynamic>;
+using value = std::variant<int32_t, float, int64_t, double, type, std::string, method_handle, method_type, dynamic>;
 std::string to_string(const value& v);
 
 class CAFE_API dynamic {

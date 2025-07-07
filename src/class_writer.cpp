@@ -1,6 +1,7 @@
 #include "cafe/class_writer.hpp"
 
 #include <iostream>
+#include <limits>
 
 #include "cafe/constants.hpp"
 
@@ -341,7 +342,7 @@ void class_writer::write_fields(const std::vector<field>& fields) {
     buf.write_all(attr_buf.data());
   }
 }
-void class_writer::write_methods(const class_file&file, const std::vector<method>& methods, bool oak) {
+void class_writer::write_methods(const class_file& file, const std::vector<method>& methods, bool oak) {
   databuf buf(methods_);
   std::vector<std::pair<size_t, label>> dummy_labels;
   for (const auto& method : methods) {
@@ -468,10 +469,10 @@ void class_writer::write_methods(const class_file&file, const std::vector<method
       attr_buf.write_all(data);
       attr_count++;
     }
-    if (!method.code.empty() || !method.code.visible_type_annotations.empty() ||
-        !method.code.invisible_type_annotations.empty() || !method.code.attributes.empty()) {
+    if (!method.body.empty() || !method.body.visible_type_annotations.empty() ||
+        !method.body.invisible_type_annotations.empty() || !method.body.attributes.empty()) {
       const auto attr_name = get_utf("Code");
-      const auto& data = write_code(file, method, method.code, oak);
+      const auto& data = write_code(file, method, method.body, oak);
       attr_buf.write_u16(attr_name);
       attr_buf.write_u32(static_cast<uint32_t>(data.size()));
       attr_buf.write_all(data);
@@ -506,7 +507,8 @@ std::vector<int8_t> class_writer::write_code(const class_file& file, const metho
       max_stack = stack;
       max_locals = locals;
     } else {
-      const auto result = graph.compute_frames(*tree_, file.name, basic_block_graph::get_start_locals(file.name, method));
+      const auto result =
+          graph.compute_frames(*tree_, file.name, basic_block_graph::get_start_locals(file.name, method));
       max_stack = result.max_stack();
       max_locals = result.max_locals();
       frames = result.frames();
@@ -707,7 +709,7 @@ std::vector<int8_t> class_writer::write_code(const class_file& file, const metho
             }
           }
           if constexpr (std::is_same_v<T, push_insn>) {
-            const auto& val = arg.value;
+            const auto& val = arg.operand;
             const auto opcode = arg.opcode();
             if (opcode == op::bipush) {
               code.emplace_back(opcode);
@@ -1517,8 +1519,8 @@ std::vector<int8_t> class_writer::write(const class_file& file) {
   if (file.source_debug_extension) {
     write_source_debug_extension(*file.source_debug_extension);
   }
-  if (file.module) {
-    write_module(*file.module);
+  if (file.mod) {
+    write_module(*file.mod);
   }
   if (!file.module_packages.empty()) {
     write_module_packages(file.module_packages);

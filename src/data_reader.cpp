@@ -1,5 +1,6 @@
 #include "cafe/data_reader.hpp"
 
+#include <cstring>
 #include <iostream>
 
 namespace cafe {
@@ -26,8 +27,7 @@ result<int8_t> data_reader::read_i8() {
 result<uint16_t> data_reader::read_u16() {
   const auto b1 = read_u8();
   const auto b2 = read_u8();
-  return b1.lift([](uint8_t b1, uint8_t b2) -> uint16_t { return static_cast<uint16_t>(b1) << 8 | b2; },
-                        b2);
+  return b1.lift([](uint8_t b1, uint8_t b2) -> uint16_t { return static_cast<uint16_t>(b1) << 8 | b2; }, b2);
 }
 result<int16_t> data_reader::read_i16() {
   return read_u16().map([](uint16_t value) { return static_cast<int16_t>(value); });
@@ -48,13 +48,13 @@ result<int32_t> data_reader::read_i32() {
 }
 result<uint64_t> data_reader::read_u64() {
   const auto b1 = read_u8();
-    const auto b2 = read_u8();
+  const auto b2 = read_u8();
   const auto b3 = read_u8();
-    const auto b4 = read_u8();
+  const auto b4 = read_u8();
   const auto b5 = read_u8();
-    const auto b6 = read_u8();
+  const auto b6 = read_u8();
   const auto b7 = read_u8();
-    const auto b8 = read_u8();
+  const auto b8 = read_u8();
   return b1.lift(
       [](uint8_t b1, uint8_t b2, uint8_t b3, uint8_t b4, uint8_t b5, uint8_t b6, uint8_t b7, uint8_t b8) -> uint64_t {
         return static_cast<uint64_t>(b1) << 56 | static_cast<uint64_t>(b2) << 48 | static_cast<uint64_t>(b3) << 40 |
@@ -83,7 +83,7 @@ result<double> data_reader::read_f64() {
 result<std::string> data_reader::read_utf() {
   const auto utflen_res = read_u16();
   if (!utflen_res) {
-    return utflen_res.error();
+    return utflen_res.err();
   }
   const auto utflen = utflen_res.value();
   if (byte_cache_.capacity() < utflen) {
@@ -93,7 +93,7 @@ result<std::string> data_reader::read_utf() {
   for (auto i = 0; i < utflen; i++) {
     const auto byte_res = read_u8();
     if (!byte_res) {
-      return byte_res.error();
+      return byte_res.err();
     }
     byte_cache_.emplace_back(byte_res.value());
   }
@@ -147,7 +147,8 @@ result<std::vector<int8_t>> data_reader::bytes(size_t start, size_t end) {
   if (start > buffer_.size() || end > buffer_.size() || start > end) {
     return error("Invalid range");
   }
-  return std::vector(buffer_.begin() + static_cast<std::vector<int8_t>::difference_type>(start), buffer_.begin() + static_cast<std::vector<int8_t>::difference_type>(end));
+  return std::vector(buffer_.begin() + static_cast<std::vector<int8_t>::difference_type>(start),
+                     buffer_.begin() + static_cast<std::vector<int8_t>::difference_type>(end));
 }
 
 const std::vector<int8_t>& data_reader::data() const {

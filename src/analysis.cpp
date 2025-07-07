@@ -1,5 +1,6 @@
 #include "cafe/analysis.hpp"
 
+#include <algorithm>
 #include <deque>
 #include <iostream>
 #include <sstream>
@@ -419,12 +420,12 @@ void basic_block::compute_frames(const std::string_view& class_name) {
                 pop();
                 break;
               case op::lastore:
-                case op::dastore:
-              pop();
-              pop();
-              pop();
-              pop();
-              break;
+              case op::dastore:
+                pop();
+                pop();
+                pop();
+                pop();
+                break;
               case op::aconst_null:
                 push(null_var());
                 break;
@@ -790,7 +791,7 @@ void basic_block::compute_frames(const std::string_view& class_name) {
                     }
                   }
                 },
-                arg.value);
+                arg.operand);
           } else if constexpr (std::is_same_v<T, type_insn>) {
             if (arg.opcode == op::checkcast) {
               pop();
@@ -877,9 +878,9 @@ void basic_block::compute_frames(const std::string_view& class_name) {
             }
             if (const auto return_type = type.return_type(); return_type.kind() != type_kind::void_) {
               push(to_frame_var(return_type));
-                if (return_type.size() == 2) {
-                    push(top_var());
-                }
+              if (return_type.size() == 2) {
+                push(top_var());
+              }
             }
           } else if constexpr (std::is_same_v<T, method_insn>) {
             const type type(arg.desc);
@@ -941,7 +942,8 @@ void basic_block::compute_frames(const std::string_view& class_name) {
   }
 }
 bool basic_block::merge(const class_tree& tree, const basic_block& other, const std::vector<std::string>& tcb_types) {
-  const auto merge_type = [&](const std::optional<frame_var>& var1, const std::optional<frame_var>& var2) -> std::optional<frame_var> {
+  const auto merge_type = [&](const std::optional<frame_var>& var1,
+                              const std::optional<frame_var>& var2) -> std::optional<frame_var> {
     if (!var1) {
       return var2;
     }
@@ -986,12 +988,12 @@ bool basic_block::merge(const class_tree& tree, const basic_block& other, const 
         tcb_type = merge_type(tcb_type, object_var(type));
       }
     }
-   if (input_stack_.size() != 1 || input_stack_[0] != tcb_type) {
-     input_stack_.clear();
-     input_stack_.emplace_back(tcb_type);
-     input_max_stack_ = 1;
-     changed = true;
-   }
+    if (input_stack_.size() != 1 || input_stack_[0] != tcb_type) {
+      input_stack_.clear();
+      input_stack_.emplace_back(tcb_type);
+      input_max_stack_ = 1;
+      changed = true;
+    }
   } else if (input_stack_.size() < other.output_stack_.size()) {
     input_stack_.resize(other.output_stack_.size());
     changed = true;
@@ -1106,10 +1108,13 @@ const std::vector<code::const_iterator>& basic_block::instructions() const {
 const std::unordered_map<basic_block*, std::vector<std::string>>& basic_block::successors() const {
   return successors_;
 }
-frame_compute_result::frame_compute_result(uint16_t max_locals, uint16_t max_stack) : max_locals_(max_locals), max_stack_(max_stack) {
+frame_compute_result::frame_compute_result(uint16_t max_locals, uint16_t max_stack) :
+    max_locals_(max_locals), max_stack_(max_stack) {
 }
 frame_compute_result::frame_compute_result(std::vector<std::pair<code::const_iterator, label>>&& labels,
-                                           std::vector<std::pair<label, frame>>&& frames, uint16_t max_locals, uint16_t max_stack) : inject_labels_(labels), frames_(frames), max_locals_(max_locals), max_stack_(max_stack) {
+                                           std::vector<std::pair<label, frame>>&& frames, uint16_t max_locals,
+                                           uint16_t max_stack) :
+    inject_labels_(labels), frames_(frames), max_locals_(max_locals), max_stack_(max_stack) {
 }
 const std::vector<std::pair<code::const_iterator, label>>& frame_compute_result::labels() const {
   return inject_labels_;
@@ -1132,7 +1137,7 @@ basic_block_graph::basic_block_graph(const code& code) {
   std::unordered_set<const instruction*> fallthroughs;
   for (auto it = code.begin(); it != code.end(); ++it) {
     auto* in = &*it;
-     if (const auto branch = std::get_if<branch_insn>(in)) {
+    if (const auto branch = std::get_if<branch_insn>(in)) {
       starting_labels.emplace(branch->target.id());
       if (const auto next = std::next(it); next != code.end()) {
         fallthroughs.emplace(&*next);
@@ -1306,7 +1311,8 @@ basic_block_graph::basic_block_graph(const code& code) {
     count++;
   }
 }
-frame_compute_result basic_block_graph::compute_frames(const class_tree& tree, const std::string_view& class_name, const std::vector<std::optional<frame_var>>& start_locals) {
+frame_compute_result basic_block_graph::compute_frames(const class_tree& tree, const std::string_view& class_name,
+                                                       const std::vector<std::optional<frame_var>>& start_locals) {
   uint16_t max_locals = 0;
   for (const auto& local : start_locals) {
     if (local && (std::holds_alternative<long_var>(*local) || std::holds_alternative<double_var>(*local))) {
@@ -1542,7 +1548,8 @@ uint16_t basic_block_graph::get_start_locals(const method& method) {
   }
   return start_locals;
 }
-std::vector<std::optional<frame_var>> basic_block_graph::get_start_locals(const std::string_view& class_name, const method& method) {
+std::vector<std::optional<frame_var>> basic_block_graph::get_start_locals(const std::string_view& class_name,
+                                                                          const method& method) {
   std::vector<std::optional<frame_var>> locals;
   const type type(method.desc);
 
@@ -1557,29 +1564,30 @@ std::vector<std::optional<frame_var>> basic_block_graph::get_start_locals(const 
   for (const auto& p : type.parameter_types()) {
     switch (p.kind()) {
       case type_kind::boolean:
-        case type_kind::byte:
+      case type_kind::byte:
       case type_kind::char_:
       case type_kind::int_:
-      locals.emplace_back(int_var());
-      break;
+        locals.emplace_back(int_var());
+        break;
       case type_kind::long_:
         locals.emplace_back(long_var());
-      locals.emplace_back(top_var());
-      break;
+        locals.emplace_back(top_var());
+        break;
       case type_kind::double_:
         locals.emplace_back(double_var());
-      locals.emplace_back(top_var());
-      break;
+        locals.emplace_back(top_var());
+        break;
       case type_kind::float_:
         locals.emplace_back(float_var());
-      break;
+        break;
       case type_kind::array:
         locals.emplace_back(object_var(p.get()));
-      break;
+        break;
       case type_kind::object:
         locals.emplace_back(object_var(p.internal()));
-      break;
-      default: break;
+        break;
+      default:
+        break;
     }
   }
 
@@ -1587,8 +1595,8 @@ std::vector<std::optional<frame_var>> basic_block_graph::get_start_locals(const 
 }
 void basic_block_graph::compute_maxes(method& method) {
   const auto [max_locals, max_stack] = compute_maxes(get_start_locals(method));
-  method.code.max_locals = max_locals;
-  method.code.max_stack = max_stack;
+  method.body.max_locals = max_locals;
+  method.body.max_stack = max_stack;
 }
 const std::list<basic_block>& basic_block_graph::blocks() const {
   return blocks_;

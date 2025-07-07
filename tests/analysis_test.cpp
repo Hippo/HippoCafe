@@ -1,7 +1,7 @@
 #include <fstream>
 
-#include <hippo/cafe.hpp>
 #include <gtest/gtest.h>
+#include <hippo/cafe.hpp>
 
 TEST(block_graph, split) {
   std::string test_name = "SwitchTest";
@@ -10,14 +10,14 @@ TEST(block_graph, split) {
   cafe::class_reader reader;
   const auto file_res = reader.read(stream);
   if (!file_res) {
-    std::cerr << file_res.error().message() << std::endl;
+    std::cerr << file_res.err().message() << std::endl;
     return;
   }
   const auto& file = file_res.value();
 
   for (auto& method : file.methods) {
     std::cout << method.name_desc() << std::endl;
-    cafe::basic_block_graph graph(method.code);
+    cafe::basic_block_graph graph(method.body);
     for (const auto& b : graph.blocks()) {
       std::cout << b.to_string() << std::endl;
     }
@@ -32,17 +32,17 @@ TEST(block_graph, compute_maxes) {
   cafe::class_reader reader;
   auto file_res = reader.read(stream);
   if (!file_res) {
-    std::cerr << file_res.error().message() << std::endl;
+    std::cerr << file_res.err().message() << std::endl;
     return;
   }
   auto& file = file_res.value();
 
   for (auto& method : file.methods) {
     std::cout << method.name_desc() << std::endl;
-    cafe::basic_block_graph graph(method.code);
-    std::cout << "before: " << method.code.max_locals << " " << method.code.max_stack << std::endl;
+    cafe::basic_block_graph graph(method.body);
+    std::cout << "before: " << method.body.max_locals << " " << method.body.max_stack << std::endl;
     graph.compute_maxes(method);
-    std::cout << "after: " << method.code.max_locals << " " << method.code.max_stack << std::endl;
+    std::cout << "after: " << method.body.max_locals << " " << method.body.max_stack << std::endl;
     std::cout << std::endl;
   }
 }
@@ -55,7 +55,7 @@ TEST(block_graph, compute_frames) {
   cafe::class_reader reader;
   const auto file_res = reader.read(stream);
   if (!file_res) {
-    std::cerr << file_res.error().message() << std::endl;
+    std::cerr << file_res.err().message() << std::endl;
     return;
   }
   const auto& file = file_res.value();
@@ -64,12 +64,13 @@ TEST(block_graph, compute_frames) {
 
   for (auto& method : file.methods) {
     std::cout << method.name_desc() << std::endl;
-    cafe::basic_block_graph graph(method.code);
-    std::cout << "before: (" << method.code.frames.size() << ")" << std::endl;
-    for (const auto& [lbl, frame] : method.code.frames) {
+    cafe::basic_block_graph graph(method.body);
+    std::cout << "before: (" << method.body.frames.size() << ")" << std::endl;
+    for (const auto& [lbl, frame] : method.body.frames) {
       std::cout << cafe::to_string(lbl) << " " << cafe::to_string(frame) << std::endl;
     }
-    const auto result = graph.compute_frames(tree, file.name, cafe::basic_block_graph::get_start_locals(file.name, method));
+    const auto result =
+        graph.compute_frames(tree, file.name, cafe::basic_block_graph::get_start_locals(file.name, method));
     std::cout << "after: (" << result.frames().size() << ")" << std::endl;
     for (const auto& [lbl, frame] : result.frames()) {
       std::cout << lbl.to_string() << " " << cafe::to_string(frame) << std::endl;
@@ -87,16 +88,16 @@ TEST(exaple, test) {
   class_reader reader;
   result<class_file> read_result = reader.read(source);
   if (!read_result) {
-    std::cerr << read_result.error().message() << std::endl;
+    std::cerr << read_result.err().message() << std::endl;
     return;
   }
   class_file& file = read_result.value();
 
   for (auto& method : file.methods) {
-    for (auto& insn : method.code) {
+    for (auto& insn : method.body) {
       if (auto* push = std::get_if<push_insn>(&insn)) {
-        if (push->value == value{"Hello World"}) {
-          push->value = "Modified";
+        if (push->operand == value{"Hello World"}) {
+          push->operand = "Modified";
         }
       }
     }
