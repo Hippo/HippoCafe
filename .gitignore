@@ -1,16 +1,41 @@
-# CMake
-cmake-build-debug/
-cmake-build-release/
-/out
+# Build directories
 /build/
+/bin/
+/obj/
+/out/
+/cmake-build-*/
+/build-*/
 
 # IDE
+.vscode/
 .idea/
-.vs/
 .cache/
 
-# macOS
-.DS_Store
+# CMake
+CMakeFiles/
+CMakeCache.txt
+cmake_install.cmake
+Makefile
+compile_commands.json
 
-# Compiled / Testing
+# Object files
+*.o
+*.obj
+*.so
+*.dll
+*.dylib
+*.exe
+
+# Other files
+*.log
+*.tmp
+*.swp
+*.bak
+
+*.d
+*.user
+*.userprefs
+*.ini
+.DS_Store
+.codex
 *.jar
