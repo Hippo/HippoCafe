@@ -4,6 +4,7 @@
 #include <cafe/analysis/frame_analyzer.hpp>
 #include <cafe/analysis/max_locals.hpp>
 #include <cafe/analysis/max_stack.hpp>
+#include <cafe/archive/archive.hpp>
 #include <cafe/bytecode/builder.hpp>
 #include <cafe/classpath/class_hierarchy.hpp>
 #include <cafe/classpath/class_path.hpp>

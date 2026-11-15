@@ -4,31 +4,19 @@
 #include <array>
 #include <cstdio>
 #include <cstring>
-#include <limits>
 #include <mutex>
 #include <numeric>
 #include <unordered_map>
 #include <utility>
 #include <variant>
 
-#ifdef _WIN32
-#ifndef NOMINMAX
-#define NOMINMAX
-#endif
-#include <fcntl.h>
-#include <io.h>
-#include <windows.h>
-#else
-#include <fcntl.h>
-#include <sys/stat.h>
-#include <unistd.h>
-#endif
-
 #include <mz.h>
 #include <mz_strm.h>
 #include <mz_zip.h>
 
+#include "archive_file.hpp"
 #include "classpath/classpath_detail.hpp"
+#include "zip_format.hpp"
 
 namespace cafe::archive {
 namespace {
@@ -40,88 +28,14 @@ using classpath::SourceKind;
 using classpath::SourceProvenance;
 using classpath::detail::fail;
 
-constexpr std::uint32_t EOCD_MAGIC = 0x06054b50;
-constexpr std::uint32_t ZIP64_EOCD_MAGIC = 0x06064b50;
-constexpr std::uint32_t ZIP64_LOCATOR_MAGIC = 0x07064b50;
-constexpr std::uint32_t LOCAL_HEADER_MAGIC = 0x04034b50;
-constexpr std::uint32_t CENTRAL_HEADER_MAGIC = 0x02014b50;
+using namespace detail;
+
 constexpr std::uint32_t DESCRIPTOR_MAGIC = 0x08074b50;
-constexpr std::array JMOD_MAGIC{std::byte{'J'}, std::byte{'M'}, std::byte{1}, std::byte{0}};
-constexpr std::size_t LOCAL_HEADER_SIZE = 30;
-constexpr std::size_t CENTRAL_HEADER_SIZE = 46;
-constexpr std::size_t EOCD_SIZE = 22;
-
-template<typename Uint>
-Uint little_endian(std::span<const std::byte> bytes, std::size_t at) {
-  Uint value = 0;
-  for (std::size_t i = sizeof(Uint); i > 0; --i)
-    value = static_cast<Uint>((value << 8) | std::to_integer<unsigned>(bytes[at + i - 1]));
-  return value;
-}
-
-struct CloseFile {
-  void operator()(std::FILE* file) const noexcept {
-    std::fclose(file);
-  }
-};
-
-using InputFile = std::unique_ptr<std::FILE, CloseFile>;
-
-struct OpenArchive {
-  InputFile file;
-  std::int64_t size;
-};
-
-std::optional<OpenArchive> open_archive(const std::filesystem::path& path) {
-#ifdef _WIN32
-  const auto handle = CreateFileW(path.c_str(), GENERIC_READ, FILE_SHARE_READ | FILE_SHARE_DELETE,
-                                  nullptr, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, nullptr);
-  if (handle == INVALID_HANDLE_VALUE)
-    return std::nullopt;
-  BY_HANDLE_FILE_INFORMATION metadata;
-  LARGE_INTEGER length;
-  if (GetFileType(handle) != FILE_TYPE_DISK || !GetFileInformationByHandle(handle, &metadata) ||
-      (metadata.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY) != 0 ||
-      !GetFileSizeEx(handle, &length) || length.QuadPart < 0) {
-    CloseHandle(handle);
-    return std::nullopt;
-  }
-  const int fd = _open_osfhandle(reinterpret_cast<std::intptr_t>(handle), _O_RDONLY | _O_BINARY);
-  if (fd < 0) {
-    CloseHandle(handle);
-    return std::nullopt;
-  }
-  InputFile file(_fdopen(fd, "rb"));
-  if (!file) {
-    _close(fd);
-    return std::nullopt;
-  }
-  return OpenArchive{std::move(file), length.QuadPart};
-#else
-  // Make the regular-file check against the opened descriptor. Nonblocking
-  // prevents a substituted FIFO from stalling an archive registration.
-  const int fd = ::open(path.c_str(), O_RDONLY | O_CLOEXEC | O_NONBLOCK);
-  if (fd < 0)
-    return std::nullopt;
-  struct stat metadata{};
-  if (::fstat(fd, &metadata) != 0 || !S_ISREG(metadata.st_mode) ||
-      metadata.st_size < 0 || static_cast<std::uintmax_t>(metadata.st_size) > INT64_MAX) {
-    ::close(fd);
-    return std::nullopt;
-  }
-  InputFile file(::fdopen(fd, "rb"));
-  if (!file) {
-    ::close(fd);
-    return std::nullopt;
-  }
-  return OpenArchive{std::move(file), static_cast<std::int64_t>(metadata.st_size)};
-#endif
-}
 
 // Minizip sees a seekable read-only logical ZIP. For JMOD the stream's
 // origin follows the validated JMOD header, so offsets need no correction.
 struct ZipStream : mz_stream {
-  ZipStream(InputFile file, std::int64_t size) :
+  ZipStream(File file, std::int64_t size) :
       mz_stream{&callbacks, nullptr}, input(std::move(file)), physical_end(size) {
   }
   explicit ZipStream(std::vector<std::byte> bytes) :
@@ -131,6 +45,10 @@ struct ZipStream : mz_stream {
 
   [[nodiscard]] std::int64_t size() const {
     return physical_end - origin;
+  }
+
+  [[nodiscard]] std::int64_t visible_size() const {
+    return std::min(size(), visible_end);
   }
 
   [[nodiscard]] bool read_at(std::uint64_t offset, std::span<std::byte> out) {
@@ -162,8 +80,9 @@ struct ZipStream : mz_stream {
     return true;
   }
 
-  std::variant<InputFile, std::vector<std::byte>> input;
+  std::variant<File, std::vector<std::byte>> input;
   std::int64_t physical_end;
+  std::int64_t visible_end = INT64_MAX;
   std::int64_t origin = 0;
   std::int64_t cursor = 0;
   std::int64_t file_position = -1;
@@ -182,7 +101,7 @@ mz_stream_vtbl ZipStream::callbacks = {
       auto& input = self(stream);
       if (count < 0)
         return MZ_PARAM_ERROR;
-      const auto bytes = std::min<std::int64_t>(count, input.size() - input.cursor);
+      const auto bytes = std::min<std::int64_t>(count, input.visible_size() - input.cursor);
       if (!input.read_at(input.cursor, {static_cast<std::byte*>(buffer), static_cast<std::size_t>(bytes)}))
         return MZ_READ_ERROR;
       input.cursor += bytes;
@@ -193,9 +112,9 @@ mz_stream_vtbl ZipStream::callbacks = {
     .seek = [](void* stream, std::int64_t offset, std::int32_t origin) -> std::int32_t {
       auto& input = self(stream);
       const auto base = origin == MZ_SEEK_SET ? 0 : origin == MZ_SEEK_CUR ? input.cursor
-                                                                          : input.size();
+                                                                          : input.visible_size();
       if ((origin != MZ_SEEK_SET && origin != MZ_SEEK_CUR && origin != MZ_SEEK_END) ||
-          offset < -base || offset > input.size() - base)
+          offset < -base || offset > input.visible_size() - base)
         return MZ_SEEK_ERROR;
       input.cursor = base + offset;
       return MZ_OK;
@@ -282,23 +201,6 @@ std::expected<DirectoryBounds, ResolutionError> directory_bounds(ZipStream& inpu
       bounds.entries > bounds.size / CENTRAL_HEADER_SIZE || (bounds.entries == 0 && bounds.size != 0))
     return corrupt();
   return bounds;
-}
-
-bool safe_entry_name(std::string_view name, std::size_t max_depth) {
-  if (name.empty() || name.find('\0') != std::string_view::npos ||
-      name.find_first_of("\\:") != std::string_view::npos)
-    return false;
-  while (!name.empty()) {
-    const auto slash = name.find('/');
-    const auto component = name.substr(0, slash);
-    if (max_depth == 0 || component.empty() || component == "." || component == "..")
-      return false;
-    --max_depth;
-    if (slash == std::string_view::npos)
-      break;
-    name.remove_prefix(slash + 1);
-  }
-  return true;
 }
 
 struct ExtraFields {
@@ -407,12 +309,31 @@ struct ZipDeleter {
 
 } // namespace
 
+bool detail::safe_entry_name(std::string_view name, std::size_t max_depth) {
+  if (name.empty() || name.find('\0') != std::string_view::npos ||
+      name.find_first_of("\\:") != std::string_view::npos)
+    return false;
+  while (!name.empty()) {
+    const auto slash = name.find('/');
+    const auto component = name.substr(0, slash);
+    if (max_depth == 0 || component.empty() || component == "." || component == "..")
+      return false;
+    --max_depth;
+    if (slash == std::string_view::npos)
+      break;
+    name.remove_prefix(slash + 1);
+  }
+  return true;
+}
+
 struct ZipArchive::State {
   State(ZipStream input, std::filesystem::path path, SourceKind kind, ClassPathLimits limits) :
       input(std::move(input)), path(std::move(path)), kind(kind), limits(limits) {
   }
 
   [[nodiscard]] std::expected<void, ResolutionError> index();
+  [[nodiscard]] std::expected<void, ResolutionError> decode(
+      const ZipEntry& entry, std::size_t byte_limit, std::vector<std::byte>* result);
 
   ZipStream input;
   std::filesystem::path path;
@@ -450,7 +371,7 @@ std::expected<void, ResolutionError> ZipArchive::State::index() {
     return std::unexpected(bounds.error());
   // The original comment length was checked above. Hide the comment from
   // minizip's reverse signature search, which also matches bytes in comments.
-  input.physical_end = input.origin + static_cast<std::int64_t>(bounds->logical_end);
+  input.visible_end = static_cast<std::int64_t>(bounds->logical_end);
   constexpr std::size_t ENTRY_OVERHEAD = sizeof(ZipEntry) + 64;
   if (bounds->entries > limits.max_archive_entries ||
       bounds->entries > limits.max_archive_index_bytes / ENTRY_OVERHEAD)
@@ -558,7 +479,7 @@ std::expected<ZipArchive, ResolutionError> ZipArchive::open(
     const std::filesystem::path& path, SourceKind kind, const ClassPathLimits& limits) {
   if (path.native().find(std::filesystem::path::value_type{}) != std::filesystem::path::string_type::npos)
     return fail(ResolutionErrorKind::UnsafePath, path, "archive path contains NUL");
-  auto file = open_archive(path);
+  auto file = open_regular_file(path);
   if (!file)
     return fail(ResolutionErrorKind::IoError, path, "archive source is not a readable regular file");
   auto state = std::make_shared<State>(ZipStream(std::move(file->file), file->size), path, kind, limits);
@@ -595,6 +516,19 @@ std::expected<std::vector<std::byte>, ResolutionError> ZipArchive::read(std::str
   const auto entry = find(name);
   if (!entry || entry->directory)
     return fail(ResolutionErrorKind::NotFound, {}, source, "ZIP entry is absent");
+  std::vector<std::byte> result;
+  if (auto decoded = state->decode(*entry, byte_limit, &result); !decoded)
+    return std::unexpected(std::move(decoded.error()));
+  return result;
+}
+
+std::expected<void, ResolutionError> ZipArchive::verify(const ZipEntry& entry) const {
+  return state->decode(entry, state->limits.max_entry_uncompressed_bytes, nullptr);
+}
+
+std::expected<void, ResolutionError> ZipArchive::State::decode(
+    const ZipEntry& entry, std::size_t byte_limit, std::vector<std::byte>* result) {
+  const SourceProvenance source{kind, path, entry.name, {}};
   const auto corrupt = [&](std::string_view reason) {
     return fail(ResolutionErrorKind::ArchiveCorrupt, {}, source, reason);
   };
@@ -602,17 +536,16 @@ std::expected<std::vector<std::byte>, ResolutionError> ZipArchive::read(std::str
     return fail(ResolutionErrorKind::Cancelled, {}, source, "archive extraction cancelled");
   };
   constexpr std::uint16_t SUPPORTED_FLAGS = MZ_ZIP_FLAG_DATA_DESCRIPTOR | MZ_ZIP_FLAG_UTF8 | MZ_ZIP_FLAG_DEFLATE_SUPER_FAST;
-  if ((entry->flags & ~SUPPORTED_FLAGS) != 0)
+  if ((entry.flags & ~SUPPORTED_FLAGS) != 0)
     return fail(ResolutionErrorKind::UnsupportedArchiveFeature, {}, source, "encrypted or unsupported ZIP flags");
-  if (entry->method != MZ_COMPRESS_METHOD_STORE && entry->method != MZ_COMPRESS_METHOD_DEFLATE)
+  if (entry.method != MZ_COMPRESS_METHOD_STORE && entry.method != MZ_COMPRESS_METHOD_DEFLATE)
     return fail(ResolutionErrorKind::UnsupportedCompression, {}, source, "ZIP entry must be stored or deflated");
-  if ((entry->method == MZ_COMPRESS_METHOD_STORE && entry->compressed_size != entry->uncompressed_size) ||
-      (entry->method == MZ_COMPRESS_METHOD_DEFLATE && entry->compressed_size == 0))
+  if ((entry.method == MZ_COMPRESS_METHOD_STORE && entry.compressed_size != entry.uncompressed_size) ||
+      (entry.method == MZ_COMPRESS_METHOD_DEFLATE && entry.compressed_size == 0))
     return corrupt("invalid compressed size for ZIP entry");
 
-  const auto& limits = state->limits;
-  const auto size = entry->uncompressed_size;
-  const auto compressed = entry->compressed_size;
+  const auto size = entry.uncompressed_size;
+  const auto compressed = entry.compressed_size;
   const auto ratio = compressed == 0 ? 0 : (size / compressed + (size % compressed != 0));
   if (compressed > limits.max_entry_compressed_bytes ||
       size > std::min(limits.max_entry_uncompressed_bytes, byte_limit) || ratio > limits.max_compression_ratio)
@@ -622,30 +555,33 @@ std::expected<std::vector<std::byte>, ResolutionError> ZipArchive::read(std::str
 
   // Allocate before an entry is open so allocation failure also leaves the
   // shared ZIP handle ready for a later lookup.
-  std::vector<std::byte> result(static_cast<std::size_t>(size));
-  std::scoped_lock guard(state->mutex);
-  void* zip = state->handle.get();
+  if (result)
+    result->resize(static_cast<std::size_t>(size));
+  std::scoped_lock guard(mutex);
+  void* zip = handle.get();
   mz_zip_file* current = nullptr;
-  if (mz_zip_goto_entry(zip, entry->directory_offset) != MZ_OK || mz_zip_entry_get_info(zip, &current) != MZ_OK ||
-      current->filename_size != entry->name.size() || std::string_view(current->filename, current->filename_size) != entry->name ||
-      current->compression_method != entry->method || current->flag != entry->flags ||
-      current->crc != entry->crc || current->disk_offset != static_cast<std::int64_t>(entry->local_offset) ||
-      current->compressed_size != static_cast<std::int64_t>(entry->compressed_size) ||
-      current->uncompressed_size != static_cast<std::int64_t>(entry->uncompressed_size))
+  if (mz_zip_goto_entry(zip, entry.directory_offset) != MZ_OK || mz_zip_entry_get_info(zip, &current) != MZ_OK ||
+      current->filename_size != entry.name.size() || std::string_view(current->filename, current->filename_size) != entry.name ||
+      current->compression_method != entry.method || current->flag != entry.flags ||
+      current->crc != entry.crc || current->disk_offset != static_cast<std::int64_t>(entry.local_offset) ||
+      current->compressed_size != static_cast<std::int64_t>(entry.compressed_size) ||
+      current->uncompressed_size != static_cast<std::int64_t>(entry.uncompressed_size))
     return corrupt("ZIP entry changed since indexing");
   if (mz_zip_entry_read_open(zip, 0, nullptr) != MZ_OK)
     return corrupt("could not open ZIP entry");
 
+  std::array<std::byte, 64 * 1024> scratch;
   std::size_t offset = 0;
-  while (offset < result.size() && !limits.cancellation.stop_requested()) {
-    const auto request = static_cast<std::int32_t>(std::min<std::size_t>(64 * 1024, result.size() - offset));
-    const auto got = mz_zip_entry_read(zip, result.data() + offset, request);
+  while (offset < size && !limits.cancellation.stop_requested()) {
+    const auto request = static_cast<std::int32_t>(std::min<std::uint64_t>(scratch.size(), size - offset));
+    auto* target = result ? result->data() + offset : scratch.data();
+    const auto got = mz_zip_entry_read(zip, target, request);
     if (got <= 0 || got > request)
       break;
     offset += static_cast<std::size_t>(got);
   }
   std::byte extra;
-  const bool done = offset == result.size() && mz_zip_entry_read(zip, &extra, 1) == 0;
+  const bool done = offset == size && mz_zip_entry_read(zip, &extra, 1) == 0;
   void* stream = nullptr;
   std::int64_t used = -1;
   const bool compressed_size_matches = mz_zip_entry_get_compress_stream(zip, &stream) == MZ_OK &&
@@ -656,7 +592,78 @@ std::expected<std::vector<std::byte>, ResolutionError> ZipArchive::read(std::str
     return cancelled();
   if (!done || !compressed_size_matches || closed != MZ_OK)
     return corrupt("ZIP entry length, compressed stream or CRC does not match its index");
+  return {};
+}
+
+std::expected<ZipMetadata, ResolutionError> ZipArchive::metadata(const ZipEntry& entry) const {
+  std::scoped_lock guard(state->mutex);
+  auto& input = state->input;
+  const auto central_offset = static_cast<std::uint64_t>(entry.directory_offset);
+  std::array<std::byte, CENTRAL_HEADER_SIZE> central;
+  std::array<std::byte, LOCAL_HEADER_SIZE> local;
+  const auto corrupt = [&] {
+    return fail(ResolutionErrorKind::ArchiveCorrupt, {}, {state->kind, state->path, entry.name, {}},
+                "could not read indexed ZIP metadata");
+  };
+  if (!input.read_at(central_offset, central) || !input.read_at(entry.local_offset, local) ||
+      little_endian<std::uint32_t>(central, 0) != CENTRAL_HEADER_MAGIC ||
+      little_endian<std::uint32_t>(local, 0) != LOCAL_HEADER_MAGIC ||
+      little_endian<std::uint16_t>(central, 28) != entry.name.size() ||
+      little_endian<std::uint16_t>(local, 26) != entry.name.size())
+    return corrupt();
+
+  const auto local_extra_size = little_endian<std::uint16_t>(local, 28);
+  const auto central_extra_size = little_endian<std::uint16_t>(central, 30);
+  const auto comment_size = little_endian<std::uint16_t>(central, 32);
+  const auto local_extra_offset = entry.local_offset + local.size() + entry.name.size();
+  const auto central_extra_offset = central_offset + central.size() + entry.name.size();
+  ZipMetadata metadata{
+      little_endian<std::uint16_t>(central, 4),
+      little_endian<std::uint16_t>(central, 36),
+      little_endian<std::uint32_t>(central, 38),
+      little_endian<std::uint32_t>(local, 10),
+      little_endian<std::uint32_t>(central, 12),
+      local_extra_offset + local_extra_size,
+      std::vector<std::byte>(local_extra_size),
+      std::vector<std::byte>(central_extra_size),
+      std::vector<std::byte>(comment_size),
+  };
+  if (!input.read_at(local_extra_offset, metadata.local_extra) ||
+      !input.read_at(central_extra_offset, metadata.central_extra) ||
+      !input.read_at(central_extra_offset + central_extra_size, metadata.comment) ||
+      !extra_fields(metadata.local_extra).valid || !extra_fields(metadata.central_extra).valid)
+    return corrupt();
+  return metadata;
+}
+
+std::expected<std::vector<std::byte>, ResolutionError> ZipArchive::comment() const {
+  std::scoped_lock guard(state->mutex);
+  auto& input = state->input;
+  std::vector<std::byte> result(static_cast<std::size_t>(input.size() - input.visible_end));
+  if (!input.read_at(input.visible_end, result))
+    return fail(ResolutionErrorKind::IoError, state->path, "could not read the ZIP archive comment");
   return result;
+}
+
+std::expected<bool, ResolutionError> ZipArchive::copy_compressed(
+    const ZipEntry& entry, std::uint64_t offset, const ByteSink& sink) const {
+  std::scoped_lock guard(state->mutex);
+  std::array<std::byte, 64 * 1024> scratch;
+  for (std::uint64_t left = entry.compressed_size; left != 0;) {
+    if (state->limits.cancellation.stop_requested())
+      return fail(ResolutionErrorKind::Cancelled, {}, {state->kind, state->path, entry.name, {}},
+                  "archive copy cancelled");
+    const auto size = static_cast<std::size_t>(std::min<std::uint64_t>(left, scratch.size()));
+    const auto chunk = std::span(scratch).first(size);
+    if (!state->input.read_at(offset, chunk))
+      return fail(ResolutionErrorKind::IoError, {}, {state->kind, state->path, entry.name, {}},
+                  "could not read the indexed compressed payload");
+    if (!sink(chunk))
+      return false;
+    offset += size;
+    left -= size;
+  }
+  return true;
 }
 
 } // namespace cafe::archive

@@ -4,6 +4,7 @@
 #include <cstdint>
 #include <expected>
 #include <filesystem>
+#include <functional>
 #include <memory>
 #include <span>
 #include <string>
@@ -28,6 +29,20 @@ struct ZipEntry {
   [[nodiscard]] bool is_deflated() const;
 };
 
+struct ZipMetadata {
+  std::uint16_t made_by;
+  std::uint16_t internal_attributes;
+  std::uint32_t external_attributes;
+  std::uint32_t local_time;
+  std::uint32_t central_time;
+  std::uint64_t data_offset;
+  std::vector<std::byte> local_extra;
+  std::vector<std::byte> central_extra;
+  std::vector<std::byte> comment;
+};
+
+using ByteSink = std::function<bool(std::span<const std::byte>)>;
+
 class ZipArchive {
 public:
   [[nodiscard]] static std::expected<ZipArchive, classpath::ResolutionError> open(
@@ -41,6 +56,11 @@ public:
   [[nodiscard]] std::size_t index_size() const;
   [[nodiscard]] std::expected<std::vector<std::byte>, classpath::ResolutionError> read(
       std::string_view name, std::size_t byte_limit) const;
+  [[nodiscard]] std::expected<void, classpath::ResolutionError> verify(const ZipEntry& entry) const;
+  [[nodiscard]] std::expected<ZipMetadata, classpath::ResolutionError> metadata(const ZipEntry& entry) const;
+  [[nodiscard]] std::expected<std::vector<std::byte>, classpath::ResolutionError> comment() const;
+  [[nodiscard]] std::expected<bool, classpath::ResolutionError> copy_compressed(
+      const ZipEntry& entry, std::uint64_t offset, const ByteSink& sink) const;
 
 private:
   struct State;

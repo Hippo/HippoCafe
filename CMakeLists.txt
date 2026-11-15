@@ -70,7 +70,10 @@ add_library(hippocafe STATIC
   src/analysis/frame_merge.cpp
   src/analysis/instruction_effects.cpp
   src/analysis/max_locals.cpp
+  src/archive/archive.cpp
+  src/archive/archive_file.cpp
   src/archive/zip_archive.cpp
+  src/archive/zip_writer.cpp
   src/bytecode/code.cpp
   src/bytecode/instruction_builder.cpp
   src/bytecode/opcode_info.cpp

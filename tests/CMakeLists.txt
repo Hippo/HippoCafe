@@ -36,6 +36,22 @@ if(Java_FOUND)
   file(REAL_PATH "${Java_JAVAC_EXECUTABLE}" javac_executable)
   cmake_path(GET javac_executable PARENT_PATH java_bin_dir)
   cmake_path(GET java_bin_dir PARENT_PATH java_home)
+  find_program(hippocafe_jmod jmod HINTS "${java_bin_dir}" NO_DEFAULT_PATH)
+  if(Java_JAR_EXECUTABLE AND hippocafe_jmod)
+    add_executable(hippocafe_rewrite_archives integration/tools/rewrite_archives.cpp)
+    target_link_libraries(hippocafe_rewrite_archives PRIVATE hippocafe::hippocafe)
+    hippocafe_configure_target(hippocafe_rewrite_archives)
+    add_dependencies(hippocafe_rewrite_archives hippocafe_java_fixtures)
+    add_test(NAME hippocafe.jvm_archives COMMAND "${CMAKE_COMMAND}"
+      "-DREWRITE=$<TARGET_FILE:hippocafe_rewrite_archives>"
+      "-DJAVA=${Java_JAVA_EXECUTABLE}"
+      "-DJAR=${Java_JAR_EXECUTABLE}"
+      "-DJMOD=${hippocafe_jmod}"
+      "-DFIXTURES=${java_fixture_dir}"
+      "-DOUTPUT_DIR=${CMAKE_CURRENT_BINARY_DIR}/jvm-archives"
+      -P "${CMAKE_CURRENT_SOURCE_DIR}/integration/run_java_archives.cmake"
+    )
+  endif()
   set(jrt_fs_jar "${java_bin_dir}/../lib/jrt-fs.jar")
   if(EXISTS "${jrt_fs_jar}")
     set(jrt_fixture_dir "${CMAKE_CURRENT_BINARY_DIR}/jrt-fixtures")

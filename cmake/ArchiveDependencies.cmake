@@ -27,9 +27,9 @@ function(hippocafe_archive_dependencies)
   # interface path keeps the find module's inferred link directory private.
   set(ZLIB-NG_LIBRARY zlib)
   set(ZLIB-NG_INCLUDE_DIRS "$<BUILD_INTERFACE:${zlib-ng_BINARY_DIR}>")
-  set(MZ_ZLIB_FLAVOR "zlib-ng" CACHE STRING "Compression backend for the archive reader")
+  set(MZ_ZLIB_FLAVOR "zlib-ng" CACHE STRING "Compression backend for archives")
   set(MZ_ZLIB_FLAVOR "zlib-ng")
-  set(MZ_LIB_SUFFIX "-ng" CACHE STRING "Library name suffix for the archive reader")
+  set(MZ_LIB_SUFFIX "-ng" CACHE STRING "Library name suffix for archives")
   set(MZ_LIB_SUFFIX "-ng")
   set(MZ_ZLIB ON)
   foreach(option IN ITEMS MZ_COMPAT MZ_BZIP2 MZ_LZMA MZ_PPMD MZ_ZSTD MZ_LIBCOMP
@@ -37,7 +37,7 @@ function(hippocafe_archive_dependencies)
       MZ_COMPRESS_ONLY MZ_BUILD_TESTS MZ_BUILD_UNIT_TESTS MZ_BUILD_FUZZ_TESTS)
     set(${option} OFF)
   endforeach()
-  set(MZ_DECOMPRESS_ONLY ON)
+  set(MZ_DECOMPRESS_ONLY OFF)
   FetchContent_Declare(minizip-ng
     URL https://codeload.github.com/zlib-ng/minizip-ng/tar.gz/refs/tags/4.1.2
     URL_HASH SHA256=3738c742c663fda43f1e510b8eeef312917581a712c89cb253f682aaef8c732f

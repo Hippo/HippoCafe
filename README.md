@@ -1,6 +1,6 @@
 # HippoCafe
 
-HippoCafe is a C++23 library for inspecting, editing, and writing JVM class files. It keeps constant-pool indices and attribute order stable. Unchanged methods retain their original Code bytes, including verifier metadata, debug information, and unusual encodings.
+HippoCafe is a C++23 library for inspecting, editing, and writing JVM class files, JARs, and JMODs. It keeps class-file constant-pool indices and attribute order stable. Unchanged methods retain their original Code bytes, including verifier metadata, debug information, and unusual encodings.
 
 ## Build
 
@@ -41,6 +41,50 @@ The span overload copies the input once. The moved-vector overload keeps the ori
 The default compatible reader drops bounded malformed or version-inapplicable optional attributes and reports each recovery, subject to the diagnostic limit. It drops trailing bytes on reserialization. Strict mode reports these conditions as errors. Both modes reject attribute overruns, unknown constant tags, and unsafe essential references. Compatible reads can opt into opaque Code for framed methods with undecodable bytecode. Verbatim emission of opaque Code requires a separate writer opt-in.
 
 The library understands all standard constant tags and opcode forms, including the historical short Code header through version 45.2 and legacy subroutines through major version 50. It exposes typed Code, ConstantValue, Exceptions, SourceFile, Signature, BootstrapMethods, Synthetic, and Deprecated. Annotations, frames, debug tables, records, module and nest metadata, and vendor attributes remain opaque. The reader checks the structure of supported opaque bodies before retaining their bytes.
+
+## Edit a JAR or JMOD
+
+`cafe::archive::Archive` opens an archive from a path or an owned byte vector. Use `Archive::create(Format::Jar)` or `Archive::create(Format::Jmod)` to start an empty editor. `entries()`, `find()`, and `read()` see staged edits immediately. Names are case-sensitive, slash-separated paths. Use `add` or `replace` with bytes, `add_file` or `replace_file` to copy a local file, and `erase` to remove an exact entry. `add_directory` adds an explicit directory entry with a trailing slash.
+
+```cpp
+#include <hippo/cafe.hpp>
+
+using namespace cafe::archive;
+
+auto jar = Archive::open("input.jar", Format::Jar);
+if (!jar) {
+  report(jar.error());
+  return;
+}
+auto bytes = jar->read("example/Widget.class");
+if (!bytes) {
+  report(bytes.error());
+  return;
+}
+auto parsed = cafe::read_class(std::move(*bytes));
+if (!parsed) {
+  report(parsed.error());
+  return;
+}
+// Edit parsed->class_file here.
+auto rewritten = cafe::write_class(parsed->class_file);
+if (!rewritten) {
+  report(rewritten.error());
+  return;
+}
+if (auto replaced = jar->replace("example/Widget.class", rewritten->bytes); !replaced) {
+  report(replaced.error());
+  return;
+}
+if (auto saved = jar->save("output.jar"); !saved)
+  report(saved.error());
+```
+
+`write()` returns archive bytes. `save()` publishes a completed archive and fails if the destination exists. Use `SaveMode::ReplaceExisting` to replace the destination atomically. Keep the contents of an opened source file stable for the lifetime of the editor. An atomic same-path save keeps the original file available through existing readers.
+
+Retained entries keep their payloads, compression methods, timestamps, permissions, and comments. The writer regenerates ZIP headers and carries standard timestamp, ownership, and Unicode extra fields. New files default to Deflate, with Store available through `EntryOptions` and as a fallback when default compression would exceed a limit. `Limits` configures archive, staging, and decompression budgets and accepts a stop token.
+
+Supply a JAR's manifest and any multi-release entries as ordinary files. To save edits to an opened signed JAR, explicitly erase its top-level signature files under `META-INF/` before saving. A JMOD needs `classes/module-info.class` and permits entries under `classes/`, `bin/`, `lib/`, `conf/`, `include/`, `legal/`, and `man/`. Supply the module descriptor and any associated module metadata as entry bytes.
 
 ## Edit a method
 
