@@ -9,18 +9,26 @@ foreach(seed IN LISTS seeds)
   get_filename_component(seed_name "${seed}" NAME)
   configure_file("${seed}" "${seed_dir}/${seed_name}" COPYONLY)
 endforeach()
+set(archive_seed_dir "${CMAKE_CURRENT_BINARY_DIR}/archive-seeds")
+file(MAKE_DIRECTORY "${archive_seed_dir}")
+execute_process(COMMAND "${CMAKE_COMMAND}" -E tar cf "${archive_seed_dir}/classes.jar" --format=zip
+  LegacySubroutine.class DynamicConstant.class
+  WORKING_DIRECTORY "${seed_dir}" COMMAND_ERROR_IS_FATAL ANY
+)
 
 # FuzzTest builds Abseil as C++17, which changes the ABI of its source location
 # type. Keep registration in that mode and compile the properties as C++23.
 add_library(hippocafe_fuzz_properties STATIC properties.cpp)
 target_link_libraries(hippocafe_fuzz_properties PRIVATE hippocafe::hippocafe)
+target_include_directories(hippocafe_fuzz_properties PRIVATE "${PROJECT_SOURCE_DIR}/src")
 target_compile_options(hippocafe_fuzz_properties PRIVATE -fsanitize-coverage=pc-table)
 hippocafe_configure_target(hippocafe_fuzz_properties)
 
-add_executable(hippocafe_fuzz class_reader_fuzz.cpp roundtrip_fuzz.cpp)
+add_executable(hippocafe_fuzz analysis_fuzz.cpp class_reader_fuzz.cpp roundtrip_fuzz.cpp)
 set_target_properties(hippocafe_fuzz PROPERTIES CXX_STANDARD 17 CXX_STANDARD_REQUIRED ON)
 target_link_libraries(hippocafe_fuzz PRIVATE hippocafe_fuzz_properties)
-target_compile_definitions(hippocafe_fuzz PRIVATE HIPPOCAFE_FUZZ_SEED_DIR="${seed_dir}")
+target_compile_definitions(hippocafe_fuzz PRIVATE HIPPOCAFE_FUZZ_SEED_DIR="${seed_dir}"
+  HIPPOCAFE_ARCHIVE_SEED_DIR="${archive_seed_dir}")
 link_fuzztest(hippocafe_fuzz)
 hippocafe_configure_target(hippocafe_fuzz)
 

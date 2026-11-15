@@ -12,7 +12,7 @@ ctest --preset debug
 
 The library target is `hippocafe::hippocafe`. Installed consumers use `find_package(HippoCafe CONFIG REQUIRED)` and link the same target. A library-only build can set `BUILD_TESTING=OFF` and `HIPPOCAFE_BUILD_EXAMPLES=OFF`.
 
-The test and fuzz builds fetch pinned GoogleTest and FuzzTest dependencies with CMake FetchContent. The `sanitized` preset uses Clang with ASan and UBSan. The `release-benchmarks` preset builds the benchmark executable. See the [fixture manifest](tests/fixtures/README.md) for the supplied and generated test inputs.
+The build fetches pinned minizip-ng and zlib-ng releases with CMake FetchContent. Test and fuzz builds also fetch pinned GoogleTest and FuzzTest dependencies. The `sanitized` preset uses Clang with ASan and UBSan. The `release-benchmarks` preset measures parsing, analysis, memory use, and writer throughput. Pass a Java home as the third benchmark argument to include runtime archive indexing and hierarchy lookups. See the [fixture manifest](tests/fixtures/README.md) for the supplied and generated test inputs.
 
 ## Read and write
 
@@ -63,9 +63,38 @@ if (!inserted)
 
 `append`, `insert_before`, and `insert_at` each accept a block and apply it atomically in input order. A failure reports its cause and, when applicable, the zero-based position in the patch. `insert_before` keeps labels on the original anchor. A successful, nonempty `insert_at` rebinds the selected label to the first inserted instruction. The writer selects `wide` automatically for the local load.
 
-`write_class` preserves the original encodings by default. `force_reencode` exercises the instruction encoder. A change to code or its layout requires fresh metadata from `CodeAttribute::supply_metadata` and the `CallerSuppliedMetadata` write policy. The supplied metadata covers the current instruction revision and the chosen output encoding. The caller supplies stack and local limits, handlers, and any required frames and offset-bearing attributes.
+`write_class` preserves the original encodings by default. `force_reencode` exercises the instruction encoder. In preservation mode a change to code or its layout requires fresh metadata from `CodeAttribute::supply_metadata` and the `CallerSuppliedMetadata` write policy. The supplied metadata covers the current instruction revision and the chosen output encoding. The caller supplies stack and local limits, handlers, and any required frames and offset-bearing attributes.
 
 Use `erase_method(index)` and `erase_field(index)` to remove declarations. Later indices shift down, and the constant pool retains its slots. Update any code that refers to a removed declaration as part of the edit.
+
+## Compute verification metadata
+
+Build an explicit classpath-style resolution context with in-memory classes, class directories, JARs, and JMODs. `add_java_home` discovers JMODs in a modular JDK or runtime JARs in a legacy JDK. Register the runtime you are targeting. Call `set_target_release` to select multi-release JAR entries and enforce the corresponding class-version ceiling. Source order is in-memory classes, application dependencies, then runtime dependencies. The resolver lazily caches hierarchy metadata for that snapshot.
+
+```cpp
+cafe::classpath::ClassPathBuilder builder;
+builder.set_target_release(21);
+if (auto added = builder.add_java_home("/path/to/jdk-21"); !added) {
+  report(added.error());
+  return;
+}
+cafe::analysis::AnalysisContext context{
+    cafe::classpath::ClassHierarchy{cafe::classpath::ClassResolver{builder.build()}},
+};
+auto output = cafe::write_class(
+    parsed->class_file, {.code_analysis = cafe::CodeAnalysisMode::ComputeFrames}, context);
+if (!output) {
+  report(output.error());
+  return;
+}
+save(output->bytes);
+```
+
+`build_cfg`, `compute_max_locals`, `compute_max_stack`, and `compute_frames` are also available directly under `cafe::analysis`. A CFG result can check its instruction revision and exception table with `is_current`. The frame result's owner, method, and context overload also checks the class declaration and hierarchy snapshot.
+
+`ComputeFrames` recomputes both limits and emits stack maps for modern class versions. It remaps debug and type annotation offsets on decoded Code and reports unsafe attributes. Set `drop_unsafe_code_attributes` to drop those attributes with a diagnostic. `ComputeMaxs` computes the limits without a hierarchy. When it reuses an existing stack map it preserves the declared bounds required by that table. Editing modern Code that needs a new stack map requires `ComputeFrames`.
+
+The analysis profile covers major versions 45–69. Legacy subroutines and unreachable code that needs a modern frame return structured analysis errors. Reference joins with incomparable interfaces try a bounded set of candidate types and check subsequent instruction uses. When the candidates cannot satisfy the analyzed uses, the join reports a structured error. The target JVM still performs member linkage and loader and module access checks.
 
 ## Fuzz
 
@@ -74,7 +103,7 @@ cmake --preset fuzz
 cmake --build --preset fuzz
 build/fuzz/fuzz/hippocafe_fuzz --fuzz_for=10s
 mkdir -p build/fuzz/fuzz/mutated
-build/fuzz/fuzz/hippocafe_libfuzzer -seed=314159 -runs=5000 build/fuzz/fuzz/mutated build/fuzz/fuzz/seeds
+build/fuzz/fuzz/hippocafe_libfuzzer -seed=314159 -runs=5000 build/fuzz/fuzz/mutated build/fuzz/fuzz/seeds build/fuzz/fuzz/archive-seeds
 ```
 
 The round-trip example is available as `hippocafe_roundtrip input.class output.class`. The structural inspection example is `hippocafe_inspect_class input.class`.

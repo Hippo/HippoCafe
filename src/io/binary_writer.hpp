@@ -48,14 +48,22 @@ public:
   }
 
   [[nodiscard]] bool patch_u4(std::size_t offset, std::uint32_t value) noexcept {
-    if (offset > size() || 4 > size() - offset)
-      return false;
-    for (unsigned i = 0; i < 4; ++i)
-      output[offset + i] = static_cast<std::byte>((value >> ((3 - i) * 8)) & 0xffu);
-    return true;
+    return patch_unsigned(offset, value);
+  }
+  [[nodiscard]] bool patch_u2(std::size_t offset, std::uint16_t value) noexcept {
+    return patch_unsigned(offset, value);
   }
 
 private:
+  template<typename Value>
+  bool patch_unsigned(std::size_t offset, Value value) noexcept {
+    if (offset > size() || sizeof(Value) > size() - offset)
+      return false;
+    for (std::size_t i = 0; i < sizeof(Value); ++i)
+      output[offset + i] = static_cast<std::byte>((value >> ((sizeof(Value) - 1 - i) * 8)) & 0xffu);
+    return true;
+  }
+
   template<typename Value>
   void write_unsigned(Value value) {
     for (std::size_t i = sizeof(Value); i > 0; --i)

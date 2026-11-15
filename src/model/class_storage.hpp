@@ -1,5 +1,6 @@
 #pragma once
 
+#include <atomic>
 #include <limits>
 #include <memory_resource>
 #include <utility>
@@ -10,6 +11,16 @@
 #include "budget_resource.hpp"
 
 namespace cafe::detail {
+
+inline std::uint64_t next_declaration_revision() noexcept {
+  static std::atomic<std::uint64_t> counter{1};
+  auto next = counter.load(std::memory_order_relaxed);
+  while (next != std::numeric_limits<std::uint64_t>::max()) {
+    if (counter.compare_exchange_weak(next, next + 1, std::memory_order_relaxed))
+      return next;
+  }
+  return 0;
+}
 
 struct ClassStorage {
   ClassStorage(std::vector<std::byte> source, std::pmr::memory_resource* upstream,
@@ -32,6 +43,7 @@ struct ClassStorage {
   const std::vector<std::byte> source;
 
   ClassVersion version;
+  std::uint64_t declaration_stamp = next_declaration_revision();
   std::uint16_t flags = 0;
   CpIndex this_class;
   CpIndex super_class;

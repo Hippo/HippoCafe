@@ -4,6 +4,8 @@
 #include <type_traits>
 #include <utility>
 
+#include <cafe/analysis/context.hpp>
+
 #include "../detail/member_signature.hpp"
 #include "class_format.hpp"
 #include "class_writer_impl.hpp"
@@ -11,10 +13,14 @@
 
 namespace cafe::detail {
 
-ClassWriter::ClassWriter(const ClassFile& model, const WriteOptions& options) : model(model), options(options), pool(model.constant_pool()), version(model.version()), output(result.bytes) {
+ClassWriter::ClassWriter(const ClassFile& model, const WriteOptions& options, analysis::AnalysisContext* analysis_context) :
+    model(model), options(options), analysis_context(analysis_context), pool(model.constant_pool()), version(model.version()),
+    analysis_budget(analysis_context ? analysis_context->limits().upstream_resource : std::pmr::get_default_resource(),
+                    analysis_context ? analysis_context->limits().max_memory_bytes : analysis::AnalysisLimits{}.max_memory_bytes),
+    stack_map_constants(pool, &analysis_budget), output(result.bytes) {
 }
 
-std::expected<WriteResult, WriteError> ClassWriter::write() {
+std::expected<WriteResult, WriteError> ClassWriter::write() try {
   if (version.major < 45 || !version.has_legal_minor())
     return write_error(WriteErrorKind::UnsupportedDialect, "class.version", "unsupported declared class version");
   if (const auto* issue = class_identity_issue(pool, version, model.access_flags(), model.this_class(), model.super_class()))
@@ -40,6 +46,7 @@ std::expected<WriteResult, WriteError> ClassWriter::write() {
   output.u2(version.major);
   if (const auto written = write_constant_pool(); !written)
     return std::unexpected(written.error());
+  const auto constant_pool_end = output.size();
   output.u2(model.access_flags());
   output.u2(model.this_class().value);
   output.u2(model.super_class().value);
@@ -56,7 +63,20 @@ std::expected<WriteResult, WriteError> ClassWriter::write() {
     return std::unexpected(written.error());
   if (const auto written = write_attributes(model.attributes(), {AttributeContext::Class, ""}); !written)
     return std::unexpected(written.error());
+  if (const auto extra = stack_map_constants.bytes(); !extra.empty()) {
+    result.bytes.insert(result.bytes.begin() + static_cast<std::ptrdiff_t>(constant_pool_end),
+                        extra.begin(), extra.end());
+    constexpr std::size_t CONSTANT_POOL_COUNT_OFFSET = 8;
+    if (!output.patch_u2(CONSTANT_POOL_COUNT_OFFSET, stack_map_constants.count()))
+      return write_error(WriteErrorKind::InvalidClassModel, "constant_pool", "could not finalize constant pool count");
+    for (auto& diagnostic : result.diagnostics) {
+      if (diagnostic.offset >= constant_pool_end)
+        diagnostic.offset += extra.size();
+    }
+  }
   return std::move(result);
+} catch (const BudgetExceeded&) {
+  return write_error(WriteErrorKind::ResourceLimitExceeded, "class", "write analysis exceeded its memory limit");
 }
 
 template<typename Member>
@@ -84,7 +104,9 @@ std::expected<void, WriteError> ClassWriter::write_members(std::span<const Membe
     if (members.size() > 1)
       keys.push_back({*name, *desc, i, 0});
     const bool code_required = METHOD && needs_code(member.access_flags(), *name);
+    const Method* method = nullptr;
     if constexpr (METHOD) {
+      method = &member;
       if (code_required && !member.code() && !member.opaque_code())
         return write_error(WriteErrorKind::InvalidClassModel, path, "concrete method lacks Code");
     }
@@ -97,7 +119,8 @@ std::expected<void, WriteError> ClassWriter::write_members(std::span<const Membe
                                                .descriptor = *desc,
                                                .code_required = code_required,
                                                .is_static = is_static_method(member.access_flags(), *name),
-                                               .annotation_element = METHOD && is_annotation_element(model.access_flags(), member.access_flags(), *desc)});
+                                               .annotation_element = METHOD && is_annotation_element(model.access_flags(), member.access_flags(), *desc),
+                                               .method = method});
         !written)
       return written;
   }
@@ -183,6 +206,11 @@ namespace cafe {
 
 std::expected<WriteResult, WriteError> write_class(const ClassFile& class_file, const WriteOptions& options) {
   return detail::ClassWriter(class_file, options).write();
+}
+
+std::expected<WriteResult, WriteError> write_class(const ClassFile& class_file, const WriteOptions& options,
+                                                   analysis::AnalysisContext& context) {
+  return detail::ClassWriter(class_file, options, &context).write();
 }
 
 } // namespace cafe

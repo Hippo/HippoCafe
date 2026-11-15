@@ -23,6 +23,7 @@ enum class DiagnosticCode {
   TrailingBytes,
   OpaqueEssentialCode,
   DiagnosticsSuppressed,
+  DroppedUnsafeCodeAttribute,
 };
 
 struct Diagnostic {
@@ -82,6 +83,17 @@ enum class WriteErrorKind {
   UnstableLayout,
   InvalidCodeLayout,
   InvalidInstruction,
+  NeedsFrameComputation,
+  MissingAnalysisContext,
+  StaleAnalysisResult,
+  ClassResolutionFailure,
+  InvalidStackShape,
+  InvalidVerificationFrame,
+  UnmappedCodeOffset,
+  StackMapOffsetOverflow,
+  UnrepresentableFrame,
+  UnsupportedSubroutineAnalysis,
+  Cancelled,
 };
 
 struct WriteError {

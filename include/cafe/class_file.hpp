@@ -56,6 +56,9 @@ public:
   [[nodiscard]] CpIndex this_class() const noexcept;
   [[nodiscard]] CpIndex super_class() const noexcept;
   [[nodiscard]] ClassValidity validity() const noexcept;
+  // Identifies the current class declaration, including direct interfaces
+  // and declared members. Bytecode and attribute edits use their own tracking.
+  [[nodiscard]] std::uint64_t declaration_revision() const noexcept;
   [[nodiscard]] ConstantPool& constant_pool() noexcept;
   [[nodiscard]] const ConstantPool& constant_pool() const noexcept;
 

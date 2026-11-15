@@ -35,6 +35,7 @@ if(Java_FOUND)
   # The installed OpenJDK JAR is exercised in the build tree with no vendored copy.
   file(REAL_PATH "${Java_JAVAC_EXECUTABLE}" javac_executable)
   cmake_path(GET javac_executable PARENT_PATH java_bin_dir)
+  cmake_path(GET java_bin_dir PARENT_PATH java_home)
   set(jrt_fs_jar "${java_bin_dir}/../lib/jrt-fs.jar")
   if(EXISTS "${jrt_fs_jar}")
     set(jrt_fixture_dir "${CMAKE_CURRENT_BINARY_DIR}/jrt-fixtures")
@@ -51,6 +52,49 @@ if(Java_FOUND)
       "-DFIXTURE_DIR=${fixture_dir}"
       "-DOUTPUT_DIR=${CMAKE_CURRENT_BINARY_DIR}/jvm-roundtrip"
       -P "${CMAKE_CURRENT_SOURCE_DIR}/integration/run_java.cmake"
+    )
+  endif()
+
+  find_program(hippocafe_jimage jimage HINTS "${java_bin_dir}" NO_DEFAULT_PATH)
+  if(EXISTS "${java_home}/jmods/java.base.jmod" OR
+     EXISTS "${java_home}/jre/lib/rt.jar" OR EXISTS "${java_home}/lib/rt.jar" OR
+     (hippocafe_jimage AND EXISTS "${java_home}/lib/modules"))
+    set(analysis_fixtures "${CMAKE_CURRENT_BINARY_DIR}/analysis-fixtures")
+    set(analysis_sources "${fixture_dir}/java/AnalysisFixture.java"
+        "${CMAKE_CURRENT_SOURCE_DIR}/integration/VerifyAnalysis.java")
+    set(generated_verifier "${CMAKE_CURRENT_SOURCE_DIR}/integration/VerifyGenerated.java")
+    add_custom_command(OUTPUT "${analysis_fixtures}/AnalysisFixture.class"
+      COMMAND "${CMAKE_COMMAND}" -E make_directory "${analysis_fixtures}"
+      COMMAND "${Java_JAVAC_EXECUTABLE}" --release 17 -g -d "${analysis_fixtures}" ${analysis_sources}
+      COMMAND "${Java_JAVAC_EXECUTABLE}" --release 8 -Xlint:-options -d "${analysis_fixtures}" "${generated_verifier}"
+      BYPRODUCTS
+        "${analysis_fixtures}/AnalysisFixture$Marked.class"
+        "${analysis_fixtures}/AnalysisFixture$Score.class"
+        "${analysis_fixtures}/AnalysisFixture$Left.class"
+        "${analysis_fixtures}/AnalysisFixture$Right.class"
+        "${analysis_fixtures}/AnalysisFixture$First.class"
+        "${analysis_fixtures}/AnalysisFixture$Second.class"
+        "${analysis_fixtures}/AnalysisFixture$BothLeft.class"
+        "${analysis_fixtures}/AnalysisFixture$BothRight.class"
+        "${analysis_fixtures}/VerifyAnalysis.class"
+        "${analysis_fixtures}/VerifyGenerated.class"
+      DEPENDS ${analysis_sources} "${generated_verifier}"
+      VERBATIM
+    )
+    add_custom_target(hippocafe_analysis_fixtures DEPENDS "${analysis_fixtures}/AnalysisFixture.class")
+    add_executable(hippocafe_rewrite_for_jvm integration/tools/rewrite_for_jvm.cpp)
+    target_link_libraries(hippocafe_rewrite_for_jvm PRIVATE hippocafe::hippocafe)
+    target_include_directories(hippocafe_rewrite_for_jvm PRIVATE "${PROJECT_SOURCE_DIR}/src")
+    hippocafe_configure_target(hippocafe_rewrite_for_jvm)
+    add_dependencies(hippocafe_rewrite_for_jvm hippocafe_analysis_fixtures)
+    add_test(NAME hippocafe.jvm_analysis COMMAND "${CMAKE_COMMAND}"
+      "-DREWRITE=$<TARGET_FILE:hippocafe_rewrite_for_jvm>"
+      "-DJAVA=${Java_JAVA_EXECUTABLE}"
+      "-DJAVA_HOME=${java_home}"
+      "-DJIMAGE=${hippocafe_jimage}"
+      "-DFIXTURE_DIR=${analysis_fixtures}"
+      "-DOUTPUT_DIR=${CMAKE_CURRENT_BINARY_DIR}/jvm-analysis"
+      -P "${CMAKE_CURRENT_SOURCE_DIR}/integration/run_java_analysis.cmake"
     )
   endif()
 endif()

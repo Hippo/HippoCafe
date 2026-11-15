@@ -164,6 +164,8 @@ std::expected<void, WriteError> ClassWriter::write_attribute_body(
       if (const auto* code = attribute.get<CodeAttribute>())
         return write_code(*code, location, path);
       if (const auto* opaque = attribute.get<OpaqueCode>()) {
+        if (options.code_analysis != CodeAnalysisMode::Preserve)
+          return write_error(WriteErrorKind::UnsupportedOpaqueCode, path, "opaque Code cannot be analyzed");
         if (!options.allow_opaque_code || options.force_reencode || !options.preserve_original_encodings)
           return write_error(WriteErrorKind::UnsupportedOpaqueCode, path, "opaque Code requires explicit verbatim emission");
         const auto bytes = model.source_slice(opaque->body);

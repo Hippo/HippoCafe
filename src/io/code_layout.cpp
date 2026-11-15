@@ -75,7 +75,8 @@ std::optional<std::uint32_t> CodeLayout::offset_of(LabelId id) const {
 std::expected<CodeLayout, WriteError> layout_code(const MethodCode& code, ClassVersion version,
                                                   const ConstantPool& pool, std::uint16_t max_locals,
                                                   bool preserve_original_encodings,
-                                                  std::pmr::memory_resource* scratch, std::string_view path) {
+                                                  std::pmr::memory_resource* scratch, std::string_view path,
+                                                  bool expand_conditionals) {
   auto fail = [&](WriteErrorKind kind, std::string_view reason) {
     return std::unexpected(WriteError{kind, std::string(path), std::string(reason)});
   };
@@ -182,11 +183,19 @@ std::expected<CodeLayout, WriteError> layout_code(const MethodCode& code, ClassV
     for (auto branch : branches) {
       auto& wire = layout.encodings[branch.source];
       auto displacement = static_cast<std::int64_t>(layout.offsets[branch.target]) - layout.offsets[branch.source];
-      if (opcode_info(wire).form == OperandForm::BranchInt || std::in_range<std::int16_t>(displacement))
+      if (layout.expanded(branch.source) || opcode_info(wire).form == OperandForm::BranchInt ||
+          std::in_range<std::int16_t>(displacement))
         continue;
       if (can_widen(wire)) {
         wire = wide_branch(wire);
         widths[branch.source] = opcode_info(wire).wire_width;
+        changed = true;
+      } else if (expand_conditionals && branch.source + 1 < count) {
+        if (layout.expanded_conditionals.empty())
+          layout.expanded_conditionals.resize(count);
+        layout.expanded_conditionals[branch.source] = 1;
+        // Inverted if<cond> skips the five-byte goto_w to the fallthrough.
+        widths[branch.source] = 8;
         changed = true;
       } else {
         conditional_overflow = true;

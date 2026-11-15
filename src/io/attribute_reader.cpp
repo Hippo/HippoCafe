@@ -199,7 +199,7 @@ std::expected<Attribute, ReadError> ClassReader::decode_attribute(
     default: {
       const auto slice = source_slice_of(body.offset(), body.remaining());
       const auto checked = validate_opaque_attribute(body, spec, location.context, pool, options.limits,
-                                                     path, location.code, &storage->budget);
+                                                     path, location.code, &storage->budget, location.offsets);
       if (!checked)
         return std::unexpected(checked.error());
       return Attribute(name, spec.kind, RawAttribute(slice));
@@ -303,10 +303,27 @@ std::expected<Attribute, ReadError> ClassReader::read_code(
   }
   const auto exception_slice = source_slice_of(exception_offset, body.offset() - exception_offset);
   const CodeAttributeContext context{*bytes, boundaries->instruction_starts(), *locals, *count};
+  const CodeOffsetVisitor offsets{&*boundaries, [](void* state, CodeOffsetField& field) {
+                                    auto& decoded = *static_cast<DecodedBoundaries*>(state);
+                                    if (field.kind != CodeOffsetField::Kind::Handler)
+                                      decoded.retain_metadata_boundary(field.value);
+                                    if (field.kind == CodeOffsetField::Kind::Range)
+                                      decoded.retain_metadata_boundary(std::size_t(field.value) + field.length);
+                                    return true;
+                                  }};
   const auto result = read_attributes(body, code.nested_attributes,
-                                      {.context = AttributeContext::Code, .path = path, .code = &context});
+                                      {.context = AttributeContext::Code, .path = path, .code = &context, .offsets = offsets});
   if (!result)
     return std::unexpected(result.error());
+  if (const auto count = boundaries->metadata_boundary_count(); count != 0) {
+    code.original_boundaries.reserve(count);
+    for (std::size_t index = 0; index < bytes->size(); ++index) {
+      if (const auto ordinal = boundaries->metadata_ordinal(index)) {
+        const auto id = code.instructions.at(*ordinal);
+        code.original_boundaries.push_back({static_cast<std::uint16_t>(index), id, *code.instructions.get(id)});
+      }
+    }
+  }
   code.original = CodeAttribute::OriginalCode{original, source_slice_of(offset, *code_size), exception_slice, *result};
   return attribute;
 }

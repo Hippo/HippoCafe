@@ -28,13 +28,30 @@ struct CodeAttributeContext {
   std::uint16_t exception_count;
 };
 
+struct CodeOffsetField {
+  enum class Kind { Line,
+                    Range,
+                    InstructionAnnotation,
+                    Handler };
+  Kind kind;
+  std::size_t position;
+  std::uint16_t value;
+  std::uint16_t length = 0;
+};
+
+struct CodeOffsetVisitor {
+  void* state = nullptr;
+  bool (*visit)(void*, CodeOffsetField&) = nullptr;
+};
+
 // The caller gates version and context before validating the bounded body.
 // Validated attributes still retain their complete original bytes.
 [[nodiscard]] std::expected<void, ReadError> validate_opaque_attribute(
     BinaryReader& body, const AttributeSpec& spec, AttributeContext context,
     const ConstantPool& cp, const ReadLimits& limits, std::string_view path,
     const CodeAttributeContext* code = nullptr,
-    std::pmr::memory_resource* scratch = std::pmr::get_default_resource());
+    std::pmr::memory_resource* scratch = std::pmr::get_default_resource(),
+    CodeOffsetVisitor offsets = {});
 
 } // namespace detail
 } // namespace cafe

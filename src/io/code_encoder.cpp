@@ -9,6 +9,21 @@
 #include "code_operands.hpp"
 
 namespace cafe::detail {
+namespace {
+
+std::optional<Opcode> inverse_condition(Opcode opcode) {
+  if (opcode >= Opcode::IfEq && opcode <= Opcode::IfACmpNe) {
+    const auto base = std::to_underlying(Opcode::IfEq);
+    return static_cast<Opcode>(base + ((std::to_underlying(opcode) - base) ^ 1));
+  }
+  if (opcode == Opcode::IfNull)
+    return Opcode::IfNonNull;
+  if (opcode == Opcode::IfNonNull)
+    return Opcode::IfNull;
+  return std::nullopt;
+}
+
+} // namespace
 
 EncodedCode::EncodedCode(CodeLayout layout, std::pmr::memory_resource* scratch) :
     layout(std::move(layout)), output(scratch), starts(this->layout.offsets.back(), scratch) {
@@ -18,8 +33,9 @@ EncodedCode::EncodedCode(CodeLayout layout, std::pmr::memory_resource* scratch) 
 std::expected<EncodedCode, WriteError> encode_code(const MethodCode& code, ClassVersion version,
                                                    const ConstantPool& pool, std::uint16_t max_locals,
                                                    bool preserve_original_encodings,
-                                                   std::pmr::memory_resource* scratch, std::string_view path) {
-  auto layout = layout_code(code, version, pool, max_locals, preserve_original_encodings, scratch, path);
+                                                   std::pmr::memory_resource* scratch, std::string_view path,
+                                                   bool expand_conditionals) {
+  auto layout = layout_code(code, version, pool, max_locals, preserve_original_encodings, scratch, path, expand_conditionals);
   if (!layout)
     return std::unexpected(std::move(layout.error()));
 
@@ -48,6 +64,18 @@ std::expected<EncodedCode, WriteError> encode_code(const MethodCode& code, Class
     };
 
     encoded.starts[offset] = 1;
+    if (encoded.layout.expanded(i)) {
+      const auto inverse = inverse_condition(wire);
+      if (!inverse)
+        return std::unexpected(WriteError{WriteErrorKind::InvalidCodeLayout, std::string(path),
+                                          "cannot invert the conditional branch"});
+      writer.u1(std::to_underlying(*inverse));
+      writer.s2(8);
+      encoded.starts[offset + 3] = 1;
+      writer.u1(std::to_underlying(Opcode::GotoW));
+      writer.s4(displacement(*code.branch_target(id)) - 3);
+      continue;
+    }
     writer.u1(static_cast<std::uint8_t>(wire));
     switch (opcode_info(wire).form) {
       case OperandForm::None:

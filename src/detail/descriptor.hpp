@@ -20,44 +20,112 @@ inline bool valid_class_name(std::string_view name) noexcept {
   }
 }
 
-// Consume one field type and return the number of local/argument slots.
-inline std::optional<unsigned> consume_field_type(std::string_view& text) noexcept {
-  const auto type = text.find_first_not_of('[');
-  if (type == std::string_view::npos || type > 255)
-    return std::nullopt;
-  text.remove_prefix(type);
-  const char tag = text.front();
-  text.remove_prefix(1);
-  if (tag == 'L') {
-    const auto end = text.find(';');
-    if (end == std::string_view::npos || !valid_class_name(text.substr(0, end)))
-      return std::nullopt;
-    text.remove_prefix(end + 1);
-  } else if (std::string_view("BCDFIJSZ").find(tag) == std::string_view::npos) {
-    return std::nullopt;
+enum class DescriptorKind { Void,
+                            Integer,
+                            Float,
+                            Long,
+                            Double,
+                            Reference };
+
+struct DescriptorType {
+  DescriptorKind kind;
+  // The internal name for classes and the full descriptor for arrays.
+  std::string_view reference = {};
+
+  [[nodiscard]] unsigned width() const noexcept {
+    switch (kind) {
+      case DescriptorKind::Void:
+        return 0;
+      case DescriptorKind::Long:
+      case DescriptorKind::Double:
+        return 2;
+      default:
+        return 1;
+    }
   }
-  return type == 0 && (tag == 'D' || tag == 'J') ? 2u : 1u;
+};
+
+inline std::optional<DescriptorType> parse_field_type(std::string_view& text) noexcept {
+  const auto rank = text.find_first_not_of('[');
+  if (rank == std::string_view::npos || rank > 255)
+    return std::nullopt;
+  const auto tag = text[rank];
+  auto end = rank + 1;
+  DescriptorType type{DescriptorKind::Integer};
+  if (tag == 'L') {
+    const auto semicolon = text.find(';', end);
+    if (semicolon == std::string_view::npos || !valid_class_name(text.substr(end, semicolon - end)))
+      return std::nullopt;
+    type = {DescriptorKind::Reference, text.substr(end, semicolon - end)};
+    end = semicolon + 1;
+  } else {
+    switch (tag) {
+      case 'B':
+      case 'C':
+      case 'I':
+      case 'S':
+      case 'Z':
+        break;
+      case 'F':
+        type.kind = DescriptorKind::Float;
+        break;
+      case 'J':
+        type.kind = DescriptorKind::Long;
+        break;
+      case 'D':
+        type.kind = DescriptorKind::Double;
+        break;
+      default:
+        return std::nullopt;
+    }
+  }
+  if (rank != 0)
+    type = {DescriptorKind::Reference, text.substr(0, end)};
+  text.remove_prefix(end);
+  return type;
+}
+
+inline std::optional<unsigned> consume_field_type(std::string_view& text) noexcept {
+  if (const auto type = parse_field_type(text))
+    return type->width();
+  return std::nullopt;
 }
 
 inline bool valid_field_descriptor(std::string_view text) noexcept {
-  return consume_field_type(text).has_value() && text.empty();
+  return parse_field_type(text).has_value() && text.empty();
 }
 
-inline std::optional<unsigned> method_parameter_slots(std::string_view text) noexcept {
+struct MethodDescriptor {
+  unsigned parameter_slots;
+  DescriptorType return_type;
+};
+
+template<typename Parameter>
+inline std::optional<MethodDescriptor> parse_method_descriptor(std::string_view text, Parameter parameter) {
   if (!text.starts_with('('))
     return std::nullopt;
   text.remove_prefix(1);
   unsigned slots = 0;
   while (!text.starts_with(')')) {
-    const auto width = consume_field_type(text);
-    if (!width || *width > 255 - slots)
+    const auto type = parse_field_type(text);
+    if (!type || type->width() > 255 - slots)
       return std::nullopt;
-    slots += *width;
+    slots += type->width();
+    parameter(*type);
   }
   text.remove_prefix(1);
-  if (text != "V" && !valid_field_descriptor(text))
-    return std::nullopt;
-  return slots;
+  if (text == "V")
+    return MethodDescriptor{slots, {DescriptorKind::Void}};
+  const auto result = parse_field_type(text);
+  if (result && text.empty())
+    return MethodDescriptor{slots, *result};
+  return std::nullopt;
+}
+
+inline std::optional<unsigned> method_parameter_slots(std::string_view text) noexcept {
+  if (const auto parsed = parse_method_descriptor(text, [](DescriptorType) {}))
+    return parsed->parameter_slots;
+  return std::nullopt;
 }
 
 inline bool valid_method_name(std::string_view name) noexcept {

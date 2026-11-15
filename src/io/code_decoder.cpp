@@ -22,6 +22,19 @@ bool DecodedBoundaries::is_boundary(std::size_t offset) const {
   return offset == starts.size() || is_instruction_start(offset);
 }
 
+void DecodedBoundaries::retain_metadata_boundary(std::size_t offset) {
+  if (offset < starts.size() && starts[offset] == 1) {
+    starts[offset] = 2;
+    ++metadata_boundaries;
+  }
+}
+
+std::optional<std::size_t> DecodedBoundaries::metadata_ordinal(std::size_t offset) const {
+  if (offset < starts.size() && starts[offset] == 2)
+    return ordinals[offset];
+  return std::nullopt;
+}
+
 std::expected<LabelId, CodeEditError> DecodedBoundaries::label_at(MethodCode& code, std::size_t offset) {
   if (BytecodeAccess::scope(code) != scope || code.edited() || !is_boundary(offset))
     return std::unexpected(CodeEditError::InvalidLabel);

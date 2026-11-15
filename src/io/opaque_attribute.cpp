@@ -21,8 +21,10 @@ using Validation = std::expected<void, ReadError>;
 class OpaqueValidator {
 public:
   OpaqueValidator(BinaryReader& body, const ConstantPool& constant_pool, const ReadLimits& read_limits,
-                  std::string_view attribute_path, const CodeAttributeContext* code_context, std::pmr::memory_resource* scratch_resource) :
-      reader(body), cp(constant_pool), limits(read_limits), path(attribute_path), code(code_context), scratch(scratch_resource) {
+                  std::string_view attribute_path, const CodeAttributeContext* code_context,
+                  std::pmr::memory_resource* scratch_resource, CodeOffsetVisitor offset_visitor) :
+      reader(body), cp(constant_pool), limits(read_limits), path(attribute_path), code(code_context),
+      scratch(scratch_resource), offsets(offset_visitor) {
   }
 
   Validation validate(AttributeKind kind, AttributeContext context) {
@@ -131,13 +133,17 @@ private:
 
   Validation local_range() {
     const auto offset = reader.offset();
+    const auto position = reader.position();
     const auto start = reader.u2();
     const auto length = reader.u2();
     if (!start || !length) {
       return failure("truncated local variable range");
     }
-    const auto end = std::size_t(*start) + *length;
-    if (!code || !instruction_start(*start) || (end != code->bytes.size() && !instruction_start(end))) {
+    CodeOffsetField field{CodeOffsetField::Kind::Range, position, *start, *length};
+    if (offsets.visit && !offsets.visit(offsets.state, field))
+      return failure_at(offset, ReadErrorKind::MalformedAttribute, "cannot relocate local variable range");
+    const auto end = std::size_t(field.value) + field.length;
+    if (!code || !instruction_start(field.value) || (end != code->bytes.size() && !instruction_start(end))) {
       return failure_at(offset, ReadErrorKind::MalformedAttribute, "local variable range must use code boundaries");
     }
     return {};
@@ -155,8 +161,14 @@ private:
   Validation line_numbers() {
     return repeat(reader.u2(), 4, [this]() -> Validation {
       const auto offset = reader.offset();
+      const auto position = reader.position();
       const auto start = reader.u2();
-      if (!start || !code || *start >= code->bytes.size()) {
+      if (!start)
+        return failure("truncated line number offset");
+      CodeOffsetField field{CodeOffsetField::Kind::Line, position, *start};
+      if (offsets.visit && !offsets.visit(offsets.state, field))
+        return failure_at(offset, ReadErrorKind::MalformedAttribute, "cannot relocate line number offset");
+      if (!code || field.value >= code->bytes.size()) {
         return failure_at(offset, ReadErrorKind::MalformedAttribute, "line number offset outside the code array");
       }
       return skip(2);
@@ -440,17 +452,22 @@ private:
       });
     }
     const auto offset = reader.offset();
+    const auto position = reader.position();
     const auto index = reader.u2();
     if (!index) {
       return failure("truncated Code type annotation target");
     }
+    CodeOffsetField field{target == 0x42 ? CodeOffsetField::Kind::Handler : CodeOffsetField::Kind::InstructionAnnotation,
+                          position, *index};
+    if (offsets.visit && !offsets.visit(offsets.state, field))
+      return failure_at(offset, ReadErrorKind::MalformedAttribute, "cannot relocate Code type annotation target");
     if (target == 0x42) {
-      if (!code || *index >= code->exception_count) {
+      if (!code || field.value >= code->exception_count) {
         return failure_at(offset, ReadErrorKind::MalformedAttribute, "type annotation refers to an invalid exception handler");
       }
       return {};
     }
-    if (!instruction_start(*index)) {
+    if (!instruction_start(field.value)) {
       return failure_at(offset, ReadErrorKind::MalformedAttribute, "type annotation offset is not an instruction boundary");
     }
     return target >= 0x47 ? skip(1) : Validation{};
@@ -514,6 +531,7 @@ private:
   std::string_view path;
   const CodeAttributeContext* code;
   std::pmr::memory_resource* scratch;
+  CodeOffsetVisitor offsets;
 };
 
 } // namespace
@@ -521,8 +539,8 @@ private:
 Validation validate_opaque_attribute(
     BinaryReader& body, const AttributeSpec& spec, AttributeContext context,
     const ConstantPool& cp, const ReadLimits& limits, std::string_view path,
-    const CodeAttributeContext* code, std::pmr::memory_resource* scratch) {
-  auto result = OpaqueValidator(body, cp, limits, path, code, scratch).validate(spec.kind, context);
+    const CodeAttributeContext* code, std::pmr::memory_resource* scratch, CodeOffsetVisitor offsets) {
+  auto result = OpaqueValidator(body, cp, limits, path, code, scratch, offsets).validate(spec.kind, context);
   if (result && body.remaining() != 0) {
     return std::unexpected(ReadError{
         ReadErrorKind::MalformedAttribute, body.offset(), std::string(path), "trailing bytes in attribute body"});

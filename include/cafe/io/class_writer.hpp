@@ -10,6 +10,10 @@
 
 namespace cafe {
 
+namespace analysis {
+class AnalysisContext;
+}
+
 struct WriteResult {
   std::vector<std::byte> bytes;
   std::vector<Diagnostic> diagnostics;
@@ -17,5 +21,8 @@ struct WriteResult {
 
 [[nodiscard]] std::expected<WriteResult, WriteError> write_class(
     const ClassFile& class_file, const WriteOptions& options = {});
+
+[[nodiscard]] std::expected<WriteResult, WriteError> write_class(
+    const ClassFile& class_file, const WriteOptions& options, analysis::AnalysisContext& context);
 
 } // namespace cafe

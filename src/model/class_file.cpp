@@ -96,6 +96,9 @@ CpIndex ClassFile::super_class() const noexcept {
 ClassValidity ClassFile::validity() const noexcept {
   return storage->validity;
 }
+std::uint64_t ClassFile::declaration_revision() const noexcept {
+  return storage->declaration_stamp;
+}
 ConstantPool& ClassFile::constant_pool() noexcept {
   return storage->pool;
 }
@@ -139,6 +142,7 @@ std::expected<void, ModelError> ClassFile::add_interface(CpIndex index) {
   if (!constant_pool().has(index, CpTag::Class))
     return std::unexpected(ModelError::InvalidReference);
   storage->interface_entries.push_back(index);
+  storage->declaration_stamp = detail::next_declaration_revision();
   return {};
 }
 
@@ -155,6 +159,7 @@ std::expected<std::size_t, ModelError> ClassFile::add_field(
   for (auto& attribute : attributes)
     field.attribute_entries.push_back(std::move(attribute));
   storage->field_entries.push_back(std::move(field));
+  storage->declaration_stamp = detail::next_declaration_revision();
   return fields().size() - 1;
 }
 
@@ -171,6 +176,7 @@ std::expected<std::size_t, ModelError> ClassFile::add_method(
   for (auto& attribute : attributes)
     method.attribute_entries.push_back(std::move(attribute));
   storage->method_entries.push_back(std::move(method));
+  storage->declaration_stamp = detail::next_declaration_revision();
   return methods().size() - 1;
 }
 
@@ -178,6 +184,7 @@ std::expected<void, ModelError> ClassFile::erase_field(std::size_t index) {
   if (index >= fields().size())
     return std::unexpected(ModelError::InvalidField);
   erase_member(storage->field_entries, index);
+  storage->declaration_stamp = detail::next_declaration_revision();
   return {};
 }
 
@@ -185,6 +192,7 @@ std::expected<void, ModelError> ClassFile::erase_method(std::size_t index) {
   if (index >= methods().size())
     return std::unexpected(ModelError::InvalidMethod);
   erase_member(storage->method_entries, index);
+  storage->declaration_stamp = detail::next_declaration_revision();
   return {};
 }
 

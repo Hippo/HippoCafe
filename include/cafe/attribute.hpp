@@ -137,6 +137,7 @@ struct ExceptionHandler {
   LabelId end;
   LabelId handler;
   CpIndex catch_type;
+  friend bool operator==(const ExceptionHandler&, const ExceptionHandler&) = default;
 };
 
 class CodeAttribute {
@@ -162,6 +163,10 @@ public:
   [[nodiscard]] std::span<const Attribute> attributes() const noexcept {
     return nested_attributes;
   }
+
+  // Replaces the exception table independently of the nested attributes.
+  // Use a computing writer or supply new metadata before writing the edit.
+  void set_exception_handlers(std::span<const ExceptionHandler> new_handlers);
 
   // Replace all derived metadata after editing the code. Supply handlers in
   // terms of this method's labels and complete any required frame/debug
@@ -189,6 +194,12 @@ private:
     bool preserve_original_encodings;
   };
 
+  struct OriginalBoundary {
+    std::uint16_t offset;
+    InstructionId instruction;
+    Instruction original_instruction;
+  };
+
   explicit CodeAttribute(std::pmr::memory_resource* resource);
 
   MethodCode instructions;
@@ -196,6 +207,8 @@ private:
   std::uint16_t locals_limit = 0;
   std::pmr::vector<ExceptionHandler> handlers;
   std::pmr::vector<Attribute> nested_attributes;
+  std::pmr::vector<OriginalBoundary> original_boundaries;
+  std::optional<std::pmr::vector<ExceptionHandler>> original_handlers;
   std::optional<OriginalCode> original;
   std::optional<SuppliedMetadata> supplied_metadata;
 };

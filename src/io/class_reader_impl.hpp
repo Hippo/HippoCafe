@@ -20,6 +20,7 @@ struct AttributeLocation {
   bool is_static = false;
   bool annotation_element = false;
   const CodeAttributeContext* code = nullptr;
+  CodeOffsetVisitor offsets = {};
 };
 
 class ClassReader {

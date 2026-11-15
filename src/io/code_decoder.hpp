@@ -29,6 +29,11 @@ public:
     return starts;
   }
   [[nodiscard]] std::expected<LabelId, CodeEditError> label_at(MethodCode& code, std::size_t offset);
+  void retain_metadata_boundary(std::size_t offset);
+  [[nodiscard]] std::size_t metadata_boundary_count() const {
+    return metadata_boundaries;
+  }
+  [[nodiscard]] std::optional<std::size_t> metadata_ordinal(std::size_t offset) const;
 
 private:
   friend class CodeDecoder;
@@ -38,6 +43,7 @@ private:
   std::pmr::vector<std::uint16_t> ordinals;
   std::pmr::vector<LabelId> labels;
   std::uint32_t scope;
+  std::size_t metadata_boundaries = 0;
 };
 
 // Decode into an empty temporary MethodCode. The returned boundary table

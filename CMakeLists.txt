@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.28)
-project(HippoCafe VERSION 0.1.0 LANGUAGES CXX)
+project(HippoCafe VERSION 0.1.0 LANGUAGES C CXX)
 
 if(PROJECT_IS_TOP_LEVEL)
   include(CTest)
@@ -13,8 +13,9 @@ option(HIPPOCAFE_ENABLE_SANITIZERS "Instrument HippoCafe with ASan and UBSan" OF
 option(HIPPOCAFE_WARNINGS_AS_ERRORS "Treat HippoCafe compiler warnings as errors" OFF)
 option(HIPPOCAFE_ENABLE_CLANG_TIDY "Run clang-tidy on HippoCafe sources" OFF)
 
-if(HIPPOCAFE_BUILD_FUZZERS AND NOT CMAKE_CXX_COMPILER_ID MATCHES "Clang")
-  message(FATAL_ERROR "HIPPOCAFE_BUILD_FUZZERS requires Clang with compiler-rt")
+if(HIPPOCAFE_BUILD_FUZZERS AND
+   (NOT CMAKE_CXX_COMPILER_ID MATCHES "Clang" OR NOT CMAKE_C_COMPILER_ID MATCHES "Clang"))
+  message(FATAL_ERROR "HIPPOCAFE_BUILD_FUZZERS requires Clang C and C++ compilers with compiler-rt")
 endif()
 if(HIPPOCAFE_ENABLE_SANITIZERS AND NOT CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang")
   message(FATAL_ERROR "HIPPOCAFE_ENABLE_SANITIZERS requires GCC or Clang")
@@ -60,15 +61,29 @@ if(BUILD_TESTING OR HIPPOCAFE_BUILD_FUZZERS)
   endif()
 endif()
 
+include(cmake/ArchiveDependencies.cmake)
+hippocafe_archive_dependencies()
+
 add_library(hippocafe STATIC
+  src/analysis/control_flow_graph.cpp
+  src/analysis/frame_analyzer.cpp
+  src/analysis/frame_merge.cpp
+  src/analysis/instruction_effects.cpp
+  src/analysis/max_locals.cpp
+  src/archive/zip_archive.cpp
   src/bytecode/code.cpp
   src/bytecode/instruction_builder.cpp
   src/bytecode/opcode_info.cpp
+  src/classpath/class_hierarchy.cpp
+  src/classpath/class_metadata_reader.cpp
+  src/classpath/class_path.cpp
+  src/classpath/class_resolver.cpp
   src/io/attribute_reader.cpp
   src/io/attribute_writer.cpp
   src/io/class_format.cpp
   src/io/class_reader.cpp
   src/io/class_writer.cpp
+  src/io/code_analysis_write.cpp
   src/io/code_decoder.cpp
   src/io/code_encoder.cpp
   src/io/code_layout.cpp
@@ -76,12 +91,14 @@ add_library(hippocafe STATIC
   src/io/code_writer.cpp
   src/io/constant_pool_reader.cpp
   src/io/opaque_attribute.cpp
+  src/io/stack_map_encoder.cpp
   src/model/attribute.cpp
   src/model/class_file.cpp
   src/model/constant_pool.cpp
 )
 add_library(hippocafe::hippocafe ALIAS hippocafe)
 target_compile_features(hippocafe PUBLIC cxx_std_23)
+target_link_libraries(hippocafe PRIVATE MINIZIP::minizip)
 set_target_properties(hippocafe PROPERTIES POSITION_INDEPENDENT_CODE ON)
 target_include_directories(hippocafe
   PUBLIC

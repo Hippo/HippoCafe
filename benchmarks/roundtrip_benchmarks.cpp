@@ -1,4 +1,5 @@
 #include <algorithm>
+#include <array>
 #include <charconv>
 #include <chrono>
 #include <cstddef>
@@ -8,6 +9,7 @@
 #include <iostream>
 #include <memory_resource>
 #include <stdexcept>
+#include <string>
 #include <string_view>
 #include <system_error>
 #include <vector>
@@ -158,14 +160,126 @@ void benchmark_edits(std::size_t instructions) {
             << EDITS / seconds(elapsed) << " midpoint insert/erase pairs/s\n";
 }
 
+std::size_t add_method(cafe::ClassFile& owner, std::string_view name, std::string_view descriptor, cafe::CpIndex code_name) {
+  auto& pool = owner.constant_pool();
+  const auto index = owner.add_method(0x0009, pool.append_utf8(name).value(), pool.append_utf8(descriptor).value()).value();
+  owner.add_code(index, code_name).value();
+  return index;
+}
+
+cafe::ClassFile analysis_workload(std::size_t tiny_methods, std::size_t switch_count) {
+  using namespace cafe;
+  auto owner = ClassFile::create({65, 0}, "AnalysisBenchmark").value();
+  auto& pool = owner.constant_pool();
+  const auto code_name = pool.append_utf8("Code").value();
+  for (std::size_t i = 0; i < tiny_methods; ++i) {
+    const auto method = add_method(owner, "sum" + std::to_string(i), "(JJ)J", code_name);
+    const std::array<InstructionBuilder, 4> body{
+        Instruction::lload(0), Instruction::lload(2), Instruction::simple(Opcode::LAdd).value(),
+        Instruction::simple(Opcode::LReturn).value()};
+    owner.edit_code(method)->code().append(body).value();
+  }
+  const auto method = add_method(owner, "switches", "(I)V", code_name);
+  auto& code = owner.edit_code(method)->code();
+  auto boundary = code.make_label().value();
+  for (std::size_t index = 0; index < switch_count; ++index) {
+    const auto load = code.append(Instruction::iload(0)).value();
+    code.bind_label(boundary, CodePosition{load}).value();
+    boundary = code.make_label().value();
+    const std::array cases{LookupPair{1, boundary}, LookupPair{5, boundary}, LookupPair{100, boundary}};
+    code.append(LookupSwitch{boundary, cases}).value();
+  }
+  const auto exit = code.append(Instruction::return_void()).value();
+  code.bind_label(boundary, CodePosition{exit}).value();
+  return owner;
+}
+
+void benchmark_analysis(std::size_t tiny_methods, std::size_t switches, std::size_t rounds) {
+  using namespace cafe;
+  const auto workload = analysis_workload(tiny_methods, switches);
+  AllocationCounts allocations;
+  analysis::AnalysisContext context{analysis::AnalysisLimits{.upstream_resource = &allocations}};
+  const auto measure = [&](bool frames) {
+    allocations.calls = 0;
+    allocations.peak = 0;
+    std::size_t stack = 0;
+    const auto start = Clock::now();
+    for (std::size_t round = 0; round < rounds; ++round) {
+      for (const auto& method : workload.methods()) {
+        stack += frames ? analysis::compute_frames(workload, method, context).value().max_stack()
+                        : analysis::compute_max_stack(workload, method, context.limits()).value();
+      }
+    }
+    const auto elapsed = seconds(Clock::now() - start) * 1'000;
+    std::cout << (frames ? "Frames " : "Stack shapes ") << elapsed << " ms, " << allocations.calls
+              << " upstream allocations, " << allocations.peak << " peak live upstream bytes\n";
+    return stack;
+  };
+  std::cout << tiny_methods << " tiny methods and " << switches << " switches, " << rounds << " rounds\n";
+  const auto max_stack = measure(false);
+  if (measure(true) != max_stack)
+    throw std::runtime_error("Computed maxima disagree with frame analysis");
+
+  const WriteOptions computed{.code_analysis = CodeAnalysisMode::ComputeFrames};
+  const auto prepared = write_class(workload, computed, context).value();
+  const auto parsed = read_class(prepared.bytes).value();
+  for (const auto options : {WriteOptions{}, computed}) {
+    const auto start = Clock::now();
+    std::size_t bytes = 0;
+    for (std::size_t i = 0; i < rounds; ++i)
+      bytes += write_class(parsed.class_file, options, context).value().bytes.size();
+    const auto elapsed = seconds(Clock::now() - start) * 1'000;
+    std::cout << (options.code_analysis == CodeAnalysisMode::Preserve ? "Preserve write " : "ComputeFrames write ")
+              << elapsed << " ms, " << bytes << " bytes\n";
+  }
+}
+
+void benchmark_hierarchy(const std::filesystem::path& java_home) {
+  using namespace cafe::classpath;
+  ClassPathBuilder builder;
+  const auto start = Clock::now();
+  const auto added = builder.add_java_home(java_home);
+  if (!added)
+    throw std::runtime_error(added.error().detail);
+  const ClassResolver resolver(builder.build());
+  const auto indexing = seconds(Clock::now() - start) * 1'000;
+  const ClassHierarchy hierarchy(resolver);
+  constexpr std::array CHECKS{
+      std::pair{"java/util/ArrayList", "java/util/List"},
+      std::pair{"java/util/HashMap", "java/util/Map"},
+      std::pair{"java/lang/String", "java/io/Serializable"},
+  };
+  const auto time_queries = [&](std::size_t iterations) {
+    const auto before = resolver.stats();
+    const auto query_start = Clock::now();
+    for (std::size_t i = 0; i < iterations; ++i) {
+      for (const auto& [type, parent] : CHECKS) {
+        if (!resolver.resolve(type) || !hierarchy.is_assignable(type, parent).value())
+          throw std::runtime_error("Unexpected standard hierarchy");
+      }
+    }
+    const auto elapsed = seconds(Clock::now() - query_start) * 1'000;
+    const auto after = resolver.stats();
+    const auto hits = after.cache_hits - before.cache_hits;
+    const auto scans = after.metadata_scans - before.metadata_scans;
+    std::cout << elapsed << " ms, " << scans << " metadata scans, "
+              << after.archive_entries_inflated - before.archive_entries_inflated << " class inflations, "
+              << hits << " cached lookups\n";
+  };
+  std::cout << "Java home indexing " << indexing << " ms\nCold hierarchy queries ";
+  time_queries(1);
+  std::cout << "Warm hierarchy queries (30000) ";
+  time_queries(10'000);
+}
+
 } // namespace
 
 int main(int argc, char** argv) try {
-  if (argc > 3) {
-    throw std::runtime_error("Usage: hippocafe_benchmarks [class-file-or-directory] [rounds]");
+  if (argc > 4) {
+    throw std::runtime_error("Usage: hippocafe_benchmarks [class-file-or-directory] [rounds] [java-home]");
   }
   std::size_t rounds = 10;
-  if (argc == 3) {
+  if (argc >= 3) {
     const std::string_view number(argv[2]);
     const auto result = std::from_chars(number.data(), number.data() + number.size(), rounds);
     if (result.ec != std::errc{} || result.ptr != number.data() + number.size() || rounds == 0) {
@@ -181,6 +295,10 @@ int main(int argc, char** argv) try {
   benchmark_roundtrips(corpus, rounds);
   benchmark_edits(4096);
   benchmark_edits(32768);
+  benchmark_analysis(200, 32, rounds);
+  benchmark_analysis(2'000, 800, rounds);
+  if (argc == 4)
+    benchmark_hierarchy(argv[3]);
 #if defined(__linux__) || defined(__APPLE__)
   rusage usage{};
   if (getrusage(RUSAGE_SELF, &usage) == 0) {

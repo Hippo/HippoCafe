@@ -1,5 +1,7 @@
 #include <cafe/attribute.hpp>
 
+#include <algorithm>
+
 #include <memory>
 #include <utility>
 
@@ -83,7 +85,20 @@ CodeAttribute* Attribute::mutable_code() noexcept {
   return owner ? owner->get() : nullptr;
 }
 
-CodeAttribute::CodeAttribute(std::pmr::memory_resource* resource) : instructions(resource), handlers(resource), nested_attributes(resource) {
+CodeAttribute::CodeAttribute(std::pmr::memory_resource* resource) :
+    instructions(resource), handlers(resource), nested_attributes(resource), original_boundaries(resource) {
+}
+
+void CodeAttribute::set_exception_handlers(std::span<const ExceptionHandler> new_handlers) {
+  if (std::ranges::equal(handlers, new_handlers))
+    return;
+  std::pmr::vector<ExceptionHandler> replacement(handlers.get_allocator());
+  if (!new_handlers.empty())
+    replacement.assign(new_handlers.begin(), new_handlers.end());
+  if (!original_handlers)
+    original_handlers.emplace(handlers, handlers.get_allocator());
+  handlers.swap(replacement);
+  supplied_metadata.reset();
 }
 
 void CodeAttribute::supply_metadata(std::uint16_t max_stack, std::uint16_t max_locals,
@@ -99,6 +114,8 @@ void CodeAttribute::supply_metadata(std::uint16_t max_stack, std::uint16_t max_l
 
   handlers.swap(updated_handlers);
   nested_attributes.swap(updated_attributes);
+  original_boundaries.clear();
+  original_handlers.reset();
   stack_limit = max_stack;
   locals_limit = max_locals;
   supplied_metadata = SuppliedMetadata{instructions.revision(), preserve_original_encodings};
