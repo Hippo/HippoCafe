@@ -1,0 +1,9 @@
+# Class-file fixtures
+
+- `supplied` holds the source files and class binaries from the earlier HippoCafe test suite. Files match the copies in the parent of commit `2d1216d` under `tests/data`. Class versions range from 52.0 through 67.0.
+- `historical/OakTest.class` is the supplied 45.2 fixture from the same suite. Its Code attribute uses the historical short header. The file name alone does not establish a pre-release Oak dialect. The integration test checks read/write fidelity for it. The JVM execution tests use the generated 45.3 class with legacy subroutines.
+- `generated` contains class files assembled by `python3 tests/fixtures/generate.py`. These exercise the 45.0–45.3 version range, `jsr`/`ret`, a dynamic constant, version-inapplicable and malformed annotation payloads, a fatal attribute overrun, and a reserved opcode in a bounded Code body. `SwitchHeavy.class` contains 200 switch instructions and `ManyOpaqueAttributes.class` contains 500 custom attributes for load and size measurements.
+- `java` contains ordinary Java 17 test sources for a module, record, sealed interface, enum, lambdas, annotations, and exception handling. When a compatible JDK is present, CMake builds them in the test build directory with debugging and parameter-name metadata.
+- `local` can hold `ArrowDump.class`, `GraxCrackMe.class`, and `InvalidOpcode.class` from the supplied data. Their redistribution rights were not established. Git ignores the binaries, and CTest exercises them when present. The `LOCAL_SHA256SUMS` manifest identifies the exact supported samples.
+
+CTest verifies SHA-256 digests of checked-in fixtures and any supplied local samples. Digest paths are relative to this directory. Java 17 compilation output and classes extracted from the installed JDK's `jrt-fs.jar` are covered by the integration tests at build time.

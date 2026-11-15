@@ -1,0 +1,52 @@
+name: C++ validation
+
+on: [push, pull_request]
+
+permissions:
+  contents: read
+
+jobs:
+  validate:
+    runs-on: ubuntu-26.04
+    timeout-minutes: 25
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - preset: debug
+            c: gcc-15
+            cxx: g++-15
+          - preset: sanitized
+            c: clang-22
+            cxx: clang++-22
+          - preset: fuzz
+            c: clang-22
+            cxx: clang++-22
+    env:
+      HIPPOCAFE_PRESET: ${{ matrix.preset }}
+      HIPPOCAFE_C_COMPILER: ${{ matrix.c }}
+      HIPPOCAFE_CXX_COMPILER: ${{ matrix.cxx }}
+      UBSAN_OPTIONS: halt_on_error=1:print_stacktrace=1
+    steps:
+      - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5.0.1
+        with:
+          persist-credentials: false
+      - name: Configure and build
+        run: |
+          cmake --preset "$HIPPOCAFE_PRESET" \
+            -DCMAKE_C_COMPILER="$HIPPOCAFE_C_COMPILER" \
+            -DCMAKE_CXX_COMPILER="$HIPPOCAFE_CXX_COMPILER"
+          cmake --build --preset "$HIPPOCAFE_PRESET" --parallel 2
+      - name: Run unit, corpus, and JVM tests
+        if: matrix.preset != 'fuzz'
+        run: ctest --preset "$HIPPOCAFE_PRESET"
+      - name: Run seeded fuzz smoke tests
+        if: matrix.preset == 'fuzz'
+        env:
+          FUZZTEST_PRNG_SEED: OffQXb8u5_vZtH4-7wgVOLu_HNAhPIbLz7CFF13u3nk
+        run: |
+          build/fuzz/fuzz/hippocafe_fuzz --fuzz_for=10s
+          mkdir -p build/fuzz/fuzz/mutated
+          build/fuzz/fuzz/hippocafe_libfuzzer -seed=314159 -runs=5000 -max_len=524288 \
+            -artifact_prefix=build/fuzz/fuzz/ \
+            build/fuzz/fuzz/mutated build/fuzz/fuzz/seeds
