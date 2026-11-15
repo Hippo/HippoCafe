@@ -1,3 +1,9 @@
+/**
+ * @file
+ * @brief Bounded ZIP/JAR/JMOD access and transactional archive editing.
+ * @ingroup implementation
+ */
+
 #include "zip_archive.hpp"
 
 #include <algorithm>
@@ -30,27 +36,62 @@ using classpath::detail::fail;
 
 using namespace detail;
 
-constexpr std::uint32_t DESCRIPTOR_MAGIC = 0x08074b50;
+constexpr std::uint32_t DESCRIPTOR_MAGIC = 0x08074b50; ///< Optional ZIP trailing data-descriptor signature.
 
-// Minizip sees a seekable read-only logical ZIP. For JMOD the stream's
-// origin follows the validated JMOD header, so offsets need no correction.
+/**
+ * @brief Seekable read-only minizip adapter over a pinned regular file or owned bytes. The logical
+ * origin skips the validated JMOD wrapper; visible size can exclude the ZIP comment. Callback
+ * access is serialized by ZipArchive state.
+ * @ingroup implementation
+ *
+ * Minizip sees a seekable read-only logical ZIP. For JMOD the stream's
+ * origin follows the validated JMOD header, so offsets need no correction.
+ */
 struct ZipStream : mz_stream {
+  /**
+   * @brief Initialize seekable read-only minizip adapter over a pinned regular file or owned bytes
+   * @param file Class whose current declaration metadata is copied.
+   * @param size Requested byte count or checked input byte length.
+   * @ingroup implementation
+   */
   ZipStream(File file, std::int64_t size) :
       mz_stream{&callbacks, nullptr}, input(std::move(file)), physical_end(size) {
   }
+  /**
+   * @brief Initialize seekable read-only minizip adapter over a pinned regular file or owned bytes
+   * @param bytes Archive buffer transferred into this stream.
+   * @ingroup implementation
+   */
   explicit ZipStream(std::vector<std::byte> bytes) :
       mz_stream{&callbacks, nullptr}, input(std::move(bytes)),
       physical_end(static_cast<std::int64_t>(std::get<1>(input).size())) {
   }
 
+  /**
+   * @brief Read the pinned input's physical byte length.
+   * @return The input size in bytes.
+   * @ingroup implementation
+   */
   [[nodiscard]] std::int64_t size() const {
     return physical_end - origin;
   }
 
+  /**
+   * @brief Read the logical ZIP length after wrapper/comment adjustments.
+   * @return The byte length exposed to minizip.
+   * @ingroup implementation
+   */
   [[nodiscard]] std::int64_t visible_size() const {
     return std::min(size(), visible_end);
   }
 
+  /**
+   * @brief Read an exact bounded byte range without relying on a shared FILE cursor position.
+   * @param offset Byte offset into the supplied source/output range.
+   * @param out Caller-owned output container or decoded value destination.
+   * @return True on complete read, false for bounds or I/O failure.
+   * @ingroup implementation
+   */
   [[nodiscard]] bool read_at(std::uint64_t offset, std::span<std::byte> out) {
     const auto end = static_cast<std::uint64_t>(size());
     if (offset > end || out.size() > end - offset)
@@ -80,16 +121,25 @@ struct ZipStream : mz_stream {
     return true;
   }
 
+  /**
+   * @brief Owned regular-file handle or in-memory archive bytes.
+   */
   std::variant<File, std::vector<std::byte>> input;
-  std::int64_t physical_end;
-  std::int64_t visible_end = INT64_MAX;
-  std::int64_t origin = 0;
-  std::int64_t cursor = 0;
-  std::int64_t file_position = -1;
+  std::int64_t physical_end; ///< Exclusive physical input byte boundary.
+  std::int64_t visible_end = INT64_MAX; ///< Exclusive logical ZIP boundary exposed to minizip, excluding comments when indexed.
+  std::int64_t origin = 0; ///< Byte origin used to translate logical offsets to the original input.
+  std::int64_t cursor = 0; ///< Current byte position within the bounded logical input.
+  std::int64_t file_position = -1; ///< Cached FILE position used to avoid unnecessary seeks.
 
-  static mz_stream_vtbl callbacks;
+  static mz_stream_vtbl callbacks; ///< Static minizip stream callback table for this adapter.
 };
 
+/**
+ * @brief Recover the ZIP stream adapter from minizip's callback pointer.
+ * @param stream Native or minizip callback stream pointer.
+ * @return A borrowed adapter reference valid during the callback.
+ * @ingroup implementation
+ */
 ZipStream& self(void* stream) {
   return *static_cast<ZipStream*>(static_cast<mz_stream*>(stream));
 }
@@ -127,15 +177,28 @@ mz_stream_vtbl ZipStream::callbacks = {
     .set_prop_int64 = nullptr,
 };
 
+/**
+ * @brief Validated central-directory byte extent, entry count, and comment-independent logical
+ * end.
+ * @ingroup implementation
+ */
 struct DirectoryBounds {
-  std::uint64_t offset;
-  std::uint64_t size;
-  std::uint64_t entries;
-  std::uint64_t logical_end;
+  std::uint64_t offset; ///< Logical ZIP byte offset of the central directory.
+  std::uint64_t size; ///< Central-directory length in bytes.
+  std::uint64_t entries; ///< Number of central-directory entries, including explicit directories.
+  std::uint64_t logical_end; ///< Exclusive logical ZIP boundary before the archive comment.
 };
 
-// Confirm the declared single-disk directory before handing it to minizip's
-// record reader. This excludes its offset correction and recovery paths.
+/**
+ * @brief Validate the declared single-disk classic/ZIP64 directory before opening minizip.
+ * @param input Borrowed archive input adapter used for bounded reads.
+ * @param path Source or destination filesystem path.
+ * @return Directory bounds excluding any archive comment, or a structured archive error.
+ * @ingroup implementation
+ *
+ * Confirm the declared single-disk directory before handing it to minizip's
+ * record reader. This excludes its offset correction and recovery paths.
+ */
 std::expected<DirectoryBounds, ResolutionError> directory_bounds(ZipStream& input, const std::filesystem::path& path) {
   const auto corrupt = [&] {
     return fail(ResolutionErrorKind::ArchiveCorrupt, path, "invalid ZIP central directory footer");
@@ -203,11 +266,21 @@ std::expected<DirectoryBounds, ResolutionError> directory_bounds(ZipStream& inpu
   return bounds;
 }
 
+/**
+ * @brief Bounded ZIP extra-field scan result retaining the optional ZIP64 payload view.
+ * @ingroup implementation
+ */
 struct ExtraFields {
-  bool valid = false;
-  std::optional<std::span<const std::byte>> zip64;
+  bool valid = false; ///< Whether all extra-field records have valid bounds and supported structure.
+  std::optional<std::span<const std::byte>> zip64; ///< Borrowed ZIP64 extra-field payload, when present.
 };
 
+/**
+ * @brief Walk length-bounded ZIP extra fields and locate ZIP64 metadata.
+ * @param input Bounded extra-field bytes; returned views borrow this storage.
+ * @return A view describing validity and the optional ZIP64 payload.
+ * @ingroup implementation
+ */
 ExtraFields extra_fields(std::span<const std::byte> input) {
   ExtraFields result;
   while (!input.empty()) {
@@ -229,6 +302,16 @@ ExtraFields extra_fields(std::span<const std::byte> input) {
   return result;
 }
 
+/**
+ * @brief Check optional signed/unsigned ZIP data descriptors against central-directory values.
+ * @param input Borrowed archive input adapter used for bounded reads.
+ * @param offset Byte offset into the supplied source/output range.
+ * @param next Exclusive boundary supplied by the next physical ZIP record.
+ * @param entry Validated central-directory entry belonging to the pinned archive.
+ * @param wide Whether the selected encoding uses extended operand widths.
+ * @return True when one legal descriptor representation matches.
+ * @ingroup implementation
+ */
 bool descriptor_valid(ZipStream& input, std::uint64_t offset, std::uint64_t next, const ZipEntry& entry, bool wide) {
   std::array<std::byte, 24> bytes;
   const auto size = static_cast<std::size_t>(std::min<std::uint64_t>(bytes.size(), next - offset));
@@ -252,8 +335,19 @@ bool descriptor_valid(ZipStream& input, std::uint64_t offset, std::uint64_t next
   return false;
 }
 
-// Validate every local header and its physical extent without inflating
-// data. The next local header (or the directory) is a hard upper boundary.
+/**
+ * @brief Validate a local header and payload extent against its central entry and physical
+ * successor.
+ * @param input Borrowed archive input adapter used for bounded reads.
+ * @param entry Validated central-directory entry belonging to the pinned archive.
+ * @param next Exclusive boundary supplied by the next physical ZIP record.
+ * @param scratch Reusable byte buffer overwritten with the local filename and extra fields.
+ * @return True when the complete local record is bounded and consistent.
+ * @ingroup implementation
+ *
+ * Validate every local header and its physical extent without inflating
+ * data. The next local header (or the directory) is a hard upper boundary.
+ */
 bool local_record_valid(ZipStream& input, const ZipEntry& entry, std::uint64_t next,
                         std::vector<std::byte>& scratch) {
   std::array<std::byte, LOCAL_HEADER_SIZE> header;
@@ -298,7 +392,16 @@ bool local_record_valid(ZipStream& input, const ZipEntry& entry, std::uint64_t n
   return compressed == entry.compressed_size && uncompressed == entry.uncompressed_size;
 }
 
+/**
+ * @brief RAII deleter for the minizip ZIP handle.
+ * @ingroup implementation
+ */
 struct ZipDeleter {
+  /**
+   * @brief Close and release the owned native stream/handle through its matching API.
+   * @param handle Native file/stream handle transferred to the owner.
+   * @ingroup implementation
+   */
   void operator()(void* handle) const noexcept {
     if (handle) {
       mz_zip_close(handle);
@@ -326,24 +429,51 @@ bool detail::safe_entry_name(std::string_view name, std::size_t max_depth) {
   return true;
 }
 
+/**
+ * @brief Shared archive input, validated directory index, retained ZIP metadata, and a mutex
+ * protecting the mutable minizip cursor.
+ * @ingroup implementation
+ */
 struct ZipArchive::State {
+  /**
+   * @brief Initialize shared archive input, validated directory index, retained ZIP metadata, and a
+   * mutex protecting the mutable minizip cursor.
+   * @param input Owned archive input adapter.
+   * @param path Source or destination filesystem path.
+   * @param kind Payload or error discriminator.
+   * @param limits Resource ceilings and cooperative cancellation policy.
+   */
   State(ZipStream input, std::filesystem::path path, SourceKind kind, ClassPathLimits limits) :
-      input(std::move(input)), path(std::move(path)), kind(kind), limits(limits) {
+      input(std::move(input)), path(std::move(path)), kind(kind), limits(std::move(limits)) {
   }
 
+  /**
+   * @brief Validate directory/local records and build the immutable name index.
+   * @return Success or a framing, unsupported-feature, path, or resource error.
+   */
   [[nodiscard]] std::expected<void, ResolutionError> index();
+  /**
+   * @brief Stream one entry through checksum/length/limit validation, optionally retaining output.
+   * @param entry Validated central-directory entry belonging to the pinned archive.
+   * @param byte_limit Maximum uncompressed bytes permitted for this read.
+   * @param result Destination for decompressed bytes; null validates and discards the payload.
+   * @return Success or a corruption, compression, I/O, budget, or cancellation error.
+   */
   [[nodiscard]] std::expected<void, ResolutionError> decode(
       const ZipEntry& entry, std::size_t byte_limit, std::vector<std::byte>* result);
 
+  /**
+   * @brief Owned input stream backing the retained archive index.
+   */
   ZipStream input;
-  std::filesystem::path path;
-  SourceKind kind;
-  ClassPathLimits limits;
-  std::unique_ptr<void, ZipDeleter> handle;
-  std::vector<ZipEntry> entries;
-  std::unordered_map<std::string_view, std::size_t, classpath::detail::NameHash, std::equal_to<>> names;
-  std::size_t index_bytes = 0;
-  std::mutex mutex;
+  std::filesystem::path path; ///< Owned filesystem path identifying this source.
+  SourceKind kind; ///< Discriminator selecting the interpretation of this record.
+  ClassPathLimits limits; ///< Configured resource ceilings.
+  std::unique_ptr<void, ZipDeleter> handle; ///< Owned minizip reader handle borrowing this state's input adapter.
+  std::vector<ZipEntry> entries; ///< Validated central-directory records owned by the immutable index.
+  std::unordered_map<std::string_view, std::size_t, classpath::detail::NameHash, std::equal_to<>> names; ///< Entry-name to visible/indexed entry position lookup.
+  std::size_t index_bytes = 0; ///< Accounted archive index storage in bytes.
+  std::mutex mutex; ///< Serializes shared mutable cache or stream state.
 };
 
 std::expected<void, ResolutionError> ZipArchive::State::index() {
@@ -366,9 +496,9 @@ std::expected<void, ResolutionError> ZipArchive::State::index() {
     input.origin = JMOD_MAGIC.size();
   }
 
-  const auto bounds = directory_bounds(input, path);
+  auto bounds = directory_bounds(input, path);
   if (!bounds)
-    return std::unexpected(bounds.error());
+    return std::unexpected(std::move(bounds.error()));
   // The original comment length was checked above. Hide the comment from
   // minizip's reverse signature search, which also matches bytes in comments.
   input.visible_end = static_cast<std::int64_t>(bounds->logical_end);
@@ -423,7 +553,7 @@ std::expected<void, ResolutionError> ZipArchive::State::index() {
       return corrupt("invalid central directory extra fields");
 
     mz_zip_file* info = nullptr;
-    if (mz_zip_goto_entry(zip, at) != MZ_OK || mz_zip_entry_get_info(zip, &info) != MZ_OK ||
+    if (mz_zip_goto_entry(zip, static_cast<std::int64_t>(at)) != MZ_OK || mz_zip_entry_get_info(zip, &info) != MZ_OK ||
         info->filename_size != name_size || info->extrafield_size != extra_size ||
         info->comment_size != comment_size || info->compressed_size < 0 ||
         info->uncompressed_size < 0 || info->disk_offset < 0)
@@ -475,24 +605,24 @@ bool ZipEntry::is_deflated() const {
   return method == MZ_COMPRESS_METHOD_DEFLATE;
 }
 
-std::expected<ZipArchive, ResolutionError> ZipArchive::open(
-    const std::filesystem::path& path, SourceKind kind, const ClassPathLimits& limits) {
+std::expected<ZipArchive, classpath::ResolutionError> ZipArchive::open(
+    const std::filesystem::path& path, classpath::SourceKind kind, classpath::ClassPathLimits limits) {
   if (path.native().find(std::filesystem::path::value_type{}) != std::filesystem::path::string_type::npos)
     return fail(ResolutionErrorKind::UnsafePath, path, "archive path contains NUL");
   auto file = open_regular_file(path);
   if (!file)
     return fail(ResolutionErrorKind::IoError, path, "archive source is not a readable regular file");
-  auto state = std::make_shared<State>(ZipStream(std::move(file->file), file->size), path, kind, limits);
+  auto state = std::make_shared<State>(ZipStream(std::move(file->file), file->size), path, kind, std::move(limits));
   if (auto indexed = state->index(); !indexed)
     return std::unexpected(std::move(indexed.error()));
   return ZipArchive(std::move(state));
 }
 
-std::expected<ZipArchive, ResolutionError> ZipArchive::open(
-    std::vector<std::byte> bytes, SourceKind kind, const ClassPathLimits& limits) {
+std::expected<ZipArchive, classpath::ResolutionError> ZipArchive::open(
+    std::vector<std::byte> bytes, classpath::SourceKind kind, classpath::ClassPathLimits limits) {
   if (bytes.size() > INT64_MAX)
     return fail(ResolutionErrorKind::ResourceLimitExceeded, {}, "archive size cannot be represented");
-  auto state = std::make_shared<State>(ZipStream(std::move(bytes)), std::filesystem::path{}, kind, limits);
+  auto state = std::make_shared<State>(ZipStream(std::move(bytes)), std::filesystem::path{}, kind, std::move(limits));
   if (auto indexed = state->index(); !indexed)
     return std::unexpected(std::move(indexed.error()));
   return ZipArchive(std::move(state));

@@ -1,3 +1,9 @@
+/**
+ * @file
+ * @brief Bounded class-file parsing, layout, and serialization.
+ * @ingroup implementation
+ */
+
 #include "class_reader_impl.hpp"
 
 #include <array>
@@ -11,6 +17,14 @@ namespace cafe::detail {
 
 namespace {
 
+/**
+ * @brief Construct a diagnostic path for an attribute occurrence.
+ * @param prefix Path/name prefix used to form the diagnostic or resource spelling.
+ * @param index Zero-based index in the corresponding table or slot array.
+ * @param spec Registry rules for the recognized attribute.
+ * @return An owned structural path including its ordinal/name.
+ * @ingroup implementation
+ */
 std::string attribute_path(std::string_view prefix, std::size_t index, const AttributeSpec* spec = nullptr) {
   std::string path(prefix);
   if (!path.empty())
@@ -23,6 +37,13 @@ std::string attribute_path(std::string_view prefix, std::size_t index, const Att
   return path;
 }
 
+/**
+ * @brief Read a length-bounded attribute body before interpreting its contents.
+ * @param parent Bounded enclosing cursor from which the attribute body is sliced.
+ * @param path Borrowed structural path included in diagnostics.
+ * @return A subreader, or a fatal framing error.
+ * @ingroup implementation
+ */
 std::expected<BinaryReader, ReadError> read_attribute_body(BinaryReader& parent, std::string_view path) {
   const auto offset = parent.offset();
   const auto length = parent.u4();
@@ -123,6 +144,7 @@ std::expected<bool, ReadError> ClassReader::read_attributes(
   return dropped;
 }
 
+// Each fixed-width table is bounded by its count before its elements are read.
 std::expected<Attribute, ReadError> ClassReader::decode_attribute(
     BinaryReader& body, CpIndex name, const AttributeSpec& spec, AttributeLocation location, std::string_view path) {
   const auto& pool = storage->pool;
@@ -159,7 +181,7 @@ std::expected<Attribute, ReadError> ClassReader::decode_attribute(
       Exceptions list{std::pmr::vector<CpIndex>(&storage->budget)};
       list.types.reserve(*count);
       for (std::size_t i = 0; i < *count; ++i) {
-        const CpIndex type{*body.u2()};
+        const CpIndex type{*body.u2()}; // NOLINT(bugprone-unchecked-optional-access)
         if (!class_name(pool, type))
           return fail("exception index must name a non-array class");
         list.types.push_back(type);
@@ -184,7 +206,7 @@ std::expected<Attribute, ReadError> ClassReader::decode_attribute(
         BootstrapMethod method{handle, std::pmr::vector<CpIndex>(resource)};
         method.arguments.reserve(*argument_count);
         for (std::size_t arg = 0; arg < *argument_count; ++arg) {
-          const CpIndex argument{*body.u2()};
+          const CpIndex argument{*body.u2()}; // NOLINT(bugprone-unchecked-optional-access)
           const auto* entry = pool.get(argument);
           if (!entry || !loadable_constant(entry->tag, storage->version))
             return fail("bootstrap argument requires a loadable constant");
@@ -198,10 +220,10 @@ std::expected<Attribute, ReadError> ClassReader::decode_attribute(
       return read_code(body, name, path, location.descriptor, location.is_static);
     default: {
       const auto slice = source_slice_of(body.offset(), body.remaining());
-      const auto checked = validate_opaque_attribute(body, spec, location.context, pool, options.limits,
-                                                     path, location.code, &storage->budget, location.offsets);
+      auto checked = validate_opaque_attribute(body, spec, location.context, pool, options.limits,
+                                               path, location.code, &storage->budget, location.offsets);
       if (!checked)
-        return std::unexpected(checked.error());
+        return std::unexpected(std::move(checked.error()));
       return Attribute(name, spec.kind, RawAttribute(slice));
     }
   }
@@ -220,9 +242,9 @@ std::expected<void, ReadError> ClassReader::check_opaque_code_envelopes(BinaryRe
     if (!parent.u2())
       return std::unexpected(ReadError{ReadErrorKind::TruncatedInput, parent.offset(), attribute_path(path, i),
                                        "truncated nested attribute name index in opaque Code"});
-    const auto result = read_attribute_body(parent, attribute_path(path, i));
+    auto result = read_attribute_body(parent, attribute_path(path, i));
     if (!result)
-      return std::unexpected(result.error());
+      return std::unexpected(std::move(result.error()));
   }
   if (parent.remaining() != 0)
     return std::unexpected(ReadError{ReadErrorKind::MalformedEssentialCode, parent.offset(), std::string(path),
@@ -230,6 +252,7 @@ std::expected<void, ReadError> ClassReader::check_opaque_code_envelopes(BinaryRe
   return {};
 }
 
+// The exception table is bounded before scalar reads, and read_members validates the method signature.
 std::expected<Attribute, ReadError> ClassReader::read_code(
     BinaryReader& body, CpIndex name, std::string_view path, std::string_view descriptor, bool is_static) {
   const auto original = source_slice_of(body.offset(), body.remaining());
@@ -256,20 +279,20 @@ std::expected<Attribute, ReadError> ClassReader::read_code(
   const auto count = body.u2();
   if (!count || *count > body.remaining() / 8)
     return std::unexpected(fail(exception_offset, "truncated exception table"));
-  auto table = *body.sub_reader(static_cast<std::size_t>(*count) * 8);
+  auto table = *body.sub_reader(static_cast<std::size_t>(*count) * 8); // NOLINT(bugprone-unchecked-optional-access)
 
   const auto recover_opaque = [&](ReadError error) -> std::expected<Attribute, ReadError> {
     if (strict() || !options.allow_opaque_code || error.kind == ReadErrorKind::ResourceLimitExceeded)
       return std::unexpected(std::move(error));
-    if (const auto framed = check_opaque_code_envelopes(body, path); !framed)
-      return std::unexpected(framed.error());
+    if (auto framed = check_opaque_code_envelopes(body, path); !framed)
+      return std::unexpected(std::move(framed.error()));
     (void)body.take_slice(body.remaining());
     diagnose(DiagnosticCode::OpaqueEssentialCode, error.offset, error.path, error.detail, RecoveryAction::PreservedOpaque);
     has_opaque_code = true;
     return Attribute(name, AttributeKind::Code, OpaqueCode{original});
   };
 
-  const auto parameters = *method_parameter_slots(descriptor) + (is_static ? 0u : 1u);
+  const auto parameters = *method_parameter_slots(descriptor) + (is_static ? 0u : 1u); // NOLINT(bugprone-unchecked-optional-access)
   if (parameters > *locals)
     return recover_opaque(fail(original.offset, "max_locals cannot hold the method parameters"));
 
@@ -286,10 +309,10 @@ std::expected<Attribute, ReadError> ClassReader::read_code(
   code.handlers.reserve(*count);
   for (std::size_t i = 0; i < *count; ++i) {
     const auto at = table.offset();
-    const auto start = *table.u2();
-    const auto end = *table.u2();
-    const auto handler = *table.u2();
-    const CpIndex type{*table.u2()};
+    const auto start = *table.u2(); // NOLINT(bugprone-unchecked-optional-access)
+    const auto end = *table.u2(); // NOLINT(bugprone-unchecked-optional-access)
+    const auto handler = *table.u2(); // NOLINT(bugprone-unchecked-optional-access)
+    const CpIndex type{*table.u2()}; // NOLINT(bugprone-unchecked-optional-access)
     if (start >= end || !boundaries->is_instruction_start(start) || !boundaries->is_boundary(end) ||
         !boundaries->is_instruction_start(handler) || (type && !class_name(pool, type))) {
       return recover_opaque(fail(at, "invalid exception handler range, target or catch type"));
@@ -311,10 +334,10 @@ std::expected<Attribute, ReadError> ClassReader::read_code(
                                       decoded.retain_metadata_boundary(std::size_t(field.value) + field.length);
                                     return true;
                                   }};
-  const auto result = read_attributes(body, code.nested_attributes,
-                                      {.context = AttributeContext::Code, .path = path, .code = &context, .offsets = offsets});
+  auto result = read_attributes(body, code.nested_attributes,
+                                {.context = AttributeContext::Code, .path = path, .code = &context, .offsets = offsets});
   if (!result)
-    return std::unexpected(result.error());
+    return std::unexpected(std::move(result.error()));
   if (const auto count = boundaries->metadata_boundary_count(); count != 0) {
     code.original_boundaries.reserve(count);
     for (std::size_t index = 0; index < bytes->size(); ++index) {

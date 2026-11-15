@@ -1,4 +1,12 @@
+/**
+ * @file
+ * @brief Control flow, JVM verification types, and derived method metadata.
+ * @ingroup implementation
+ */
+
 #include "cafe/analysis/frame_analyzer.hpp"
+
+#include <utility>
 
 #include <algorithm>
 #include <memory_resource>
@@ -18,24 +26,52 @@ namespace {
 
 using enum VerificationKind;
 
-constexpr std::string_view THROWABLE = "java/lang/Throwable";
-constexpr std::uint16_t STACK_MAP_MAJOR = 50;
-constexpr std::size_t MAX_JOIN_ATTEMPTS = 64;
+constexpr std::string_view THROWABLE = "java/lang/Throwable"; ///< java/lang/Throwable verification identity for catch-all handlers and athrow checks.
+constexpr std::uint16_t STACK_MAP_MAJOR = 50; ///< First class-file major with StackMapTable metadata.
+constexpr std::size_t MAX_JOIN_ATTEMPTS = 64; ///< Hard ceiling on deterministic ambiguous-reference candidate attempts.
 
+/**
+ * @brief Attach optional handler location to a hierarchy lookup failure.
+ * @param resolution Underlying hierarchy/source failure retained in the analysis error.
+ * @param label Optional scoped label associated with a failure.
+ * @return An AnalysisError retaining its ResolutionError.
+ * @ingroup implementation
+ */
 [[nodiscard]] AnalysisError type_resolution_error(classpath::ResolutionError resolution,
                                                   std::optional<LabelId> label = {}) {
   auto detail = resolution.detail;
   return {.kind = AnalysisErrorKind::TypeResolutionFailure, .label = label, .detail = std::move(detail), .resolution = std::move(resolution)};
 }
 
+/**
+ * @brief Successful verification step or a structured AnalysisError.
+ */
 using Status = std::expected<void, AnalysisError>;
 
+/**
+ * @brief Per-method propagation/candidate-search work counter with cooperative cancellation.
+ * @ingroup implementation
+ */
 class WorkBudget {
 public:
+  /**
+   * @brief Initialize per-method propagation/candidate-search work counter with cooperative
+   * cancellation.
+   * @param limits Resource ceilings and cooperative cancellation policy.
+   * @param site Borrowed class/method identity for structured analysis diagnostics.
+   * @ingroup implementation
+   */
   WorkBudget(const AnalysisLimits& limits, MethodSite site) :
       remaining(limits.max_work), stop(limits.cancellation), site(site) {
   }
 
+  /**
+   * @brief Charge work before execution and check cancellation.
+   * @param amount Number of analysis work units to charge.
+   * @param instruction Stable instruction handle belonging to the supplied method.
+   * @return Success or a method-local budget/cancellation failure.
+   * @ingroup implementation
+   */
   [[nodiscard]] Status spend(std::size_t amount, InstructionId instruction) {
     if (stop.stop_requested())
       return site.fail(AnalysisErrorKind::Cancelled, "bytecode analysis cancelled", instruction);
@@ -46,11 +82,17 @@ public:
   }
 
 private:
-  std::size_t remaining;
-  std::stop_token stop;
-  MethodSite site;
+  std::size_t remaining; ///< Unspent analysis work units.
+  std::stop_token stop; ///< Cooperative cancellation token checked before charged work.
+  MethodSite site; ///< Borrowed method identity used to attach error context.
 };
 
+/**
+ * @brief Charge one propagation step according to local and operand storage visited.
+ * @param frame Borrowed frame whose retained storage cost is estimated.
+ * @return Work units for processing the frame.
+ * @ingroup implementation
+ */
 [[nodiscard]] std::size_t frame_cost(const Frame& frame) {
   return 1 + frame.locals.size() + frame.stack.size();
 }
@@ -58,10 +100,22 @@ private:
 } // namespace
 
 AnalysisContext::AnalysisContext(AnalysisLimits limits) :
-    AnalysisContext(classpath::ClassHierarchy(classpath::ClassResolver(classpath::ClassPathBuilder{}.build())), limits) {
+    AnalysisContext(classpath::ClassHierarchy(classpath::ClassResolver(classpath::ClassPathBuilder{}.build())), std::move(limits)) {
 }
 
+/**
+ * @brief Result-owned memory budget, interned names, frame vectors, and identity stamps. Resource
+ * declaration order keeps allocation owners alive until all dependent containers are destroyed.
+ * @ingroup implementation
+ */
 struct FrameAnalysis::Storage {
+  /**
+   * @brief Initialize result-owned memory budget, interned names, frame vectors, and identity stamps
+   * @param code Decoded instruction sequence or associated Code attribute.
+   * @param limits Resource ceilings and cooperative cancellation policy.
+   * @param owner_revision Class declaration stamp captured for result freshness checks.
+   * @param hierarchy_snapshot Hierarchy identity captured by the result.
+   */
   Storage(const MethodCode& code, const AnalysisLimits& limits,
           std::uint64_t owner_revision, std::uint64_t hierarchy_snapshot) :
       budget(limits.upstream_resource, limits.max_memory_bytes), names(&budget), entries(&budget),
@@ -69,16 +123,16 @@ struct FrameAnalysis::Storage {
       owner_revision(owner_revision), hierarchy_snapshot(hierarchy_snapshot) {
   }
 
-  detail::BudgetResource budget;
-  NameSet names;
-  std::pmr::vector<StackMapFrame> entries;
-  std::pmr::vector<ExceptionHandler> handlers;
-  std::uint32_t scope;
-  std::uint64_t revision;
-  std::uint64_t owner_revision;
-  std::uint64_t hierarchy_snapshot;
-  std::uint16_t maximum_stack = 0;
-  std::uint16_t maximum_locals = 0;
+  detail::BudgetResource budget; ///< Owning forwarding resource enforcing charged allocation bytes.
+  NameSet names; ///< Stable owned reference-name intern set.
+  std::pmr::vector<StackMapFrame> entries; ///< Owned stack-map frame entries in instruction order.
+  std::pmr::vector<ExceptionHandler> handlers; ///< Ordered exception-table entries using scoped labels.
+  std::uint32_t scope; ///< Method identity used to reject foreign labels or switches.
+  std::uint64_t revision; ///< Instruction revision captured when this metadata was supplied.
+  std::uint64_t owner_revision; ///< Captured class declaration revision for freshness checks.
+  std::uint64_t hierarchy_snapshot; ///< Captured hierarchy snapshot identity for freshness checks.
+  std::uint16_t maximum_stack = 0; ///< Computed peak operand-stack size in JVM slots.
+  std::uint16_t maximum_locals = 0; ///< Computed local-variable count in JVM slots.
 };
 
 FrameAnalysis::FrameAnalysis(std::unique_ptr<Storage> storage) noexcept : storage(std::move(storage)) {
@@ -113,32 +167,79 @@ bool FrameAnalysis::is_current(const ClassFile& owner, const Method& method,
   return attribute && is_current(attribute->code(), attribute->exception_handlers());
 }
 
+/**
+ * @brief Nonmutating method verifier driver. It builds a CFG, validates all instruction effects,
+ * propagates frames under shared budgets, retries bounded reference joins, and materializes a
+ * self-contained result.
+ * @ingroup implementation
+ */
 class FrameEngine {
 public:
+  /**
+   * @brief Initialize nonmutating method verifier driver
+   * @param owner Class owning the method, constants, or source slices being inspected.
+   * @param method Method belonging to the supplied class.
+   * @param code Decoded instruction sequence or associated Code attribute.
+   * @param handlers Exception-table entries in class-file order using the supplied code's labels.
+   * @param limits Resource ceilings and cooperative cancellation policy.
+   * @param hierarchy Reference-resolution hierarchy; a null internal pointer selects category-only
+   *   analysis.
+   * @param additional Additional required frame-entry instruction identities.
+   */
   FrameEngine(const ClassFile& owner, const Method& method, const MethodCode& code,
               std::span<const ExceptionHandler> handlers, const AnalysisLimits& limits,
               const classpath::ClassHierarchy* hierarchy, std::span<const InstructionId> additional) : owner(owner), method(method), code(code), handlers(handlers), limits(limits), hierarchy(hierarchy),
                                                                                                        additional(additional), site(method_site(owner, method)) {
   }
 
+  /**
+   * @brief Validate analysis inputs and retry bounded reference joins until a safe frame solution is
+   * found.
+   * @return An owned analysis result or structured verification/resource failure.
+   */
   [[nodiscard]] std::expected<FrameAnalysis, AnalysisError> run() const;
 
 private:
+  /**
+   * @brief Propagate one deterministic join choice through the CFG, recheck converged transitions,
+   * and materialize frames.
+   * @param result Output/result storage populated by this operation.
+   * @param cfg Validated control-flow graph for the analyzed code and handler snapshot.
+   * @param resolved_hierarchy Optional hierarchy overlay for the current owner; null selects
+   *   category-only analysis.
+   * @param work Shared work/cancellation budget across propagation attempts.
+   * @param search Deterministic reference-join candidate selection state shared across attempts.
+   * @return Success or a failure for this choice; all attempts share work/memory budgets.
+   */
   [[nodiscard]] Status run_attempt(FrameAnalysis::Storage& result, const ControlFlowGraph& cfg,
                                    const classpath::ClassHierarchy* resolved_hierarchy,
                                    WorkBudget& work, JoinSearch& search) const;
+  /**
+   * @brief Resolve and validate a handler catch reference, including catch-all Throwable.
+   * @param range Protected exception-table interval being analyzed.
+   * @param resolved_hierarchy Optional hierarchy overlay for the current owner; null selects
+   *   category-only analysis.
+   * @return The reference verification type, or a hierarchy/type error.
+   */
   [[nodiscard]] std::expected<VerificationType, AnalysisError> handler_type(
       const ProtectedRange& range, const classpath::ClassHierarchy* resolved_hierarchy) const;
+  /**
+   * @brief Copy a converged frame into result-owned storage and intern reference names.
+   * @param result Output/result storage populated by this operation.
+   * @param state Converged frame copied into result-owned storage.
+   * @param instruction Stable instruction handle belonging to the supplied method.
+   * @return Success or an unrepresentable-frame error.
+   */
   [[nodiscard]] Status materialize(FrameAnalysis::Storage& result, const Frame& state, InstructionId instruction) const;
 
-  const ClassFile& owner;
-  const Method& method;
-  const MethodCode& code;
-  std::span<const ExceptionHandler> handlers;
-  const AnalysisLimits& limits;
-  const classpath::ClassHierarchy* hierarchy;
-  std::span<const InstructionId> additional;
-  MethodSite site;
+  const ClassFile& owner; ///< Borrowed class owning the analyzed method and constant pool.
+  const Method& method; ///< Borrowed owning method declaration.
+  const MethodCode& code; ///< Borrowed immutable instruction sequence being analyzed.
+  std::span<const ExceptionHandler> handlers; ///< Ordered exception-table entries using scoped labels.
+  const AnalysisLimits& limits; ///< Configured resource ceilings.
+  const classpath::ClassHierarchy* hierarchy; ///< Optional borrowed reference hierarchy; null selects category-only checking.
+  std::span<const InstructionId> additional; ///< Extra instruction identities requiring frames in an emission plan.
+  MethodSite site; ///< Borrowed method identity used to attach error context.
 };
 
 std::expected<VerificationType, AnalysisError> FrameEngine::handler_type(
@@ -208,9 +309,9 @@ Status FrameEngine::materialize(FrameAnalysis::Storage& result, const Frame& sta
 }
 
 std::expected<FrameAnalysis, AnalysisError> FrameEngine::run() const try {
-  const auto local_limit = compute_max_locals(method, owner, code, limits);
+  auto local_limit = compute_max_locals(method, owner, code, limits);
   if (!local_limit)
-    return std::unexpected(local_limit.error());
+    return std::unexpected(std::move(local_limit.error()));
 
   std::optional<classpath::ClassHierarchy> scoped;
   if (hierarchy) {
@@ -269,6 +370,7 @@ std::expected<FrameAnalysis, AnalysisError> FrameEngine::run() const try {
   return site.fail(AnalysisErrorKind::ResourceLimitExceeded, "frame analysis memory budget exhausted");
 }
 
+// Entry frames are engaged before a block is queued; only initialized reachable/frame-boundary entries are materialized.
 Status FrameEngine::run_attempt(FrameAnalysis::Storage& result, const ControlFlowGraph& cfg,
                                 const classpath::ClassHierarchy* resolved_hierarchy,
                                 WorkBudget& work, JoinSearch& search) const {
@@ -413,7 +515,7 @@ Status FrameEngine::run_attempt(FrameAnalysis::Storage& result, const ControlFlo
   }
 
   if (resolved_hierarchy) {
-    if (auto checked = merger.check(*entries.front(), initial); !checked)
+    if (auto checked = merger.check(*entries.front(), initial); !checked) // NOLINT(bugprone-unchecked-optional-access)
       return std::unexpected(site.error(std::move(checked.error()), blocks.front().first));
     // Recheck every incoming transition against the converged declared type
     // state, including candidates selected for ambiguous reference joins.
@@ -441,9 +543,9 @@ Status FrameEngine::run_attempt(FrameAnalysis::Storage& result, const ControlFlo
     for (std::size_t i = 0; i < blocks.size(); ++i) {
       if (!explicit_frame[i])
         continue;
-      if (auto spent = work.spend(frame_cost(*entries[i]), blocks[i].first); !spent)
+      if (auto spent = work.spend(frame_cost(*entries[i]), blocks[i].first); !spent) // NOLINT(bugprone-unchecked-optional-access)
         return std::unexpected(std::move(spent.error()));
-      if (auto emitted = materialize(result, *entries[i], blocks[i].first); !emitted)
+      if (auto emitted = materialize(result, *entries[i], blocks[i].first); !emitted) // NOLINT(bugprone-unchecked-optional-access)
         return std::unexpected(std::move(emitted.error()));
     }
   }

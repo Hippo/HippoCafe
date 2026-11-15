@@ -1,3 +1,9 @@
+/**
+ * @file
+ * @brief Bounded class-file parsing, layout, and serialization.
+ * @ingroup implementation
+ */
+
 #include "class_writer_impl.hpp"
 
 #include <array>
@@ -13,8 +19,14 @@ namespace cafe::detail {
 
 namespace {
 
-constexpr auto MAX_COUNT = std::numeric_limits<std::uint16_t>::max();
+constexpr auto MAX_COUNT = std::numeric_limits<std::uint16_t>::max(); ///< Largest u2 table count accepted by the class-file format.
 
+/**
+ * @brief Check whether an attribute stores a typed alternative.
+ * @param kind Payload or error discriminator.
+ * @return True for payloads emitted through a typed codec.
+ * @ingroup implementation
+ */
 bool typed_payload(AttributeKind kind) noexcept {
   switch (kind) {
     case AttributeKind::Code:
@@ -69,7 +81,7 @@ std::expected<void, WriteError> ClassWriter::write_attributes(
     const auto length_offset = output.size();
     output.u4(0);
     const auto start = output.size();
-    const auto written = write_attribute_body(attribute, spec, location, path);
+    auto written = write_attribute_body(attribute, spec, location, path);
     if (!written)
       return written;
     const auto length = output.size() - start;

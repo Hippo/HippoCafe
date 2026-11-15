@@ -1,0 +1,76 @@
+/**
+ * @defgroup model Class model
+ * @brief Owned declarations, attributes, constants, identifiers, and operation policies.
+ */
+
+/**
+ * @defgroup bytecode Bytecode
+ * @brief Logical instructions, stable handles, labels, and editing operations.
+ */
+
+/**
+ * @defgroup io Class-file I/O
+ * @brief Bounded parsing, compatible recovery, and safe class serialization.
+ */
+
+/**
+ * @defgroup archive Archives
+ * @brief JAR/JMOD indexing, staged editing, and atomic publication.
+ */
+
+/**
+ * @defgroup classpath Classpaths and hierarchy
+ * @brief Explicit class sources, immutable snapshots, and reference-type resolution.
+ */
+
+/**
+ * @defgroup analysis Analysis
+ * @brief Control flow, stack/local maxima, and verifier frame computation.
+ */
+
+/**
+ * @defgroup implementation Implementation reference
+ * @brief Internal storage, codecs, validation, and algorithm contracts; these are not installed APIs.
+ */
+
+/**
+ * @namespace cafe
+ * @brief Owned class models, compact bytecode, and class-file operations.
+ * @ingroup model
+ */
+
+/**
+ * @namespace cafe::analysis
+ * @brief Control flow and bounded JVM verification metadata computation.
+ * @ingroup analysis
+ */
+
+/**
+ * @namespace cafe::archive
+ * @brief Bounded JAR/JMOD indexing, editing, and atomic publication.
+ * @ingroup archive
+ */
+
+/**
+ * @namespace cafe::classpath
+ * @brief Explicit source snapshots, class resolution, and hierarchy queries.
+ * @ingroup classpath
+ */
+
+/**
+ * @namespace cafe::detail
+ * @brief Private model storage and class-file codecs.
+ * @ingroup implementation
+ */
+
+/**
+ * @namespace cafe::archive::detail
+ * @brief Private file publication and ZIP emission helpers.
+ * @ingroup implementation
+ */
+
+/**
+ * @namespace cafe::classpath::detail
+ * @brief Private class-source, metadata, and naming helpers.
+ * @ingroup implementation
+ */

@@ -40,6 +40,15 @@ jobs:
       - name: Run unit, corpus, and JVM tests
         if: matrix.preset != 'fuzz'
         run: ctest --preset "$HIPPOCAFE_PRESET"
+      - name: Verify installed package
+        if: matrix.preset == 'debug'
+        run: |
+          cmake --install build/debug --prefix "$RUNNER_TEMP/hippocafe-install"
+          cmake -S tests/package_consumer -B build/consumer \
+            -DCMAKE_PREFIX_PATH="$RUNNER_TEMP/hippocafe-install" \
+            -DCMAKE_CXX_COMPILER="$HIPPOCAFE_CXX_COMPILER"
+          cmake --build build/consumer --parallel 2
+          ctest --test-dir build/consumer --output-on-failure
       - name: Run seeded fuzz smoke tests
         if: matrix.preset == 'fuzz'
         env:
@@ -49,4 +58,30 @@ jobs:
           mkdir -p build/fuzz/fuzz/mutated
           build/fuzz/fuzz/hippocafe_libfuzzer -seed=314159 -runs=5000 -max_len=524288 \
             -artifact_prefix=build/fuzz/fuzz/ \
-            build/fuzz/fuzz/mutated build/fuzz/fuzz/seeds
+            build/fuzz/fuzz/mutated build/fuzz/fuzz/seeds build/fuzz/fuzz/archive-seeds
+
+  quality:
+    runs-on: ubuntu-26.04
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5.0.1
+        with:
+          persist-credentials: false
+      - name: Install documentation and analysis tools
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y clang-format-22 clang-tidy-22 doxygen
+      - name: Check formatting and documentation sources
+        run: |
+          git ls-files -z '*.cpp' '*.hpp' | xargs -0 clang-format-22 --dry-run --Werror
+          python3 tools/check_docs.py
+      - name: Build with static analysis and generate reference
+        run: |
+          cmake -S . -B build/quality -G Ninja \
+            -DCMAKE_BUILD_TYPE=Debug -DCMAKE_C_COMPILER=clang-22 -DCMAKE_CXX_COMPILER=clang++-22 \
+            -DBUILD_TESTING=OFF -DHIPPOCAFE_BUILD_EXAMPLES=ON \
+            -DHIPPOCAFE_WARNINGS_AS_ERRORS=ON -DHIPPOCAFE_ENABLE_CLANG_TIDY=ON \
+            -Dhippocafe_clang_tidy=clang-tidy-22 -DHIPPOCAFE_BUILD_DOCS=ON
+          cmake --build build/quality --parallel 2
+          cmake --build build/quality --target hippocafe_docs
+          python3 tools/check_docs.py --html build/quality/docs/html

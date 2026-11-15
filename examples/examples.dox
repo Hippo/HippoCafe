@@ -1,0 +1,19 @@
+/**
+ * @example quickstart.cpp
+ * Read, write, and stage a class in an in-memory archive using the public API.
+ */
+
+/**
+ * @example roundtrip.cpp
+ * Read and write a class file from the command line, reporting diagnostics.
+ */
+
+/**
+ * @example edit_and_compute.cpp
+ * Edit a class, build a hierarchy from the target Java runtime, and write it with computed frames.
+ */
+
+/**
+ * @example inspect_class.cpp
+ * Inspect class declarations and decoded instructions from the command line.
+ */

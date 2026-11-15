@@ -1,3 +1,9 @@
+/**
+ * @file
+ * @brief Bounded class-file parsing, layout, and serialization.
+ * @ingroup implementation
+ */
+
 #pragma once
 
 #include <algorithm>
@@ -8,13 +14,23 @@
 
 namespace cafe::detail {
 
+/**
+ * @brief Borrowed name/descriptor pair with its original table index for duplicate detection.
+ * @ingroup implementation
+ */
 struct MemberKey {
-  std::string_view name;
-  std::string_view descriptor;
-  std::size_t index;
-  std::size_t offset;
+  std::string_view name; ///< JVM internal or declaration name in modified UTF-8.
+  std::string_view descriptor; ///< JVM field or method descriptor.
+  std::size_t index; ///< Original declaration-table index retained while sorting duplicate keys.
+  std::size_t offset; ///< Byte offset relative to the owning source or code buffer.
 };
 
+/**
+ * @brief Sort member identity keys and identify an exact duplicate name/descriptor.
+ * @param members Field or method declarations in the required order.
+ * @return The duplicate's table ordinal when present, otherwise an empty optional.
+ * @ingroup implementation
+ */
 [[nodiscard]] inline const MemberKey* find_duplicate_member(std::span<MemberKey> members) {
   if (members.size() < 2)
     return nullptr;

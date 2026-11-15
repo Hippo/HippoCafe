@@ -1,3 +1,9 @@
+/**
+ * @file
+ * @brief Bounded class-file parsing, layout, and serialization.
+ * @ingroup implementation
+ */
+
 #include "code_decoder.hpp"
 
 #include <algorithm>
@@ -51,8 +57,26 @@ std::expected<LabelId, CodeEditError> DecodedBoundaries::label_at(MethodCode& co
   return id;
 }
 
+/**
+ * @brief Bounded code-array decoder with forward-label fixups and original boundary tracking. It
+ * writes into a temporary empty MethodCode owned by the caller.
+ * @ingroup implementation
+ */
 class CodeDecoder {
 public:
+  /**
+   * @brief Initialize bounded code-array decoder with forward-label fixups and original boundary
+   * tracking
+   * @param code Decoded instruction sequence or associated Code attribute.
+   * @param bytes Code byte sequence borrowed for this decoder's lifetime.
+   * @param base_offset Absolute byte origin of this code array.
+   * @param version Exact JVM class-file major and minor version.
+   * @param pool Owning class constant pool used for reference validation.
+   * @param max_locals Maximum local-variable size in JVM slots.
+   * @param options Operation-specific parsing, emission, or entry policy.
+   * @param scratch Temporary allocator that must outlive any returned allocator-backed views.
+   * @param path Borrowed structural path included in diagnostics.
+   */
   CodeDecoder(MethodCode& code, std::span<const std::byte> bytes, std::size_t base_offset,
               ClassVersion version, const ConstantPool& pool, std::uint16_t max_locals,
               const ReadOptions& options, std::pmr::memory_resource* scratch, std::string_view path) :
@@ -60,6 +84,11 @@ public:
       options(options), scratch(scratch), path(path), offsets(bytes.size(), BytecodeAccess::scope(code), scratch), pending(scratch) {
   }
 
+  /**
+   * @brief Scan instructions, then resolve forward branch labels against validated boundaries.
+   * @return The original boundary map, or a structured read error.
+   */
+  // The loop checks remaining() before reading its one-byte opcode.
   std::expected<DecodedBoundaries, ReadError> run() {
     // Code size bounds the number of decoded instructions and target offsets.
     code.reserve(std::min<std::size_t>(reader.remaining(), 64));
@@ -67,7 +96,7 @@ public:
       position = static_cast<std::uint16_t>(reader.position());
       offsets.starts[position] = 1;
       offsets.ordinals[position] = static_cast<std::uint16_t>(code.size());
-      auto wire = static_cast<Opcode>(*reader.u1());
+      auto wire = static_cast<Opcode>(*reader.u1()); // NOLINT(bugprone-unchecked-optional-access)
       auto result = decode_one(wire);
       if (!result)
         return std::unexpected(std::move(result.error()));
@@ -85,18 +114,36 @@ public:
   }
 
 private:
+  /**
+   * @brief Successful instruction decode or a structured ReadError.
+   */
   using DecodeResult = std::expected<void, ReadError>;
 
+  /**
+   * @brief Forward branch destination requiring label binding after the bytecode scan completes.
+   * @ingroup implementation
+   */
   struct Pending {
-    std::uint16_t target;
-    std::uint16_t source;
+    std::uint16_t target; ///< Absolute target byte offset within the original code array.
+    std::uint16_t source; ///< Byte offset of the branch instruction for diagnostics.
   };
 
+  /**
+   * @brief Attach the current opcode offset and method path to a decoding failure.
+   * @param kind Payload or error discriminator.
+   * @param detail Explanation copied into the structured error.
+   * @return An unexpected ReadError.
+   */
   std::unexpected<ReadError> fail(ReadErrorKind kind, std::string_view detail) const {
     return std::unexpected(ReadError{kind, reader.offset() - reader.position() + position,
                                      std::string(path), std::string(detail)});
   }
 
+  /**
+   * @brief Validate and append a decoded builder while translating edit failures to read failures.
+   * @param value Instruction descriptor copied into the method.
+   * @return Success or an instruction/operand/handle-limit error.
+   */
   DecodeResult append(const InstructionBuilder& value) {
     auto id = code.append(value);
     if (!id)
@@ -105,6 +152,12 @@ private:
     return {};
   }
 
+  /**
+   * @brief Validate and append a decoded builder while translating edit failures to read failures.
+   * @param value Factory result whose error is translated, or whose instruction is appended.
+   * @param hint Preferred wire-encoding form.
+   * @return Success or an instruction/operand/handle-limit error.
+   */
   DecodeResult append(std::expected<Instruction, CodeEditError> value, EncodingHint hint = EncodingHint::Automatic) {
     if (!value)
       return fail(ReadErrorKind::InvalidInstruction, "invalid instruction operand");
@@ -113,12 +166,25 @@ private:
     return append(InstructionBuilder{BytecodeAccess::with_hint(*value, hint)});
   }
 
+  /**
+   * @brief Build and append a constant-bearing instruction with the selected encoding hint.
+   * @param opcode Opcode whose operand form or metadata is requested.
+   * @param index One-based constant-pool reference; the required tag is determined by this
+   *   operation.
+   * @param hint Preferred wire-encoding form.
+   * @return Success or an invalid constant operand/read error.
+   */
   DecodeResult constant(Opcode opcode, CpIndex index, EncodingHint hint = EncodingHint::Automatic) {
     if (index.value == 0)
       return fail(ReadErrorKind::InvalidIndex, "constant pool index must be nonzero");
     return append(Instruction::constant(opcode, index), hint);
   }
 
+  /**
+   * @brief Create or reuse a forward destination label for a relative branch offset.
+   * @param displacement Signed branch displacement relative to the opcode byte.
+   * @return A scoped label, or an out-of-code target error.
+   */
   std::expected<LabelId, ReadError> target(std::int32_t displacement) {
     auto offset = static_cast<std::int64_t>(position) + displacement;
     if (offset < 0 || offset >= static_cast<std::int64_t>(offsets.starts.size()))
@@ -137,6 +203,10 @@ private:
     return label;
   }
 
+  /**
+   * @brief Decode only the legal wide-prefixed local and iinc forms.
+   * @return Success or an invalid/truncated instruction error.
+   */
   DecodeResult decode_wide() {
     auto raw = reader.u1();
     if (!raw)
@@ -156,6 +226,12 @@ private:
     return append(Instruction::increment(*index, *amount), EncodingHint::Wide);
   }
 
+  /**
+   * @brief Decode aligned dense/sparse switch operands with bounded case counts.
+   * @param table Whether the switch is dense tableswitch rather than sparse lookupswitch.
+   * @return Success or a range/key/target/resource error.
+   */
+  // The complete switch table length is checked before the fixed-width case reads.
   DecodeResult decode_switch(bool table) {
     auto padding = reader.take_slice(switch_padding(position));
     if (!padding)
@@ -192,7 +268,7 @@ private:
       std::pmr::vector<LabelId> labels(scratch);
       labels.reserve(size);
       for (std::size_t i = 0; i < size; ++i) {
-        auto label = target(*reader.s4());
+        auto label = target(*reader.s4()); // NOLINT(bugprone-unchecked-optional-access)
         if (!label)
           return std::unexpected(std::move(label.error()));
         labels.push_back(*label);
@@ -202,10 +278,10 @@ private:
     std::pmr::vector<LookupPair> pairs(scratch);
     pairs.reserve(size);
     for (std::size_t i = 0; i < size; ++i) {
-      auto key = *reader.s4();
+      auto key = *reader.s4(); // NOLINT(bugprone-unchecked-optional-access)
       if (!pairs.empty() && key <= pairs.back().key)
         return fail(ReadErrorKind::InvalidInstruction, "lookupswitch keys are not strictly ascending");
-      auto label = target(*reader.s4());
+      auto label = target(*reader.s4()); // NOLINT(bugprone-unchecked-optional-access)
       if (!label)
         return std::unexpected(std::move(label.error()));
       pairs.push_back({key, *label});
@@ -213,6 +289,12 @@ private:
     return append_switch(LookupSwitch{*default_target, pairs});
   }
 
+  /**
+   * @brief Check opcode version and fixed width before reading its operands.
+   * @param wire Original opcode byte before logical normalization.
+   * @return Success or a structured opcode/operand/framing error.
+   */
+  // The wire width is checked against the bounded reader before fixed-width operands are read.
   DecodeResult decode_one(Opcode wire) {
     const auto& info = opcode_info(wire);
     if (!info.is_allowed(version.major))
@@ -225,26 +307,26 @@ private:
       case OperandForm::None:
         return append(Instruction::simple(opcode));
       case OperandForm::SignedByte:
-        return append(Instruction::immediate(opcode, *reader.s1()));
+        return append(Instruction::immediate(opcode, *reader.s1())); // NOLINT(bugprone-unchecked-optional-access)
       case OperandForm::SignedShort:
-        return append(Instruction::immediate(opcode, *reader.s2()));
+        return append(Instruction::immediate(opcode, *reader.s2())); // NOLINT(bugprone-unchecked-optional-access)
       case OperandForm::Local:
-        return append(Instruction::local(opcode, *reader.u1()), EncodingHint::Explicit);
+        return append(Instruction::local(opcode, *reader.u1()), EncodingHint::Explicit); // NOLINT(bugprone-unchecked-optional-access)
       case OperandForm::ImplicitLocal:
         return append(Instruction::local(opcode, info.implicit_local), EncodingHint::Implicit);
       case OperandForm::Increment: {
-        auto index = *reader.u1();
-        auto increment = *reader.s1();
+        auto index = *reader.u1(); // NOLINT(bugprone-unchecked-optional-access)
+        auto increment = *reader.s1(); // NOLINT(bugprone-unchecked-optional-access)
         return append(Instruction::increment(index, increment), EncodingHint::Explicit);
       }
       case OperandForm::ConstantByte:
-        return constant(opcode, CpIndex{*reader.u1()}, EncodingHint::Explicit);
+        return constant(opcode, CpIndex{*reader.u1()}, EncodingHint::Explicit); // NOLINT(bugprone-unchecked-optional-access)
       case OperandForm::ConstantShort:
-        return constant(opcode, CpIndex{*reader.u2()}, wire == Opcode::LdcW ? EncodingHint::Wide : EncodingHint::Automatic);
+        return constant(opcode, CpIndex{*reader.u2()}, wire == Opcode::LdcW ? EncodingHint::Wide : EncodingHint::Automatic); // NOLINT(bugprone-unchecked-optional-access)
       case OperandForm::BranchShort:
       case OperandForm::BranchInt: {
         bool wide = info.form == OperandForm::BranchInt;
-        auto label = target(wide ? *reader.s4() : *reader.s2());
+        auto label = target(wide ? *reader.s4() : *reader.s2()); // NOLINT(bugprone-unchecked-optional-access)
         if (!label)
           return std::unexpected(std::move(label.error()));
         return append(Branch{opcode, *label, wide ? EncodingHint::Wide : EncodingHint::Explicit});
@@ -254,27 +336,27 @@ private:
       case OperandForm::LookupSwitch:
         return decode_switch(false);
       case OperandForm::InvokeInterface: {
-        auto index = CpIndex{*reader.u2()};
-        auto count = *reader.u1();
-        if (*reader.u1() != 0)
+        auto index = CpIndex{*reader.u2()}; // NOLINT(bugprone-unchecked-optional-access)
+        auto count = *reader.u1(); // NOLINT(bugprone-unchecked-optional-access)
+        if (*reader.u1() != 0) // NOLINT(bugprone-unchecked-optional-access)
           return fail(ReadErrorKind::InvalidInstruction, "invokeinterface reserved operand byte must be zero");
         if (index.value == 0)
           return fail(ReadErrorKind::InvalidIndex, "constant pool index must be nonzero");
         return append(Instruction::invoke_interface(index, count));
       }
       case OperandForm::InvokeDynamic: {
-        auto index = CpIndex{*reader.u2()};
-        if (*reader.u2() != 0)
+        auto index = CpIndex{*reader.u2()}; // NOLINT(bugprone-unchecked-optional-access)
+        if (*reader.u2() != 0) // NOLINT(bugprone-unchecked-optional-access)
           return fail(ReadErrorKind::InvalidInstruction, "invokedynamic reserved operand bytes must be zero");
         return constant(opcode, index);
       }
       case OperandForm::NewArray:
-        return append(Instruction::new_array(static_cast<ArrayType>(*reader.u1())));
+        return append(Instruction::new_array(static_cast<ArrayType>(*reader.u1()))); // NOLINT(bugprone-unchecked-optional-access)
       case OperandForm::MultiANewArray: {
-        auto index = CpIndex{*reader.u2()};
+        auto index = CpIndex{*reader.u2()}; // NOLINT(bugprone-unchecked-optional-access)
         if (index.value == 0)
           return fail(ReadErrorKind::InvalidIndex, "constant pool index must be nonzero");
-        return append(Instruction::multi_array(index, *reader.u1()));
+        return append(Instruction::multi_array(index, *reader.u1())); // NOLINT(bugprone-unchecked-optional-access)
       }
       case OperandForm::WidePrefix:
         return decode_wide();
@@ -284,17 +366,17 @@ private:
     return fail(ReadErrorKind::InvalidOpcode, "unrecognized opcode operand form");
   }
 
-  MethodCode& code;
-  BinaryReader reader;
-  ClassVersion version;
-  const ConstantPool& pool;
-  std::uint16_t max_locals;
-  const ReadOptions& options;
-  std::pmr::memory_resource* scratch;
-  std::string_view path;
-  DecodedBoundaries offsets;
-  std::pmr::vector<Pending> pending;
-  std::uint16_t position = 0;
+  MethodCode& code; ///< Borrowed destination method receiving decoded instructions.
+  BinaryReader reader; ///< Bounded cursor borrowing the original code bytes.
+  ClassVersion version; ///< Exact class-file major and minor version.
+  const ConstantPool& pool; ///< Borrowed owning class constant pool used for lookup and validation.
+  std::uint16_t max_locals; ///< Declared local-slot limit used for operand and metadata validation.
+  const ReadOptions& options; ///< Borrowed operation policy, which must outlive the internal codec.
+  std::pmr::memory_resource* scratch; ///< Borrowed temporary allocator for work buffers and interned names.
+  std::string_view path; ///< Borrowed structural path used in diagnostics.
+  DecodedBoundaries offsets; ///< Instruction starts, ordinals, and lazily materialized labels for the input code.
+  std::pmr::vector<Pending> pending; ///< Forward branch-label bindings resolved after the initial instruction scan.
+  std::uint16_t position = 0; ///< Byte offset of the current opcode within the code array.
 };
 
 std::expected<DecodedBoundaries, ReadError> decode_code(MethodCode& code, std::span<const std::byte> bytes,

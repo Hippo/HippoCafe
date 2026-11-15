@@ -1,3 +1,9 @@
+/**
+ * @file
+ * @brief Class source snapshots, metadata resolution, and reference-type relationships.
+ * @ingroup implementation
+ */
+
 #include <cafe/classpath/class_resolver.hpp>
 
 #include <algorithm>
@@ -9,15 +15,31 @@
 namespace cafe::classpath {
 namespace {
 
+/**
+ * @brief Shared immutable selected class hierarchy metadata.
+ */
 using Metadata = std::shared_ptr<const ClassInfo>;
 
+/**
+ * @brief Selected archive entry paired with its shared owning source and provenance.
+ * @ingroup implementation
+ */
 struct ArchiveClass {
-  SourceProvenance source;
-  const detail::ArchiveSource* archive;
+  SourceProvenance source; ///< Provenance of the selected definition.
+  const detail::ArchiveSource* archive; ///< Borrowed archive source pinned by the resolver snapshot.
 };
 
+/**
+ * @brief Selected in-memory, directory, or archive definition with stable ownership.
+ */
 using Candidate = std::variant<Metadata, ArchiveClass, detail::DirectoryClass>;
 
+/**
+ * @brief Read the selected candidate's source identity without loading its class body.
+ * @param candidate Selected directory/archive/in-memory class candidate.
+ * @return Owned provenance for diagnostics and shadow reporting.
+ * @ingroup implementation
+ */
 const SourceProvenance& provenance(const Candidate& candidate) {
   if (const auto* metadata = std::get_if<Metadata>(&candidate))
     return (*metadata)->source;
@@ -28,19 +50,35 @@ const SourceProvenance& provenance(const Candidate& candidate) {
 
 } // namespace
 
+/**
+ * @brief Shared resolver snapshot, synchronized metadata/member caches, provenance candidates, and
+ * cumulative read counters.
+ * @ingroup implementation
+ */
 struct ClassResolver::State {
+  /**
+   * @brief Initialize shared resolver snapshot, synchronized metadata/member caches, provenance
+   * candidates, and cumulative read counters.
+   * @param path Immutable class-source snapshot retained by this resolver.
+   */
   explicit State(ClassPath path) : class_path(std::move(path)) {
   }
 
+  /**
+   * @brief Read a selected archive candidate while updating shared resolution counters.
+   * @param archive Retained source archive supplying original payloads.
+   * @param source Provenance copied into returned metadata or errors.
+   * @return Owned class bytes, or a bounded archive/read error.
+   */
   [[nodiscard]] std::expected<std::vector<std::byte>, ResolutionError> read_archive(
       const detail::ArchiveSource& archive, const SourceProvenance& source);
 
-  ClassPath class_path;
-  std::mutex mutex;
-  std::unordered_map<std::string, Metadata, detail::NameHash, std::equal_to<>> cache;
-  std::unordered_map<std::string, detail::DeclaredMembers, detail::NameHash, std::equal_to<>> members;
-  std::size_t cache_bytes = 0;
-  ResolutionStats stats;
+  ClassPath class_path; ///< Immutable source snapshot pinned by this resolver state.
+  std::mutex mutex; ///< Serializes shared mutable cache or stream state.
+  std::unordered_map<std::string, Metadata, detail::NameHash, std::equal_to<>> cache; ///< Shared selected class metadata cache indexed by internal name.
+  std::unordered_map<std::string, detail::DeclaredMembers, detail::NameHash, std::equal_to<>> members; ///< Owned or shared declaration tables for exact member lookup.
+  std::size_t cache_bytes = 0; ///< Accounted bytes currently retained by this cache.
+  ResolutionStats stats; ///< Cumulative synchronized resolver activity counters.
 };
 
 std::expected<std::vector<std::byte>, ResolutionError> ClassResolver::State::read_archive(
@@ -110,22 +148,22 @@ std::expected<Metadata, ResolutionError> ClassResolver::resolve(std::string_view
       return detail::fail(ResolutionErrorKind::SourceConflict, name, provenance(candidate),
                           "multiple definitions in strict classpath snapshot");
     } else if (sources.collect_shadows) {
-      const auto& source = provenance(candidate);
+      auto source = provenance(candidate);
       const auto bytes = sizeof(source) + source.entry.size() +
                          source.path.native().size() * sizeof(std::filesystem::path::value_type);
       if (bytes > sources.limits.max_class_metadata_bytes - shadow_bytes)
         return detail::fail(ResolutionErrorKind::ResourceLimitExceeded, name, source,
                             "duplicate diagnostics exceed their configured metadata limit");
       shadow_bytes += bytes;
-      shadows.push_back(source);
+      shadows.push_back(std::move(source));
     }
     return {};
   };
 
   if (const auto entry = sources.memory.find(name); entry != sources.memory.end()) {
     for (const auto& definition : entry->second) {
-      if (const auto added = consider(definition->info); !added)
-        return report(added.error());
+      if (auto added = consider(definition->info); !added)
+        return report(std::move(added.error()));
       if (!scan_all)
         break;
     }
@@ -143,14 +181,14 @@ std::expected<Metadata, ResolutionError> ClassResolver::resolve(std::string_view
           if (!entry)
             return report(std::move(entry.error()));
           if (*entry)
-            if (const auto added = consider(std::move(**entry)); !added)
-              return report(added.error());
+            if (auto added = consider(std::move(**entry)); !added)
+              return report(std::move(added.error()));
         } else {
           const auto& archive = *std::get<1>(candidate);
           auto entry = archive.find(*resource, sources.target_release);
           if (entry)
-            if (const auto added = consider(ArchiveClass{std::move(*entry), &archive}); !added)
-              return report(added.error());
+            if (auto added = consider(ArchiveClass{std::move(*entry), &archive}); !added)
+              return report(std::move(added.error()));
         }
       }
     }
@@ -159,9 +197,9 @@ std::expected<Metadata, ResolutionError> ClassResolver::resolve(std::string_view
     return report({ResolutionErrorKind::NotFound, std::string(name), {}, "class is absent from the configured classpath"});
 
   Metadata resolved;
-  if (const auto* in_memory = std::get_if<Metadata>(&*selected)) {
+  if (auto* in_memory = std::get_if<Metadata>(&*selected)) {
     if (shadows.empty()) {
-      resolved = *in_memory;
+      resolved = std::move(*in_memory);
     } else {
       auto info = std::make_shared<ClassInfo>(**in_memory);
       info->shadowed_definitions = std::move(shadows);

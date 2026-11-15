@@ -1,3 +1,9 @@
+/**
+ * @file
+ * @brief Bounded class-file parsing, layout, and serialization.
+ * @ingroup implementation
+ */
+
 #include "opaque_attribute.hpp"
 
 #include <array>
@@ -16,10 +22,31 @@
 namespace cafe::detail {
 namespace {
 
+/**
+ * @brief Success or a structural ReadError while validating a bounded opaque attribute.
+ */
 using Validation = std::expected<void, ReadError>;
 
+/**
+ * @brief Bounded structural validator for recognized raw attributes. It retains original payload
+ * bytes and can visit Code offsets for later relocation; depth and count limits bound nested
+ * annotations.
+ * @ingroup implementation
+ */
 class OpaqueValidator {
 public:
+  /**
+   * @brief Initialize bounded structural validator for recognized raw attributes
+   * @param body Length-bounded attribute body reader.
+   * @param constant_pool Owning class constant pool used for reference validation.
+   * @param read_limits Resource ceilings for bounded structural parsing.
+   * @param attribute_path Borrowed structural diagnostic path for the attribute.
+   * @param code_context Optional bounded Code bytes, instruction boundaries, local limit, and
+   *   handler-count context.
+   * @param scratch_resource Temporary PMR resource that must outlive scratch-backed returned views.
+   * @param offset_visitor Optional borrowed callback invoked for validated code-offset fields.
+   * @ingroup implementation
+   */
   OpaqueValidator(BinaryReader& body, const ConstantPool& constant_pool, const ReadLimits& read_limits,
                   std::string_view attribute_path, const CodeAttributeContext* code_context,
                   std::pmr::memory_resource* scratch_resource, CodeOffsetVisitor offset_visitor) :
@@ -27,6 +54,13 @@ public:
       scratch(scratch_resource), offsets(offset_visitor) {
   }
 
+  /**
+   * @brief Dispatch a recognized attribute codec and require complete bounded-body consumption.
+   * @param kind Payload or error discriminator.
+   * @param context Structural attribute location checked against the format registry.
+   * @return Success or a malformed/trailing-body error.
+   * @ingroup implementation
+   */
   Validation validate(AttributeKind kind, AttributeContext context) {
     using enum AttributeKind;
     switch (kind) {
@@ -77,14 +111,34 @@ public:
   }
 
 private:
+  /**
+   * @brief Create a raw-attribute structural error at an absolute source offset.
+   * @param offset Byte offset into the supplied source/output range.
+   * @param kind Payload or error discriminator.
+   * @param detail Explanation copied into the structured error.
+   * @return An unexpected ReadError.
+   * @ingroup implementation
+   */
   std::unexpected<ReadError> failure_at(std::size_t offset, ReadErrorKind kind, std::string_view detail) const {
     return std::unexpected(ReadError{kind, offset, std::string(path), std::string(detail)});
   }
 
+  /**
+   * @brief Report malformed raw-attribute content at the current reader offset.
+   * @param detail Explanation copied into the structured error.
+   * @return An unexpected ReadError.
+   * @ingroup implementation
+   */
   std::unexpected<ReadError> failure(std::string_view detail) const {
     return failure_at(reader.offset(), ReadErrorKind::MalformedAttribute, detail);
   }
 
+  /**
+   * @brief Consume a required byte count from the bounded attribute body.
+   * @param size Requested byte count or checked input byte length.
+   * @return Success or a truncation error.
+   * @ingroup implementation
+   */
   Validation skip(std::size_t size) {
     if (!reader.take_slice(size)) {
       return failure("truncated attribute field");
@@ -92,6 +146,13 @@ private:
     return {};
   }
 
+  /**
+   * @brief Read and validate a constant index against a required tag and zero policy.
+   * @param tag Required constant-pool tag.
+   * @param zero_allowed Whether the enclosing attribute permits a zero constant index.
+   * @return The checked index, or a structural/reference failure.
+   * @ingroup implementation
+   */
   std::expected<CpIndex, ReadError> read_index(CpTag tag, bool zero_allowed = false) {
     const auto offset = reader.offset();
     const auto value = reader.u2();
@@ -105,10 +166,25 @@ private:
     return index;
   }
 
+  /**
+   * @brief Validate a constant reference without retaining its value.
+   * @param tag Required constant-pool tag.
+   * @param zero_allowed Whether the enclosing attribute permits a zero constant index.
+   * @return Success or a structural/reference failure.
+   * @ingroup implementation
+   */
   Validation index(CpTag tag, bool zero_allowed = false) {
     return read_index(tag, zero_allowed).transform([](CpIndex) {});
   }
 
+  /**
+   * @brief Validate a bounded counted sequence before invoking its item parser.
+   * @param count Number of entries or slots to reserve or encode.
+   * @param minimum_width Minimum encoded bytes per item used to bound the declared count.
+   * @param read_item Callback parsing one already count-bounded item.
+   * @return Success or a count/truncation/item error.
+   * @ingroup implementation
+   */
   template<class ReadItem>
   Validation repeat(std::optional<std::size_t> count, std::size_t minimum_width, ReadItem read_item) {
     if (!count || *count > reader.remaining() / minimum_width) {
@@ -122,15 +198,33 @@ private:
     return {};
   }
 
+  /**
+   * @brief Read a u2-counted sequence of constant references with the required tag.
+   * @param tag Required constant-pool tag.
+   * @return Success or a count/reference error.
+   * @ingroup implementation
+   */
   Validation indices(CpTag tag) {
     return repeat(reader.u2(), 2, [this, tag] { return index(tag); });
   }
 
+  /**
+   * @brief Check an offset against the available Code instruction-start bitmap.
+   * @param offset Byte offset into the supplied source/output range.
+   * @return True for a legal instruction start, or for an unchecked context without Code metadata as
+   *   defined by the caller.
+   * @ingroup implementation
+   */
   [[nodiscard]] bool instruction_start(std::size_t offset) const {
     return code && offset < code->bytes.size() && offset < code->instruction_starts.size() &&
            code->instruction_starts[offset] != 0;
   }
 
+  /**
+   * @brief Validate a local-variable scope and visit its offset/length fields.
+   * @return Success or an invalid range/boundary/visitor failure.
+   * @ingroup implementation
+   */
   Validation local_range() {
     const auto offset = reader.offset();
     const auto position = reader.position();
@@ -149,6 +243,12 @@ private:
     return {};
   }
 
+  /**
+   * @brief Validate a local slot and its category width against max_locals.
+   * @param width Number of local slots occupied by the referenced value.
+   * @return Success or an out-of-range slot error.
+   * @ingroup implementation
+   */
   Validation local_index(std::uint16_t width = 1) {
     const auto offset = reader.offset();
     const auto slot = reader.u2();
@@ -158,6 +258,11 @@ private:
     return {};
   }
 
+  /**
+   * @brief Validate LineNumberTable instruction offsets and line records.
+   * @return Success or a malformed offset/table error.
+   * @ingroup implementation
+   */
   Validation line_numbers() {
     return repeat(reader.u2(), 4, [this]() -> Validation {
       const auto offset = reader.offset();
@@ -175,14 +280,20 @@ private:
     });
   }
 
+  /**
+   * @brief Validate local-variable or local-variable-type table records.
+   * @param kind Payload or error discriminator.
+   * @return Success or a descriptor/range/reference/table error.
+   * @ingroup implementation
+   */
   Validation locals(AttributeKind kind) {
     return repeat(reader.u2(), 10, [this, kind]() -> Validation {
       if (auto range = local_range(); !range) {
         return range;
       }
-      const auto name = read_index(CpTag::Utf8);
+      auto name = read_index(CpTag::Utf8);
       if (!name) {
-        return std::unexpected(name.error());
+        return std::unexpected(std::move(name.error()));
       }
       const auto name_text = cp.get_utf8(*name);
       if (!name_text || !valid_unqualified_name(*name_text)) {
@@ -208,6 +319,11 @@ private:
     });
   }
 
+  /**
+   * @brief Validate one stack-map verification_type_info and any allocation-site reference.
+   * @return Success or an invalid verification encoding/reference error.
+   * @ingroup implementation
+   */
   Validation verification_type() {
     const auto start = reader.offset();
     const auto tag = reader.u1();
@@ -227,6 +343,11 @@ private:
     return failure_at(start, ReadErrorKind::MalformedAttribute, "invalid verification type tag");
   }
 
+  /**
+   * @brief Walk StackMapTable entries while checking frame tags, offsets, and verification values.
+   * @return Success or an invalid/truncated frame-table error.
+   * @ingroup implementation
+   */
   Validation stack_map() {
     std::size_t frame_offset = 0;
     bool subsequent_frame = false;
@@ -261,6 +382,11 @@ private:
     });
   }
 
+  /**
+   * @brief Read and validate an annotation type descriptor and pair count.
+   * @return The pair count, or an invalid/truncated annotation header error.
+   * @ingroup implementation
+   */
   std::expected<std::uint16_t, ReadError> annotation_header() {
     if (auto type = index(CpTag::Utf8); !type) {
       return std::unexpected(std::move(type).error());
@@ -272,6 +398,11 @@ private:
     return *pairs;
   }
 
+  /**
+   * @brief Validate one annotation's type and bounded element-value pairs.
+   * @return Success or an annotation/reference/depth error.
+   * @ingroup implementation
+   */
   Validation annotation() {
     auto pairs = annotation_header();
     if (!pairs) {
@@ -280,10 +411,21 @@ private:
     return annotation_elements(*pairs, true);
   }
 
+  /**
+   * @brief Validate a counted sequence of annotations.
+   * @return Success or a count/annotation error.
+   * @ingroup implementation
+   */
   Validation annotations() {
     return repeat(reader.u2(), 4, [this] { return annotation(); });
   }
 
+  /**
+   * @brief Validate the constant-pool form required by a scalar annotation tag.
+   * @param tag Required constant-pool tag.
+   * @return Success or an invalid tag/reference error.
+   * @ingroup implementation
+   */
   Validation annotation_scalar(std::uint8_t tag) {
     switch (tag) {
       case 'B':
@@ -308,6 +450,13 @@ private:
     }
   }
 
+  /**
+   * @brief Walk nested annotation/array values with explicit bounded traversal state.
+   * @param count Number of entries or slots to reserve or encode.
+   * @param named Whether each annotation value has an element-name prefix.
+   * @return Success or a malformed/reference/depth/resource error.
+   * @ingroup implementation
+   */
   Validation annotation_elements(std::uint16_t count, bool named) {
     // Most annotations are shallow. For deeper groups use the parser's scratch
     // resource and an explicit stack, regardless of the configured depth.
@@ -385,6 +534,12 @@ private:
     return {};
   }
 
+  /**
+   * @brief Validate one type-annotation target, path, and payload.
+   * @param context Structural attribute location checked against the format registry.
+   * @return Success or a location/offset/path/annotation error.
+   * @ingroup implementation
+   */
   Validation type_annotation(AttributeContext context) {
     if (auto target = annotation_target(context); !target) {
       return target;
@@ -404,6 +559,12 @@ private:
     return annotation();
   }
 
+  /**
+   * @brief Validate a type-annotation target appropriate to its structural context.
+   * @param context Structural attribute location checked against the format registry.
+   * @return Success or an invalid target/context error.
+   * @ingroup implementation
+   */
   Validation annotation_target(AttributeContext context) {
     const auto offset = reader.offset();
     const auto target = reader.u1();
@@ -445,6 +606,12 @@ private:
     return failure_at(offset, ReadErrorKind::MalformedAttribute, "type annotation target is invalid in this context");
   }
 
+  /**
+   * @brief Validate and visit Code-relative type-annotation target fields.
+   * @param target Method-scoped branch destination.
+   * @return Success or an invalid offset/range/handler/visitor error.
+   * @ingroup implementation
+   */
   Validation code_annotation_target(std::uint8_t target) {
     if (target == 0x40 || target == 0x41) {
       return repeat(reader.u2(), 6, [this] {
@@ -473,6 +640,11 @@ private:
     return target >= 0x47 ? skip(1) : Validation{};
   }
 
+  /**
+   * @brief Validate the fixed-width InnerClasses records and their references.
+   * @return Success or a framing/reference error.
+   * @ingroup implementation
+   */
   Validation inner_classes() {
     return repeat(reader.u2(), 8, [this]() -> Validation {
       auto inner = read_index(CpTag::Class);
@@ -490,6 +662,11 @@ private:
     });
   }
 
+  /**
+   * @brief Validate the module attribute's counted reference tables.
+   * @return Success or a table/reference error.
+   * @ingroup implementation
+   */
   Validation module() {
     const auto header = [this](CpTag tag) {
       return index(tag).and_then([this] { return skip(2); }).and_then([this] { return index(CpTag::Utf8, true); });
@@ -525,13 +702,13 @@ private:
     });
   }
 
-  BinaryReader& reader;
-  const ConstantPool& cp;
-  const ReadLimits& limits;
-  std::string_view path;
-  const CodeAttributeContext* code;
-  std::pmr::memory_resource* scratch;
-  CodeOffsetVisitor offsets;
+  BinaryReader& reader; ///< Borrowed bounded input cursor advanced by validation.
+  const ConstantPool& cp; ///< Borrowed owning constant pool used for reference validation.
+  const ReadLimits& limits; ///< Configured resource ceilings.
+  std::string_view path; ///< Borrowed structural path used in diagnostics.
+  const CodeAttributeContext* code; ///< Optional borrowed bounded Code context for nested-attribute validation.
+  std::pmr::memory_resource* scratch; ///< Borrowed temporary allocator for work buffers and interned names.
+  CodeOffsetVisitor offsets; ///< Callback visiting offset fields while validating nested Code attributes.
 };
 
 } // namespace

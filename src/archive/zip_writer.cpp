@@ -1,3 +1,9 @@
+/**
+ * @file
+ * @brief Bounded ZIP/JAR/JMOD access and transactional archive editing.
+ * @ingroup implementation
+ */
+
 #include "zip_writer.hpp"
 
 #include <algorithm>
@@ -13,24 +19,51 @@
 namespace cafe::archive::detail {
 namespace {
 
+/**
+ * @brief Owned contiguous byte buffer.
+ */
 using Bytes = std::vector<std::byte>;
-constexpr std::uint16_t STORED = MZ_COMPRESS_METHOD_STORE;
-constexpr std::uint16_t DEFLATED = MZ_COMPRESS_METHOD_DEFLATE;
-constexpr std::uint16_t UNIX_HOST = MZ_HOST_SYSTEM_UNIX << 8;
+constexpr std::uint16_t STORED = MZ_COMPRESS_METHOD_STORE; ///< ZIP method number for uncompressed payloads.
+constexpr std::uint16_t DEFLATED = MZ_COMPRESS_METHOD_DEFLATE; ///< ZIP method number for Deflate compression.
+constexpr std::uint16_t UNIX_HOST = MZ_HOST_SYSTEM_UNIX << 8; ///< ZIP version-made-by host bits identifying Unix metadata.
+/**
+ * @brief Deterministic DOS timestamp used for newly created entries.
+ */
 constexpr std::uint32_t DEFAULT_DOS_DATE = 0x00210000; // 1980-01-01 00:00
-constexpr std::size_t CHUNK_BYTES = 64 * 1024;
+constexpr std::size_t CHUNK_BYTES = 64 * 1024; ///< Bounded streaming buffer size in bytes.
 
-// ZIP numeric fields are little-endian, including those in extra fields.
+/**
+ * @brief Append raw bytes or an explicitly sized little-endian integer to ZIP output.
+ * @param record Destination byte buffer extended by the encoded integer.
+ * @param number Unsigned value emitted using the explicitly requested little-endian width.
+ * @param width Integer width in bytes, no greater than eight.
+ * @ingroup implementation
+ *
+ * ZIP numeric fields are little-endian, including those in extra fields.
+ */
 void append(Bytes& record, std::uint64_t number, unsigned width) {
   for (unsigned i = 0; i < width; ++i)
     record.push_back(static_cast<std::byte>(number >> (i * 8)));
 }
 
+/**
+ * @brief Append raw bytes or an explicitly sized little-endian integer to ZIP output.
+ * @param record Destination byte buffer extended by the supplied span.
+ * @param bytes Bytes copied to the end of the record; must not alias the record.
+ * @ingroup implementation
+ */
 void append(Bytes& record, std::span<const std::byte> bytes) {
   if (!bytes.empty())
     record.insert(record.end(), bytes.begin(), bytes.end());
 }
 
+/**
+ * @brief Copy supported timestamp, ownership, Unicode, and JAR marker extras while rebuilding ZIP
+ * headers.
+ * @param record Destination header buffer extended by supported extra-field records.
+ * @param extras Length-bounded ZIP extra-field bytes.
+ * @ingroup implementation
+ */
 void append_metadata_extras(Bytes& record, std::span<const std::byte> extras) {
   while (!extras.empty()) {
     const auto tag = little_endian<std::uint16_t>(extras, 0);
@@ -52,14 +85,28 @@ void append_metadata_extras(Bytes& record, std::span<const std::byte> extras) {
   }
 }
 
+/**
+ * @brief ZIP output payload facts used to encode both local and central headers.
+ * @ingroup implementation
+ */
 struct Record {
-  std::uint64_t offset = 0;
-  std::uint64_t compressed_size = 0;
-  std::uint32_t crc = 0;
-  std::uint16_t method = STORED;
-  std::uint16_t flags = 0;
+  std::uint64_t offset = 0; ///< Logical ZIP byte offset of this output entry's local header.
+  std::uint64_t compressed_size = 0; ///< Compressed payload size in bytes.
+  std::uint32_t crc = 0; ///< Expected or computed CRC-32 of the uncompressed payload.
+  std::uint16_t method = STORED; ///< ZIP compression method number, Store or Deflate.
+  std::uint16_t flags = 0; ///< ZIP general-purpose flag bits for the output record.
 };
 
+/**
+ * @brief Encode a local or central ZIP header, supplying ZIP64 fields when needed.
+ * @param bytes Scratch buffer replaced with the encoded local or central header.
+ * @param entry Archive entry metadata to encode.
+ * @param record ZIP output offset, sizes, CRC, and compression facts.
+ * @param metadata Retained ZIP metadata used to regenerate headers.
+ * @param central Whether to emit the central-directory rather than local header.
+ * @return True when retained extras fit the u2 field, false otherwise.
+ * @ingroup implementation
+ */
 bool encode_header(Bytes& bytes, const Entry& entry, const Record& record, const ZipMetadata& metadata, bool central) {
   const bool wide_size = entry.uncompressed_size >= UINT32_MAX;
   const bool wide_compressed = record.compressed_size >= UINT32_MAX;
@@ -113,6 +160,15 @@ bool encode_header(Bytes& bytes, const Entry& entry, const Record& record, const
   return true;
 }
 
+/**
+ * @brief Encode classic and, when required, ZIP64 end-of-directory records.
+ * @param bytes Scratch buffer replaced with ZIP64 and end-of-central-directory records.
+ * @param offset Byte offset into the supplied source/output range.
+ * @param size Requested byte count or checked input byte length.
+ * @param count Number of central-directory entries.
+ * @param comment Original archive comment bytes.
+ * @ingroup implementation
+ */
 void encode_footer(Bytes& bytes, std::uint64_t offset, std::uint64_t size, std::size_t count,
                    std::span<const std::byte> comment) {
   bytes.clear();
@@ -141,14 +197,25 @@ void encode_footer(Bytes& bytes, std::uint64_t offset, std::uint64_t size, std::
   append(bytes, comment);
 }
 
+/**
+ * @brief Bounded minizip output adapter owning compressed bytes and converting allocation/limit
+ * failures into stream status codes.
+ * @ingroup implementation
+ */
 struct CompressionBuffer : mz_stream {
+  /**
+   * @brief Initialize bounded minizip output adapter owning compressed bytes and converting
+   * allocation/limit failures into stream status codes.
+   * @param limit Maximum accounted byte count for this resource or buffer.
+   * @ingroup implementation
+   */
   explicit CompressionBuffer(std::size_t limit) : mz_stream{&callbacks, nullptr}, limit(limit) {
   }
 
-  Bytes bytes;
-  std::size_t limit;
-  bool exceeded = false;
-  static mz_stream_vtbl callbacks;
+  Bytes bytes; ///< Owned bounded Deflate output bytes.
+  std::size_t limit; ///< Maximum accounted bytes permitted by this resource or buffer.
+  bool exceeded = false; ///< Whether compression exceeded its bounded output/allocation allowance.
+  static mz_stream_vtbl callbacks; ///< Static minizip stream callback table for this adapter.
 };
 
 mz_stream_vtbl CompressionBuffer::callbacks = [] {
@@ -174,12 +241,29 @@ mz_stream_vtbl CompressionBuffer::callbacks = [] {
   return result;
 }();
 
+/**
+ * @brief RAII deleter for a minizip Deflate stream.
+ * @ingroup implementation
+ */
 struct DeflateDeleter {
+  /**
+   * @brief Close and release the owned native stream/handle through its matching API.
+   * @param stream Native or minizip callback stream pointer.
+   * @ingroup implementation
+   */
   void operator()(void* stream) const noexcept {
     mz_stream_zlib_delete(&stream);
   }
 };
 
+/**
+ * @brief Compress one staged payload through the bounded minizip stream adapter.
+ * @param input Borrowed bounded input bytes, consumed during this call.
+ * @param limits Resource ceilings and cooperative cancellation policy.
+ * @param output Caller-owned output byte container.
+ * @return Owned compressed bytes, or a compression/resource failure.
+ * @ingroup implementation
+ */
 std::expected<void, ErrorKind> deflate(
     std::span<const std::byte> input, const Limits& limits, CompressionBuffer& output) {
   std::unique_ptr<void, DeflateDeleter> stream(mz_stream_zlib_create());
@@ -206,18 +290,34 @@ std::expected<void, ErrorKind> deflate(
   return {};
 }
 
+/**
+ * @brief Check compressed size and ratio limits for an output entry.
+ * @param size Requested byte count or checked input byte length.
+ * @param compressed Compressed payload size in bytes.
+ * @param limits Resource ceilings and cooperative cancellation policy.
+ * @return True when the entry can be emitted within its configured limits.
+ * @ingroup implementation
+ */
 bool entry_fits(std::uint64_t size, std::uint64_t compressed, const Limits& limits) {
   const auto ratio = compressed == 0 ? 0 : size / compressed + (size % compressed != 0);
   return compressed <= limits.max_entry_compressed_bytes && ratio <= limits.max_compression_ratio;
 }
 
+/**
+ * @brief Select retained metadata or synthesize metadata for a staged entry.
+ * @param archive Retained source archive supplying original payloads.
+ * @param source Staged content/options and optional original entry metadata.
+ * @param directory Whether the metadata belongs to an explicit directory entry.
+ * @return Metadata for header generation, or a retained-source error.
+ * @ingroup implementation
+ */
 std::expected<ZipMetadata, Error> entry_metadata(const ZipArchive* archive, const StagedEntry& source, bool directory) {
   ZipMetadata metadata{UNIX_HOST | 20, 0, 0, DEFAULT_DOS_DATE, DEFAULT_DOS_DATE, 0, {}, {}, {}};
   const auto type = directory ? 0040000u : 0100000u;
   if (source.original) {
     auto original = archive->metadata(*source.original);
     if (!original)
-      return std::unexpected(archive_error(original.error()));
+      return std::unexpected(archive_error(std::move(original.error())));
     metadata = std::move(*original);
   } else {
     metadata.external_attributes = ((type | (directory ? 0755u : 0644u)) << 16) | (directory ? 0x10u : 0u);
@@ -233,6 +333,14 @@ std::expected<ZipMetadata, Error> entry_metadata(const ZipArchive* archive, cons
   return metadata;
 }
 
+/**
+ * @brief Determine output local-record order while retaining original physical ordering.
+ * @param format Explicit Jar or Jmod format.
+ * @param entries Ordered entries or metadata records for this operation.
+ * @param contents Ordered staged payload records matching visible entries.
+ * @return An ordered sequence of visible entry indices.
+ * @ingroup implementation
+ */
 std::vector<std::size_t> local_order(Format format, std::span<const Entry> entries,
                                      std::span<const StagedEntry> contents) {
   std::vector<std::size_t> order(entries.size());
@@ -344,7 +452,7 @@ std::expected<void, Error> write_zip(
     } else {
       const auto& base = *source.original;
       if (auto verified = original->verify(base); !verified)
-        return std::unexpected(archive_error(verified.error()));
+        return std::unexpected(archive_error(std::move(verified.error())));
       record.method = base.method;
       record.crc = base.crc;
       record.compressed_size = base.compressed_size;
@@ -365,7 +473,7 @@ std::expected<void, Error> write_zip(
     } else {
       auto copied = original->copy_compressed(*source.original, metadata->data_offset, send);
       if (!copied)
-        return std::unexpected(archive_error(copied.error()));
+        return std::unexpected(archive_error(std::move(copied.error())));
       if (!*copied)
         return output_error(entry.name);
     }
@@ -386,7 +494,7 @@ std::expected<void, Error> write_zip(
   if (original) {
     auto loaded = original->comment();
     if (!loaded)
-      return std::unexpected(archive_error(loaded.error()));
+      return std::unexpected(archive_error(std::move(loaded.error())));
     comment = std::move(*loaded);
   }
   encode_footer(header, directory_offset, written - origin - directory_offset, entries.size(), comment);

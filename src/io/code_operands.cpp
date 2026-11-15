@@ -1,3 +1,9 @@
+/**
+ * @file
+ * @brief Bounded class-file parsing, layout, and serialization.
+ * @ingroup implementation
+ */
+
 #include "code_operands.hpp"
 
 #include "detail/descriptor.hpp"
@@ -5,6 +11,14 @@
 namespace cafe::detail {
 namespace {
 
+/**
+ * @brief Follow a validated member or dynamic reference to its descriptor.
+ * @param pool Owning class constant pool used for reference validation.
+ * @param index One-based constant-pool reference; the required tag is determined by this
+ *   operation.
+ * @return The borrowed descriptor when the expected constant chain exists, otherwise nullopt.
+ * @ingroup implementation
+ */
 std::optional<std::string_view> nested_descriptor(const ConstantPool& pool, CpIndex index) {
   auto name_and_type = pool.get(index);
   if (!name_and_type || name_and_type->tag != CpTag::NameAndType)
@@ -15,6 +29,14 @@ std::optional<std::string_view> nested_descriptor(const ConstantPool& pool, CpIn
   return *descriptor;
 }
 
+/**
+ * @brief Check whether a constant tag is loadable by this ldc category and version.
+ * @param tag Required constant-pool tag.
+ * @param category_two Whether the load requires a long/double two-slot constant.
+ * @param version Exact JVM class-file major and minor version.
+ * @return True for a legal category-one or category-two load.
+ * @ingroup implementation
+ */
 bool valid_ldc(CpTag tag, bool category_two, ClassVersion version) {
   if (category_two)
     return tag == CpTag::Long || tag == CpTag::Double;
@@ -23,9 +45,19 @@ bool valid_ldc(CpTag tag, bool category_two, ClassVersion version) {
          ((tag == CpTag::MethodType || tag == CpTag::MethodHandle) && version.major >= 51);
 }
 
+/**
+ * @brief Check an instruction's constant tag, descriptor, and version-dependent operand
+ * restrictions.
+ * @param instruction Logical instruction value; scoped operands require the owning method.
+ * @param version Exact JVM class-file major and minor version.
+ * @param pool Owning class constant pool used for reference validation.
+ * @return An operand error when invalid, or an empty optional when valid.
+ * @ingroup implementation
+ */
+// Instruction factories guarantee the opcode-specific operand; descriptor accesses follow descriptor validation.
 std::optional<OperandError> validate_constant(Instruction instruction, ClassVersion version,
                                               const ConstantPool& pool) {
-  auto cp = pool.get(*instruction.constant_index());
+  auto cp = pool.get(*instruction.constant_index()); // NOLINT(bugprone-unchecked-optional-access)
   if (!cp)
     return OperandError{"constant pool index does not name an entry", true};
 
@@ -73,7 +105,7 @@ std::optional<OperandError> validate_constant(Instruction instruction, ClassVers
         auto slots = descriptor ? method_parameter_slots(*descriptor) : std::nullopt;
         if (!slots)
           return OperandError{"interface method reference has an invalid descriptor", true};
-        if (*slots + 1 != *instruction.interface_count())
+        if (*slots + 1 != *instruction.interface_count()) // NOLINT(bugprone-unchecked-optional-access)
           return OperandError{"invokeinterface count does not match the descriptor slot count", false};
       }
       return std::nullopt;
@@ -96,7 +128,7 @@ std::optional<OperandError> validate_constant(Instruction instruction, ClassVers
         auto dimensions = class_name->find_first_not_of('[');
         if (dimensions == std::string_view::npos || dimensions == 0 || !valid_field_descriptor(*class_name))
           return OperandError{"multianewarray requires an array class descriptor", true};
-        auto count = *instruction.dimensions();
+        auto count = *instruction.dimensions(); // NOLINT(bugprone-unchecked-optional-access)
         if (count == 0 || count > dimensions)
           return OperandError{"multianewarray dimensions exceed array rank", false};
       }
@@ -112,6 +144,7 @@ std::optional<OperandError> validate_constant(Instruction instruction, ClassVers
 
 } // namespace
 
+// Opcode-specific accessors cannot be empty for the corresponding immutable Instruction form.
 std::optional<OperandError> validate_instruction(Instruction instruction, ClassVersion version,
                                                  const ConstantPool& pool, std::uint16_t max_locals) {
   const auto& info = opcode_info(instruction.opcode());
@@ -121,7 +154,7 @@ std::optional<OperandError> validate_instruction(Instruction instruction, ClassV
   switch (info.form) {
     case OperandForm::Local:
     case OperandForm::Increment: {
-      auto index = info.form == OperandForm::Local ? *instruction.local_index() : instruction.increment_value()->local;
+      auto index = info.form == OperandForm::Local ? *instruction.local_index() : instruction.increment_value()->local; // NOLINT(bugprone-unchecked-optional-access)
       if (static_cast<unsigned>(index) + info.local_width > max_locals)
         return OperandError{"local variable operand exceeds max_locals", false};
       return std::nullopt;

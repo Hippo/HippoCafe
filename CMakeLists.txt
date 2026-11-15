@@ -9,6 +9,7 @@ include(GNUInstallDirs)
 option(HIPPOCAFE_BUILD_EXAMPLES "Build the class-file examples" ${PROJECT_IS_TOP_LEVEL})
 option(HIPPOCAFE_BUILD_BENCHMARKS "Build the class-file benchmarks" OFF)
 option(HIPPOCAFE_BUILD_FUZZERS "Build coverage-guided fuzz targets with Clang" OFF)
+option(HIPPOCAFE_BUILD_DOCS "Enable the Doxygen documentation target" OFF)
 option(HIPPOCAFE_ENABLE_SANITIZERS "Instrument HippoCafe with ASan and UBSan" OFF)
 option(HIPPOCAFE_WARNINGS_AS_ERRORS "Treat HippoCafe compiler warnings as errors" OFF)
 option(HIPPOCAFE_ENABLE_CLANG_TIDY "Run clang-tidy on HippoCafe sources" OFF)
@@ -42,9 +43,23 @@ function(hippocafe_configure_target target)
     target_link_options(${target} PRIVATE -fsanitize=address,undefined)
   endif()
   if(HIPPOCAFE_ENABLE_CLANG_TIDY)
-    set_target_properties(${target} PROPERTIES CXX_CLANG_TIDY "${hippocafe_clang_tidy};--checks=clang-analyzer-*")
+    set_target_properties(${target} PROPERTIES CXX_CLANG_TIDY "${hippocafe_clang_tidy};--config-file=${PROJECT_SOURCE_DIR}/.clang-tidy")
   endif()
 endfunction()
+
+if(HIPPOCAFE_BUILD_DOCS)
+  find_package(Doxygen REQUIRED)
+  # Keep the wrapper distinct from the checked-in Doxyfile, even in an in-source build.
+  set(hippocafe_doxyfile "${CMAKE_CURRENT_BINARY_DIR}/CMakeFiles/hippocafe-docs/Doxyfile")
+  file(WRITE "${hippocafe_doxyfile}"
+    "@INCLUDE = \"${CMAKE_CURRENT_SOURCE_DIR}/Doxyfile\"\nOUTPUT_DIRECTORY = \"${CMAKE_CURRENT_BINARY_DIR}/docs\"\n")
+  add_custom_target(hippocafe_docs
+    COMMAND Doxygen::doxygen "${hippocafe_doxyfile}"
+    WORKING_DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}"
+    COMMENT "Generating HippoCafe API and implementation reference"
+    VERBATIM
+  )
+endif()
 
 if(BUILD_TESTING OR HIPPOCAFE_BUILD_FUZZERS)
   include(FetchContent)
@@ -117,7 +132,7 @@ if(HIPPOCAFE_BUILD_FUZZERS)
 endif()
 
 if(HIPPOCAFE_BUILD_EXAMPLES)
-  foreach(example IN ITEMS inspect_class roundtrip)
+  foreach(example IN ITEMS inspect_class roundtrip quickstart edit_and_compute)
     add_executable(hippocafe_${example} examples/${example}.cpp)
     target_link_libraries(hippocafe_${example} PRIVATE hippocafe::hippocafe)
     hippocafe_configure_target(hippocafe_${example})

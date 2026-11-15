@@ -1,3 +1,9 @@
+/**
+ * @file
+ * @brief Bounded class-file parsing, layout, and serialization.
+ * @ingroup implementation
+ */
+
 #include "class_reader_impl.hpp"
 
 #include "../model/modified_utf8.hpp"

@@ -1,3 +1,9 @@
+/**
+ * @file
+ * @brief Owned class models, constant-pool storage, and attribute lifetimes.
+ * @ingroup implementation
+ */
+
 #include <cafe/class_file.hpp>
 
 #include <limits>
@@ -10,8 +16,17 @@
 namespace cafe {
 
 namespace {
-constexpr auto MAX_COUNT = std::numeric_limits<std::uint16_t>::max();
+constexpr auto MAX_COUNT = std::numeric_limits<std::uint16_t>::max(); ///< Largest u2 table count accepted by the class-file format.
 
+/**
+ * @brief Find the first declaration with exact modified UTF-8 name and descriptor.
+ * @param entries Ordered entries or metadata records for this operation.
+ * @param pool Owning class constant pool used for reference validation.
+ * @param name Borrowed JVM name in modified UTF-8.
+ * @param descriptor JVM field or method descriptor, or its UTF-8 constant-pool index.
+ * @return Its table index, or nullopt when absent.
+ * @ingroup implementation
+ */
 template<typename Member>
 std::optional<std::size_t> find_member(std::span<const Member> entries, const ConstantPool& pool,
                                        std::string_view name, std::string_view descriptor) noexcept {
@@ -23,6 +38,12 @@ std::optional<std::size_t> find_member(std::span<const Member> entries, const Co
   return std::nullopt;
 }
 
+/**
+ * @brief Rebuild an allocator-bound declaration table before committing an ordered erase.
+ * @param entries Ordered entries or metadata records for this operation.
+ * @param index Zero-based index in the corresponding table or slot array.
+ * @ingroup implementation
+ */
 template<typename Member>
 void erase_member(std::pmr::vector<Member>& entries, std::size_t index) {
   // Allocator-bound members support move construction. Reserve before moving

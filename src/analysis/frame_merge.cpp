@@ -1,16 +1,32 @@
-#include "frame_merge.hpp"
+/**
+ * @file
+ * @brief Control flow, JVM verification types, and derived method metadata.
+ * @ingroup implementation
+ */
 
-#include <ranges>
+#include "frame_merge.hpp"
 
 namespace cafe::analysis {
 namespace {
 
 using enum VerificationKind;
 
+/**
+ * @brief Create a frame-shape incompatibility failure.
+ * @param detail Explanation copied into the structured error.
+ * @return An unexpected IncompatibleJoin error.
+ * @ingroup implementation
+ */
 [[nodiscard]] std::unexpected<AnalysisError> incompatible(std::string detail) {
   return std::unexpected(AnalysisError{.kind = AnalysisErrorKind::IncompatibleJoin, .detail = std::move(detail)});
 }
 
+/**
+ * @brief Wrap hierarchy failure during frame merging.
+ * @param resolution Underlying hierarchy/source failure retained in the analysis error.
+ * @return An unexpected TypeResolutionFailure retaining the cause.
+ * @ingroup implementation
+ */
 [[nodiscard]] std::unexpected<AnalysisError> unresolved(classpath::ResolutionError resolution) {
   auto detail = resolution.detail;
   return std::unexpected(AnalysisError{.kind = AnalysisErrorKind::TypeResolutionFailure,
@@ -18,6 +34,13 @@ using enum VerificationKind;
                                        .resolution = std::move(resolution)});
 }
 
+/**
+ * @brief Compare value counts and category widths before merging operand types.
+ * @param a First frame whose operand-stack values and slot count are compared.
+ * @param b Second frame whose operand-stack values and slot count are compared.
+ * @return True when both stacks have compatible value grouping.
+ * @ingroup implementation
+ */
 [[nodiscard]] bool same_stack_shape(const Frame& a, const Frame& b) {
   return a.stack_slots == b.stack_slots &&
          std::ranges::equal(a.stack, b.stack, {}, &VerificationType::width, &VerificationType::width);

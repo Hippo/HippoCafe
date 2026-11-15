@@ -1,8 +1,13 @@
+/**
+ * @file
+ * @brief Class source snapshots, metadata resolution, and reference-type relationships.
+ * @ingroup implementation
+ */
+
 #include "class_path_storage.hpp"
 
 #include <algorithm>
 #include <charconv>
-#include <limits>
 #include <string>
 #include <system_error>
 #include <utility>
@@ -23,9 +28,16 @@
 namespace cafe::classpath::detail {
 namespace {
 
-constexpr std::string_view MANIFEST = "META-INF/MANIFEST.MF";
-constexpr std::string_view VERSION_PREFIX = "META-INF/versions/";
+constexpr std::string_view MANIFEST = "META-INF/MANIFEST.MF"; ///< Canonical JAR manifest entry name.
+constexpr std::string_view VERSION_PREFIX = "META-INF/versions/"; ///< Prefix for multi-release JAR class entries.
 
+/**
+ * @brief Compare manifest ASCII text case-insensitively.
+ * @param left First input verification type or reference name.
+ * @param right Second input verification type or reference name.
+ * @return True when ASCII letters match ignoring case and other bytes match exactly.
+ * @ingroup implementation
+ */
 bool equals_ascii_folded(std::string_view left, std::string_view right) {
   const auto fold = [](char c) {
     return c >= 'A' && c <= 'Z' ? static_cast<char>(c + ('a' - 'A')) : c;
@@ -69,11 +81,35 @@ std::optional<std::wstring> normalized_path(HANDLE file) {
   return result;
 }
 #else
+/**
+ * @brief Platform-native file-descriptor RAII owner used for directory-relative, no-follow
+ * lookups.
+ * @ingroup implementation
+ */
 struct NativeFile {
+  /**
+   * @brief Initialize platform-native file-descriptor RAII owner used for directory-relative,
+   * no-follow lookups.
+   * @param handle Native file/stream handle transferred to the owner.
+   * @ingroup implementation
+   */
   explicit NativeFile(int handle) : handle(handle) {
   }
+  /**
+   * @brief Initialize platform-native file-descriptor RAII owner used for directory-relative,
+   * no-follow lookups.
+   * @param other Object to compare with or transfer ownership from.
+   * @ingroup implementation
+   */
   NativeFile(NativeFile&& other) noexcept : handle(std::exchange(other.handle, -1)) {
   }
+  /**
+   * @brief Replace owned state by move assignment; views of the previous destination state are
+   * invalidated.
+   * @param other Object to compare with or transfer ownership from.
+   * @return This object after ownership transfer.
+   * @ingroup implementation
+   */
   NativeFile& operator=(NativeFile&& other) noexcept {
     if (this != &other) {
       if (valid())
@@ -82,29 +118,47 @@ struct NativeFile {
     }
     return *this;
   }
+  /**
+   * @brief Release owned storage; previously borrowed views become invalid.
+   * @ingroup implementation
+   */
   ~NativeFile() {
     if (valid())
       ::close(handle);
   }
+  /**
+   * @brief Check whether this owner holds a usable native descriptor.
+   * @return True when the handle is not the platform's invalid sentinel.
+   * @ingroup implementation
+   */
   [[nodiscard]] bool valid() const {
     return handle >= 0;
   }
-  int handle;
+  int handle; ///< Pinned native or minizip handle; ownership follows the field type.
 };
 #endif
 
 } // namespace
 
+/**
+ * @brief Pinned native directory handle anchoring path-relative class lookup without following
+ * descendant symlinks.
+ * @ingroup implementation
+ */
 struct DirectorySource::Impl {
-  NativeFile file;
+  NativeFile file; ///< Pinned native file/stream owner retained for safe reads or publication.
 #ifdef _WIN32
   std::wstring resolved;
 #endif
 };
 
+/**
+ * @brief Pinned native handle for one resolved directory class file.
+ * @ingroup implementation
+ */
 struct DirectoryClass::File {
-  NativeFile file;
-  std::uintmax_t size;
+  NativeFile file; ///< Pinned native file/stream owner retained for safe reads or publication.
+  std::uintmax_t size; ///< Checked byte length of the input or indexed range.
 };
 
 std::expected<std::optional<DirectoryClass>, ResolutionError> DirectoryClass::find(
@@ -280,16 +334,36 @@ namespace {
 
 using detail::fail;
 
+/**
+ * @brief Reject filesystem paths containing embedded NUL bytes.
+ * @param path Source or destination filesystem path.
+ * @return True when the path can be passed safely to native file APIs.
+ * @ingroup implementation
+ */
 bool valid_path(const std::filesystem::path& path) {
   return !path.empty() && path.native().find(std::filesystem::path::value_type{}) == std::filesystem::path::string_type::npos;
 }
 
+/**
+ * @brief Accounted archive count, entry count, and index-byte totals for transactional source
+ * registration.
+ * @ingroup implementation
+ */
 struct ArchiveBudget {
-  std::size_t count;
-  std::size_t entries;
-  std::size_t bytes;
+  std::size_t count; ///< Number of registered archives.
+  std::size_t entries; ///< Total central-directory entries across registered archives.
+  std::size_t bytes; ///< Total accounted index memory in bytes.
 };
 
+/**
+ * @brief Validate/index an archive and prepare bounded multi-release selection data.
+ * @param path Source or destination filesystem path.
+ * @param kind Payload or error discriminator.
+ * @param limits Resource ceilings and cooperative cancellation policy.
+ * @param used Previously charged resource usage.
+ * @return A shared immutable source and its accounted index usage, or a registration failure.
+ * @ingroup implementation
+ */
 std::expected<std::shared_ptr<const detail::ArchiveSource>, ResolutionError> load_archive(
     const std::filesystem::path& path, SourceKind kind, const ClassPathLimits& limits, ArchiveBudget& used) {
   if (!valid_path(path))
@@ -311,9 +385,9 @@ std::expected<std::shared_ptr<const detail::ArchiveSource>, ResolutionError> loa
       auto bytes = source->zip.read(manifest->name, limits.max_manifest_bytes);
       if (!bytes)
         return std::unexpected(std::move(bytes.error()));
-      const auto multi_release = detail::parse_multi_release_manifest(*bytes, {kind, path, manifest->name, {}});
+      auto multi_release = detail::parse_multi_release_manifest(*bytes, {kind, path, manifest->name, {}});
       if (!multi_release)
-        return std::unexpected(multi_release.error());
+        return std::unexpected(std::move(multi_release.error()));
       if (*multi_release) {
         constexpr std::size_t INDEX_COST = sizeof(detail::VersionedClass) + 64;
         for (const auto& entry : source->zip.entries()) {
@@ -351,12 +425,27 @@ std::expected<std::shared_ptr<const detail::ArchiveSource>, ResolutionError> loa
   return source;
 }
 
+/**
+ * @brief Distinguish an absent path from other filesystem status failures.
+ * @param error Underlying structured failure to translate or enrich.
+ * @return True only for a missing file or parent component.
+ * @ingroup implementation
+ */
 bool file_absent(std::error_code error) {
   return error == std::errc::no_such_file_or_directory || error == std::errc::not_a_directory;
 }
 
+/**
+ * @brief Enumerate runtime archives deterministically while honoring cancellation.
+ * @param directory Filesystem directory whose immediate archive children are enumerated.
+ * @param extension Archive filename extension selected during runtime discovery.
+ * @param max_archives Maximum archive registrations permitted in this operation.
+ * @param stop Cooperative cancellation token.
+ * @return Sorted archive paths, or an I/O/cancellation failure.
+ * @ingroup implementation
+ */
 std::expected<std::vector<std::filesystem::path>, ResolutionError> archives_in(
-    const std::filesystem::path& directory, std::string_view extension, std::size_t max_archives, std::stop_token stop) {
+    const std::filesystem::path& directory, std::string_view extension, std::size_t max_archives, const std::stop_token& stop) {
   std::vector<std::filesystem::path> result;
   std::error_code error;
   std::filesystem::directory_iterator it(directory, error);
@@ -388,7 +477,7 @@ ClassPath::ClassPath(std::shared_ptr<const Data> sources) : sources(std::move(so
 }
 
 ClassPathBuilder::ClassPathBuilder(ClassPathLimits limits) : sources(std::make_unique<ClassPath::Data>()) {
-  sources->limits = limits;
+  sources->limits = std::move(limits);
 }
 
 ClassPathBuilder::~ClassPathBuilder() = default;

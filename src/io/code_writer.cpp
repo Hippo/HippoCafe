@@ -1,4 +1,12 @@
+/**
+ * @file
+ * @brief Bounded class-file parsing, layout, and serialization.
+ * @ingroup implementation
+ */
+
 #include "class_writer_impl.hpp"
+
+#include <utility>
 
 #include <algorithm>
 #include <limits>
@@ -22,6 +30,7 @@ void ClassWriter::write_code_header(std::uint16_t max_stack, std::uint16_t max_l
   }
 }
 
+// The method signature is validated before slot counting; unchanged Code has retained original bytes.
 std::expected<void, WriteError> ClassWriter::write_code(
     const CodeAttribute& code, WriteLocation location, std::string_view path) {
   if (options.code_analysis != CodeAnalysisMode::Preserve) {
@@ -58,14 +67,14 @@ std::expected<void, WriteError> ClassWriter::write_code(
       return write_error(original ? WriteErrorKind::StaleCodeMetadata : WriteErrorKind::NeedsCodeMetadata,
                          path, "supply metadata for the current instructions and output encoding");
   }
-  const auto parameter_slots = *method_parameter_slots(location.descriptor) + (location.is_static ? 0u : 1u);
+  const auto parameter_slots = *method_parameter_slots(location.descriptor) + (location.is_static ? 0u : 1u); // NOLINT(bugprone-unchecked-optional-access)
   if (parameter_slots > code.locals_limit)
     return write_error(WriteErrorKind::InvalidCodeLayout, path, "max_locals cannot hold the method parameters");
   std::pmr::monotonic_buffer_resource scratch;
-  const auto encoded = encode_code(code.instructions, version, pool, code.locals_limit,
-                                   options.preserve_original_encodings, &scratch, path);
+  auto encoded = encode_code(code.instructions, version, pool, code.locals_limit,
+                             options.preserve_original_encodings, &scratch, path);
   if (!encoded)
-    return std::unexpected(encoded.error());
+    return std::unexpected(std::move(encoded.error()));
 
   if (!rewritten) {
     const auto original_bytes = model.source_slice(original->code);
@@ -79,9 +88,9 @@ std::expected<void, WriteError> ClassWriter::write_code(
     }
   }
 
-  const auto context = write_code_array(code, *encoded, code.stack_limit, code.locals_limit, path);
+  auto context = write_code_array(code, *encoded, code.stack_limit, code.locals_limit, path);
   if (!context)
-    return std::unexpected(context.error());
+    return std::unexpected(std::move(context.error()));
   return write_attributes(code.attributes(), {.context = AttributeContext::Code, .path = path, .rewritten_code = rewritten, .code = &*context});
 }
 
@@ -112,9 +121,9 @@ std::expected<CodeAttributeContext, WriteError> ClassWriter::write_code_array(
   const auto count = static_cast<std::uint16_t>(code.handlers.size());
   output.u2(count);
   for (const auto& handler : code.handlers) {
-    const auto wire = resolve_handler(handler, encoded, path);
+    auto wire = resolve_handler(handler, encoded, path);
     if (!wire)
-      return std::unexpected(wire.error());
+      return std::unexpected(std::move(wire.error()));
     output.u2(wire->start);
     output.u2(wire->end);
     output.u2(wire->handler);

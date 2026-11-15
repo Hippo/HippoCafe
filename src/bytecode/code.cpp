@@ -1,3 +1,9 @@
+/**
+ * @file
+ * @brief Stable instruction handles, operand storage, and bytecode editing.
+ * @ingroup implementation
+ */
+
 #include "cafe/bytecode/code.hpp"
 
 #include <algorithm>
@@ -5,7 +11,6 @@
 #include <atomic>
 #include <cassert>
 #include <limits>
-#include <ranges>
 #include <stdexcept>
 #include <vector>
 
@@ -14,11 +19,16 @@
 namespace cafe {
 namespace {
 
-constexpr std::uint32_t NO_SLOT = std::numeric_limits<std::uint32_t>::max();
-constexpr std::uint32_t SWITCH_SLOT_COUNT = 1u << 16;
-constexpr InstructionId UNBOUND{};
-constexpr InstructionId EXCLUSIVE_END{NO_SLOT, 0};
+constexpr std::uint32_t NO_SLOT = std::numeric_limits<std::uint32_t>::max(); ///< Free-list sentinel indicating that no reusable slot exists.
+constexpr std::uint32_t SWITCH_SLOT_COUNT = 1u << 16; ///< Number of operand slots representable by the packed switch handle.
+constexpr InstructionId UNBOUND{}; ///< Label-table sentinel for a label with no boundary binding.
+constexpr InstructionId EXCLUSIVE_END{NO_SLOT, 0}; ///< Label-table sentinel identifying the boundary after the last instruction.
 
+/**
+ * @brief Allocate a process-wide nonwrapping handle generation.
+ * @return A fresh nonzero generation, or zero when exhausted.
+ * @ingroup implementation
+ */
 std::uint32_t acquire_generation() {
   // A method's fresh slots share its initial generation. Each reused slot
   // gets a fresh generation. Stop issuing handles if the serial space runs out.
@@ -32,6 +42,12 @@ std::uint32_t acquire_generation() {
   return 0;
 }
 
+/**
+ * @brief Grow a vector geometrically before a transactional edit without exceeding max_size().
+ * @param values Sequence of values to copy or emit.
+ * @param count Number of additional elements to reserve beyond the current size.
+ * @ingroup implementation
+ */
 template<typename Value>
 void reserve_additional(std::pmr::vector<Value>& values, std::size_t count) {
   if (count <= values.capacity() - values.size())
@@ -42,79 +58,159 @@ void reserve_additional(std::pmr::vector<Value>& values, std::size_t count) {
   values.reserve(values.size() + std::max(count, std::min(values.size() + 1, available)));
 }
 
+/**
+ * @brief Compact instruction, generation, and free-list link independent of method traversal
+ * order.
+ * @ingroup implementation
+ */
 struct InstructionSlot {
-  Instruction instruction;
-  std::uint32_t generation;
-  std::uint32_t next_free = NO_SLOT;
+  Instruction instruction; ///< Copied compact instruction value stored in this live slot.
+  std::uint32_t generation; ///< Nonzero handle generation; changes when a slot is reused.
+  std::uint32_t next_free = NO_SLOT; ///< Next reusable slot index, or NO_SLOT at the end of the free list.
 };
 
 static_assert(sizeof(InstructionId) == 8);
 static_assert(sizeof(InstructionSlot) == 16);
 
+/**
+ * @brief Allocator-owned consecutive switch targets and original padding bytes.
+ * @ingroup implementation
+ */
 struct OwnedTableSwitch {
+  /**
+   * @brief Initialize allocator-owned consecutive switch targets and original padding bytes.
+   * @param view Borrowed switch descriptor copied into owned operand storage.
+   * @param resource PMR resource that must outlive the allocated object or returned storage.
+   * @ingroup implementation
+   */
   OwnedTableSwitch(TableSwitch view, std::pmr::memory_resource* resource) :
       low(view.low), default_target(view.default_target), targets(resource) {
     if (!view.targets.empty())
       targets.assign(view.targets.begin(), view.targets.end());
   }
 
-  std::int32_t low;
-  LabelId default_target;
-  std::pmr::vector<LabelId> targets;
+  std::int32_t low; ///< First signed dense-switch key; targets correspond to consecutive keys.
+  LabelId default_target; ///< Destination used when no case key matches.
+  std::pmr::vector<LabelId> targets; ///< Owned destination labels for consecutive keys beginning at low.
 };
 
+/**
+ * @brief Allocator-owned sorted switch pairs and original padding bytes.
+ * @ingroup implementation
+ */
 struct OwnedLookupSwitch {
+  /**
+   * @brief Initialize allocator-owned sorted switch pairs and original padding bytes.
+   * @param view Borrowed switch descriptor copied into owned operand storage.
+   * @param resource PMR resource that must outlive the allocated object or returned storage.
+   * @ingroup implementation
+   */
   OwnedLookupSwitch(LookupSwitch view, std::pmr::memory_resource* resource) :
       default_target(view.default_target), pairs(resource) {
     if (!view.pairs.empty())
       pairs.assign(view.pairs.begin(), view.pairs.end());
   }
 
-  LabelId default_target;
-  std::pmr::vector<LookupPair> pairs;
+  LabelId default_target; ///< Destination used when no case key matches.
+  std::pmr::vector<LookupPair> pairs; ///< Owned lookup entries in strictly increasing signed-key order.
 };
 
+/**
+ * @brief Empty/free slot or an owned dense/sparse switch operand.
+ */
 using SwitchPayload = std::variant<std::monostate, OwnedTableSwitch, OwnedLookupSwitch>;
 static_assert(std::is_nothrow_move_constructible_v<SwitchPayload>);
 
+/**
+ * @brief Copy a borrowed switch descriptor into allocator-owned operand storage.
+ * @param view Borrowed switch descriptor copied into owned operand storage.
+ * @param resource PMR resource that must outlive the allocated object or returned storage.
+ * @return An owned dense or sparse switch alternative.
+ * @ingroup implementation
+ */
 template<typename View>
 SwitchPayload own_switch(View view, std::pmr::memory_resource* resource) {
   using Payload = std::conditional_t<std::is_same_v<View, TableSwitch>, OwnedTableSwitch, OwnedLookupSwitch>;
   return SwitchPayload(std::in_place_type<Payload>, view, resource);
 }
 
+/**
+ * @brief Reusable out-of-line switch operand slot with generation and free-list linkage.
+ * @ingroup implementation
+ */
 struct SwitchSlot {
-  SwitchPayload payload;
-  std::uint32_t next_free = NO_SLOT;
-  std::uint16_t generation = 1;
-  // Since version 51, JVMs ignore the literal padding octets.
+  SwitchPayload payload; ///< Owned dense or sparse switch operands; monostate marks an unused slot.
+  std::uint32_t next_free = NO_SLOT; ///< Next reusable slot index, or NO_SLOT at the end of the free list.
+  std::uint16_t generation = 1; ///< Nonzero handle generation; changes when a slot is reused.
+  /**
+   * @brief Retained switch-alignment bytes from the original code.
+   *
+   * Since version 51, JVMs ignore the literal padding octets.
+   */
   std::array<std::byte, 3> original_padding{};
-  std::uint8_t padding_length = 0;
+  std::uint8_t padding_length = 0; ///< Number of meaningful retained switch padding bytes.
 };
 
+/**
+ * @brief Pack a switch slot index and generation into its compact operand.
+ * @param index Zero-based switch operand storage slot.
+ * @param generation Nonzero slot generation used to reject stale handles.
+ * @return The encoded switch handle value.
+ * @ingroup implementation
+ */
 std::uint32_t switch_value(std::uint32_t index, std::uint16_t generation) {
   return (static_cast<std::uint32_t>(generation) << 16) | index;
 }
 
+/**
+ * @brief Extract the slot portion of a packed switch operand.
+ * @param value Packed switch operand containing its index and lookup/table discriminator.
+ * @return A zero-based switch storage index.
+ * @ingroup implementation
+ */
 std::uint32_t switch_index(std::uint32_t value) {
   return value & (SWITCH_SLOT_COUNT - 1);
 }
 
 } // namespace
 
+/**
+ * @brief PMR-backed instruction slots, order, labels, and switch operands. Capacity is staged
+ * before edits publish new live slots; scope and revisions never wrap into reusable identities.
+ * @ingroup implementation
+ */
 struct MethodCode::Storage {
+  /**
+   * @brief Initialize PMR-backed instruction slots, order, labels, and switch operands
+   * @param resource PMR resource that must outlive the allocated object or returned storage.
+   */
   explicit Storage(std::pmr::memory_resource* resource) :
       resource(resource), slots(resource), order(resource), labels(resource), switches(resource) {
   }
 
+  /**
+   * @brief Validate a scoped instruction or label handle against current storage.
+   * @param id Instruction handle checked for scope, slot, generation, and liveness.
+   * @return True only for a live handle belonging to this owner.
+   */
   [[nodiscard]] bool contains(InstructionId id) const {
     return id.generation != 0 && id.index < slots.size() && slots[id.index].generation == id.generation;
   }
 
+  /**
+   * @brief Validate a scoped instruction or label handle against current storage.
+   * @param id Label handle scoped to the supplied method.
+   * @return True only for a live handle belonging to this owner.
+   */
   [[nodiscard]] bool contains(LabelId id) const {
     return scope != 0 && id.scope == scope && id.value < labels.size();
   }
 
+  /**
+   * @brief Validate a scoped switch handle and locate its operand slot.
+   * @param id Switch operand handle scoped to the supplied method.
+   * @return A borrowed slot pointer, or nullptr for a stale/foreign handle.
+   */
   [[nodiscard]] const SwitchSlot* find_switch(SwitchId id) const {
     auto index = switch_index(id.value);
     if (scope == 0 || id.scope != scope || index >= switches.size())
@@ -125,10 +221,19 @@ struct MethodCode::Storage {
     return &slot;
   }
 
+  /**
+   * @brief Check whether scope and revision space still permit mutation.
+   * @return True unless handle generation or revision space is exhausted.
+   */
   [[nodiscard]] bool can_edit() const {
     return scope != 0 && revision != std::numeric_limits<std::uint64_t>::max();
   }
 
+  /**
+   * @brief Copy and install a switch descriptor using available operand storage.
+   * @param view Borrowed switch descriptor copied into owned operand storage.
+   * @return Its packed operand value, or HandleLimit.
+   */
   template<typename View>
   [[nodiscard]] std::expected<std::uint32_t, CodeEditError> add_switch(View view) {
     if (free_switch == NO_SLOT && switches.size() >= SWITCH_SLOT_COUNT)
@@ -136,6 +241,11 @@ struct MethodCode::Storage {
     return install_switch(own_switch(view, resource));
   }
 
+  /**
+   * @brief Publish an already owned switch payload into a new or reusable slot.
+   * @param payload Owned dense or sparse switch operands to store in a method slot.
+   * @return The packed slot/generation operand value.
+   */
   std::uint32_t install_switch(SwitchPayload payload) {
     if (free_switch == NO_SLOT) {
       auto index = static_cast<std::uint32_t>(switches.size());
@@ -152,6 +262,11 @@ struct MethodCode::Storage {
     return switch_value(index, slot.generation);
   }
 
+  /**
+   * @brief Publish a prepared instruction into a new or reusable slot.
+   * @param id Stable instruction handle belonging to the supplied method.
+   * @param instruction Logical instruction value; scoped operands require the owning method.
+   */
   void install_instruction(InstructionId id, Instruction instruction) {
     if (id.index == slots.size()) {
       slots.push_back({instruction, id.generation});
@@ -162,15 +277,15 @@ struct MethodCode::Storage {
     }
   }
 
-  std::pmr::memory_resource* resource;
-  std::pmr::vector<InstructionSlot> slots;
-  std::pmr::vector<std::uint32_t> order;
-  std::pmr::vector<InstructionId> labels;
-  std::pmr::vector<SwitchSlot> switches;
-  std::uint32_t free_instruction = NO_SLOT;
-  std::uint32_t free_switch = NO_SLOT;
-  std::uint32_t scope = acquire_generation();
-  std::uint64_t revision = 0;
+  std::pmr::memory_resource* resource; ///< Borrowed PMR resource that must outlive dependent storage.
+  std::pmr::vector<InstructionSlot> slots; ///< Allocated instruction slots, including reusable erased slots.
+  std::pmr::vector<std::uint32_t> order; ///< Live slot indices in method traversal order.
+  std::pmr::vector<InstructionId> labels; ///< Method-scoped label bindings indexed by label value.
+  std::pmr::vector<SwitchSlot> switches; ///< Out-of-line switch operand slots with generation/free-list metadata.
+  std::uint32_t free_instruction = NO_SLOT; ///< Head of the reusable instruction-slot free list.
+  std::uint32_t free_switch = NO_SLOT; ///< Head of the reusable switch-slot free list.
+  std::uint32_t scope = acquire_generation(); ///< Method identity used to reject foreign labels or switches.
+  std::uint64_t revision = 0; ///< Monotonic code revision advanced once per successful edit.
 };
 
 MethodCode::MethodCode(std::pmr::memory_resource* resource) :

@@ -1,4 +1,12 @@
+/**
+ * @file
+ * @brief Class source snapshots, metadata resolution, and reference-type relationships.
+ * @ingroup implementation
+ */
+
 #include "classpath_detail.hpp"
+
+#include <utility>
 
 #include <algorithm>
 #include <string>
@@ -14,6 +22,12 @@
 namespace cafe::classpath::detail {
 namespace {
 
+/**
+ * @brief Append a validated Unicode scalar in ordinary UTF-8 form.
+ * @param output Caller-owned output byte container.
+ * @param unit Validated Unicode scalar/code unit to encode.
+ * @ingroup implementation
+ */
 void append_utf8(std::string& output, std::uint32_t unit) {
   if (unit < 0x80) {
     output += static_cast<char>(unit);
@@ -32,17 +46,34 @@ void append_utf8(std::string& output, std::uint32_t unit) {
   }
 }
 
+/**
+ * @brief Minimal constant-pool information required for class/member metadata scanning.
+ * @ingroup implementation
+ */
 struct HeaderConstant {
-  CpTag tag = CpTag::Reserved;
-  std::uint16_t index = 0;
-  std::string_view text;
+  CpTag tag = CpTag::Reserved; ///< Class-file constant tag selecting the entry payload form.
+  std::uint16_t index = 0; ///< Referenced UTF-8 constant slot for a Class entry; zero for other stored tags.
+  std::string_view text; ///< Borrowed modified UTF-8 constant text.
 };
 
+/**
+ * @brief Validate class identity and copy a bounded set of hierarchy metadata.
+ * @param name Borrowed JVM name in modified UTF-8.
+ * @param super_name Direct superclass internal name; nullopt denotes no superclass.
+ * @param flags JVM access bit mask for the declaration.
+ * @param version Exact JVM class-file major and minor version.
+ * @param interface_count Number of direct interface references to visit.
+ * @param next_interface Callback producing the next direct-interface name/reference.
+ * @param limits Resource ceilings and cooperative cancellation policy.
+ * @param source Provenance copied into returned metadata or errors.
+ * @return Owned ClassInfo, or a malformed/oversized metadata failure.
+ * @ingroup implementation
+ */
 template<typename Interface>
 std::expected<ClassInfo, ResolutionError> package_metadata(
     std::string_view name, std::optional<std::string_view> super_name, std::uint16_t flags,
     ClassVersion version, std::size_t interface_count, Interface next_interface,
-    const ClassPathLimits& limits, SourceProvenance source) {
+    const ClassPathLimits& limits, const SourceProvenance& source) {
   const auto too_large = [&] {
     return fail(ResolutionErrorKind::ResourceLimitExceeded, name.substr(0, limits.max_name_bytes), source,
                 "class metadata exceeds its configured byte or interface limit");
@@ -58,10 +89,10 @@ std::expected<ClassInfo, ResolutionError> package_metadata(
     return {};
   };
   if (auto valid = check(name); !valid)
-    return std::unexpected(valid.error());
+    return std::unexpected(std::move(valid.error()));
   if (super_name)
     if (auto valid = check(*super_name); !valid)
-      return std::unexpected(valid.error());
+      return std::unexpected(std::move(valid.error()));
   ClassInfo result{std::string(name), {}, {}, flags, version, source, {}};
   if (super_name)
     result.super_name.emplace(*super_name);
@@ -84,7 +115,7 @@ std::expected<ClassInfo, ResolutionError> package_metadata(
     if (type->size() > limits.max_class_metadata_bytes - size)
       return too_large();
     if (auto valid = check(*type); !valid)
-      return std::unexpected(valid.error());
+      return std::unexpected(std::move(valid.error()));
     if (!seen.insert(*type).second)
       return malformed("duplicate direct interface");
     result.interfaces.emplace_back(*type);
@@ -93,16 +124,35 @@ std::expected<ClassInfo, ResolutionError> package_metadata(
   return result;
 }
 
+/**
+ * @brief Bounded class header and minimal constant table borrowing names from the input buffer.
+ * @ingroup implementation
+ */
 struct Header {
-  ClassVersion version;
+  ClassVersion version; ///< Exact class-file major and minor version.
+  /**
+   * @brief Minimal parsed constant records; UTF-8 payloads borrow the input buffer.
+   */
   std::vector<HeaderConstant> constants;
 
+  /**
+   * @brief Resolve a minimal-header constant as UTF-8 text.
+   * @param index One-based slot in the minimally decoded constant pool.
+   * @return A borrowed view, or nullopt for an invalid index/tag/encoding.
+   * @ingroup implementation
+   */
   [[nodiscard]] std::optional<std::string_view> utf8(std::uint16_t index) const {
     if (index >= constants.size() || constants[index].tag != CpTag::Utf8)
       return std::nullopt;
     return constants[index].text;
   }
 
+  /**
+   * @brief Resolve a Class constant through its validated UTF-8 name.
+   * @param index One-based slot in the minimally decoded constant pool.
+   * @return A borrowed class-name view, or nullopt for an invalid reference.
+   * @ingroup implementation
+   */
   [[nodiscard]] std::optional<std::string_view> class_name(std::uint16_t index) const {
     if (index >= constants.size() || constants[index].tag != CpTag::Class)
       return std::nullopt;
@@ -110,6 +160,14 @@ struct Header {
   }
 };
 
+/**
+ * @brief Scan only the class header and constant information needed for metadata lookup.
+ * @param reader Bounded input cursor advanced by this operation.
+ * @param limits Resource ceilings and cooperative cancellation policy.
+ * @param source Provenance copied into returned metadata or errors.
+ * @return A bounded header view, or a framing/version/constant error.
+ * @ingroup implementation
+ */
 std::expected<Header, ResolutionError> scan_constant_pool(
     cafe::detail::BinaryReader& reader, const ClassPathLimits& limits, const SourceProvenance& source) {
   constexpr auto MALFORMED = ResolutionErrorKind::MalformedClassMetadata;
@@ -220,11 +278,11 @@ std::expected<std::string, ResolutionError> resource_name(std::string_view name,
 }
 
 std::expected<ClassInfo, ResolutionError> read_class_metadata(
-    std::span<const std::byte> bytes, const ClassPathLimits& limits, SourceProvenance source) {
+    std::span<const std::byte> bytes, const ClassPathLimits& limits, const SourceProvenance& source) {
   cafe::detail::BinaryReader reader(bytes);
-  const auto header = scan_constant_pool(reader, limits, source);
+  auto header = scan_constant_pool(reader, limits, source);
   if (!header)
-    return std::unexpected(header.error());
+    return std::unexpected(std::move(header.error()));
   const auto malformed = [&](std::string_view cause) {
     return fail(ResolutionErrorKind::MalformedClassMetadata, {}, source, cause);
   };
@@ -238,7 +296,7 @@ std::expected<ClassInfo, ResolutionError> read_class_metadata(
   const auto super_name = header->class_name(*parent);
   if (!name || (*parent != 0 && !super_name))
     return malformed("this_class or super_class has an invalid constant-pool reference");
-  return package_metadata(*name, super_name, *flags, header->version, *interface_count, [&](std::size_t) { return header->class_name(*reader.u2()); }, limits, std::move(source));
+  return package_metadata(*name, super_name, *flags, header->version, *interface_count, [&](std::size_t) { return header->class_name(*reader.u2()); }, limits, source);
 }
 
 std::expected<ClassInfo, ResolutionError> copy_class_metadata(const ClassFile& file, const ClassPathLimits& limits) {
@@ -284,16 +342,37 @@ std::size_t metadata_size(const ClassInfo& info) {
 
 namespace {
 
+/**
+ * @brief Compare a member by its exact name and descriptor.
+ * @param member Member declaration whose name and descriptor form the lookup key.
+ * @return A borrowed pair used for sorting and binary search.
+ * @ingroup implementation
+ */
 auto member_key(const MemberDecl& member) {
   return std::pair{std::string_view(member.name), std::string_view(member.descriptor)};
 }
 
+/**
+ * @brief Borrowed declaration identity and access bits obtained during a metadata-only scan.
+ * @ingroup implementation
+ */
 struct MemberHeader {
-  std::optional<std::string_view> name;
-  std::optional<std::string_view> descriptor;
-  std::uint16_t flags;
+  std::optional<std::string_view> name; ///< JVM internal or declaration name in modified UTF-8.
+  std::optional<std::string_view> descriptor; ///< JVM field or method descriptor.
+  std::uint16_t flags; ///< JVM access bit mask.
 };
 
+/**
+ * @brief Validate, copy, and sort a bounded declaration table while rejecting duplicates.
+ * @param output Owned declaration tables and byte accounting populated by this scan.
+ * @param method True selects method declarations; false selects fields.
+ * @param count Number of declarations to read from this table.
+ * @param read_member Callback reading one bounded field or method header.
+ * @param limits Resource ceilings and cooperative cancellation policy.
+ * @param selected Previously selected class identity against which metadata stability is checked.
+ * @return Success or a malformed declaration/resource failure.
+ * @ingroup implementation
+ */
 template<typename ReadMember>
 std::expected<void, ResolutionError> read_members(
     DeclaredMembers& output, bool method, std::size_t count, ReadMember read_member,
@@ -337,15 +416,16 @@ std::expected<void, ResolutionError> read_members(
 
 } // namespace
 
+// The interface table byte length is checked before the fixed-width reads below.
 std::expected<DeclaredMembers, ResolutionError> read_class_members(
     std::span<const std::byte> bytes, const ClassPathLimits& limits, const ClassInfo& selected) {
   const auto malformed = [&](std::string_view reason) {
     return fail(ResolutionErrorKind::MalformedClassMetadata, selected.name, selected.source, reason);
   };
   cafe::detail::BinaryReader reader(bytes);
-  const auto header = scan_constant_pool(reader, limits, selected.source);
+  auto header = scan_constant_pool(reader, limits, selected.source);
   if (!header)
-    return std::unexpected(header.error());
+    return std::unexpected(std::move(header.error()));
   const auto flags = reader.u2();
   const auto self = reader.u2();
   const auto parent = reader.u2();
@@ -357,7 +437,7 @@ std::expected<DeclaredMembers, ResolutionError> read_class_members(
       *interfaces != selected.interfaces.size())
     return malformed("member owner's class metadata changed since resolution");
   for (const auto& expected : selected.interfaces)
-    if (header->class_name(*reader.u2()) != expected)
+    if (header->class_name(*reader.u2()) != expected) // NOLINT(bugprone-unchecked-optional-access)
       return malformed("member owner's interface metadata changed since resolution");
 
   DeclaredMembers result{{}, {}, sizeof(DeclaredMembers)};

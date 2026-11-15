@@ -1,3 +1,9 @@
+/**
+ * @file
+ * @brief Stable instruction handles, operand storage, and bytecode editing.
+ * @ingroup implementation
+ */
+
 #include "cafe/bytecode/instruction.hpp"
 
 #include <bit>
@@ -6,6 +12,12 @@
 namespace cafe {
 namespace {
 
+/**
+ * @brief Identify wire operand shapes containing a constant-pool index.
+ * @param form Expected wire operand form.
+ * @return True for supported constant-bearing forms.
+ * @ingroup implementation
+ */
 bool is_constant_form(OperandForm form) {
   return form == OperandForm::ConstantByte || form == OperandForm::ConstantShort ||
          form == OperandForm::InvokeInterface || form == OperandForm::InvokeDynamic ||

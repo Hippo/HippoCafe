@@ -1,3 +1,9 @@
+/**
+ * @file
+ * @brief Bounded ZIP/JAR/JMOD access and transactional archive editing.
+ * @ingroup implementation
+ */
+
 #include <cafe/archive/archive.hpp>
 
 #include <algorithm>
@@ -13,7 +19,7 @@
 namespace cafe::archive {
 namespace detail {
 
-Error archive_error(const classpath::ResolutionError& source) {
+Error archive_error(classpath::ResolutionError source) {
   using enum classpath::ResolutionErrorKind;
   ErrorKind kind;
   switch (source.kind) {
@@ -41,21 +47,36 @@ Error archive_error(const classpath::ResolutionError& source) {
       kind = ErrorKind::InvalidArchive;
       break;
   }
-  return {kind, source.path, source.source ? source.source->entry : std::string{}, source.detail};
+  return {kind, std::move(source.path), source.source ? std::move(source.source->entry) : std::string{}, std::move(source.detail)};
 }
 
 } // namespace detail
 namespace {
 
 using namespace detail;
+/**
+ * @brief Owned contiguous byte buffer.
+ */
 using Bytes = std::vector<std::byte>;
 
-constexpr std::size_t EDITOR_ENTRY_OVERHEAD = sizeof(Entry) + sizeof(StagedEntry) + 64;
+constexpr std::size_t EDITOR_ENTRY_OVERHEAD = sizeof(Entry) + sizeof(StagedEntry) + 64; ///< Conservative accounted bytes for each editor entry and index record.
 
-enum class Edit { Add,
-                  Replace,
-                  Directory };
+/**
+ * @brief Archive staging operation selecting existence and directory rules.
+ * @ingroup implementation
+ */
+enum class Edit {
+  Add, ///< Stage a new file whose name must not already exist.
+  Replace, ///< Replace an existing non-directory entry.
+  Directory, ///< Class file resolved beneath a registered directory.
+};
 
+/**
+ * @brief Translate editor limits into shared archive-reader limits.
+ * @param limits Resource ceilings and cooperative cancellation policy.
+ * @return A reader policy with the corresponding byte/count/path/cancellation ceilings.
+ * @ingroup implementation
+ */
 classpath::ClassPathLimits reader_limits(const Limits& limits) {
   classpath::ClassPathLimits result;
   result.max_archive_bytes = limits.max_archive_bytes;
@@ -70,21 +91,49 @@ classpath::ClassPathLimits reader_limits(const Limits& limits) {
   return result;
 }
 
+/**
+ * @brief Map explicit archive format to resolver source provenance.
+ * @param format Explicit Jar or Jmod format.
+ * @return Jar or Jmod source kind.
+ * @ingroup implementation
+ */
 classpath::SourceKind source_kind(Format format) {
   return format == Format::Jmod ? classpath::SourceKind::Jmod : classpath::SourceKind::Jar;
 }
 
+/**
+ * @brief Construct an archive-edit failure with owned source and entry context.
+ * @param kind Payload or error discriminator.
+ * @param path Source or destination filesystem path.
+ * @param entry Archive entry name copied into the diagnostic.
+ * @param reason Explanation copied into the structured failure.
+ * @return An unexpected archive Error.
+ * @ingroup implementation
+ */
 std::unexpected<Error> failure(ErrorKind kind, const std::filesystem::path& path,
                                std::string_view entry, std::string_view reason) {
   return std::unexpected(Error{kind, path, std::string(entry), std::string(reason)});
 }
 
+/**
+ * @brief Compare signature filenames against an uppercase ASCII spelling.
+ * @param name ASCII entry name to compare without case distinctions.
+ * @param upper Uppercase ASCII comparison spelling.
+ * @return True for an ASCII case-insensitive match.
+ * @ingroup implementation
+ */
 bool folded_equal(std::string_view name, std::string_view upper) {
   return std::ranges::equal(name, upper, [](char left, char right) {
     return (left >= 'a' && left <= 'z' ? left - 'a' + 'A' : left) == right;
   });
 }
 
+/**
+ * @brief Recognize top-level META-INF signature artifacts that invalidate edited JAR signatures.
+ * @param entry Archive entry whose name is checked for a signature artifact.
+ * @return True for signature files requiring explicit removal before saving edits.
+ * @ingroup implementation
+ */
 bool signature_entry(const Entry& entry) {
   std::string_view name = entry.name;
   constexpr std::string_view PREFIX = "META-INF/";
@@ -100,12 +149,24 @@ bool signature_entry(const Entry& entry) {
            folded_equal(name.substr(dot), ".DSA") || folded_equal(name.substr(dot), ".EC")));
 }
 
+/**
+ * @brief Check whether an entry belongs to a permitted JMOD section.
+ * @param name Case-sensitive archive entry name with slash separators.
+ * @return True for supported top-level module sections.
+ * @ingroup implementation
+ */
 bool jmod_section(std::string_view name) {
   constexpr std::string_view SECTIONS[] = {"classes", "conf", "include", "legal", "man", "lib", "bin"};
   const auto slash = name.find('/');
   return slash != std::string_view::npos && std::ranges::contains(SECTIONS, name.substr(0, slash));
 }
 
+/**
+ * @brief Validate ordinary UTF-8 archive path bytes, excluding invalid scalar encodings.
+ * @param name Ordinary UTF-8 text to validate.
+ * @return True for a complete valid UTF-8 sequence.
+ * @ingroup implementation
+ */
 bool valid_utf8(std::string_view name) {
   while (!name.empty()) {
     const auto first = static_cast<unsigned char>(name.front());
@@ -133,29 +194,67 @@ bool valid_utf8(std::string_view name) {
 
 } // namespace
 
+/**
+ * @brief Owned archive editor tables, name index, staged payloads, retained source, and budget
+ * accounting. Logical edit publication follows successful allocation and validation.
+ * @ingroup implementation
+ */
 struct Archive::State {
+  /**
+   * @brief Initialize owned archive editor tables, name index, staged payloads, retained source, and
+   * budget accounting
+   * @param format Explicit Jar or Jmod format.
+   * @param limits Resource ceilings and cooperative cancellation policy.
+   * @param source Original archive pathname retained for diagnostics.
+   */
   State(Format format, Limits limits, std::filesystem::path source = {}) :
-      format(format), limits(limits), source(std::move(source)) {
+      format(format), limits(std::move(limits)), source(std::move(source)) {
   }
 
+  /**
+   * @brief Populate visible editor entries from a validated shared archive.
+   * @param zip Shared validated source archive.
+   * @return Success or an editor index-limit failure.
+   */
   [[nodiscard]] std::expected<void, Error> load(ZipArchive zip);
+  /**
+   * @brief Validate and stage one file/directory mutation before publishing table and budget
+   * changes.
+   * @param action Requested add, replace, directory, or recovery action.
+   * @param name Case-sensitive archive entry name with slash separators.
+   * @param bytes Payload copied during this call when no file import is requested.
+   * @param import Optional path to a regular file whose bytes are staged immediately.
+   * @param options Operation-specific parsing, emission, or entry policy.
+   * @return Success or a structured edit error leaving logical contents unchanged.
+   */
   [[nodiscard]] std::expected<void, Error> edit(
       Edit action, std::string_view name, std::span<const std::byte> bytes,
       const std::filesystem::path* import, EntryOptions options);
+  /**
+   * @brief Check cancellation, signed-JAR policy, and JMOD layout before output begins.
+   * @param path Source or destination filesystem path.
+   * @return Success or a format/signature/cancellation error.
+   */
   [[nodiscard]] std::expected<void, Error> validate_write(const std::filesystem::path& path) const;
+  /**
+   * @brief Append matching visible-entry and staged-content records with name-index rollback on
+   * failure.
+   * @param entry Archive entry metadata transferred into the editor.
+   * @param content Staged entry payload and options.
+   */
   void append_entry(Entry entry, StagedEntry content);
 
-  Format format;
-  Limits limits;
-  std::filesystem::path source;
-  std::optional<ZipArchive> original;
-  std::vector<Entry> entries;
-  std::vector<StagedEntry> contents;
-  std::unordered_map<std::string, std::size_t, classpath::detail::NameHash, std::equal_to<>> names;
-  std::size_t index_bytes = 0;
-  std::size_t staged_bytes = 0;
-  bool opened_signed = false;
-  bool edited = false;
+  Format format; ///< Explicit JAR or JMOD output format.
+  Limits limits; ///< Configured resource ceilings.
+  std::filesystem::path source; ///< Original archive pathname used for diagnostics; empty for in-memory/create workflows.
+  std::optional<ZipArchive> original; ///< Pinned original archive, absent when created from an empty editor.
+  std::vector<Entry> entries; ///< Visible archive directory in stable editor order, including staged entries.
+  std::vector<StagedEntry> contents; ///< Staged payload/option records aligned with visible archive entries.
+  std::unordered_map<std::string, std::size_t, classpath::detail::NameHash, std::equal_to<>> names; ///< Entry-name to visible/indexed entry position lookup.
+  std::size_t index_bytes = 0; ///< Accounted archive index storage in bytes.
+  std::size_t staged_bytes = 0; ///< Total owned uncompressed payload bytes currently staged.
+  bool opened_signed = false; ///< Whether the original JAR contained signature artifacts.
+  bool edited = false; ///< Whether visible archive contents differ from the opened input.
 };
 
 void Archive::State::append_entry(Entry entry, StagedEntry content) {
@@ -297,24 +396,24 @@ Archive::Archive(Archive&&) noexcept = default;
 Archive& Archive::operator=(Archive&&) noexcept = default;
 
 Archive Archive::create(Format format, Limits limits) {
-  return Archive(std::make_unique<State>(format, limits));
+  return Archive(std::make_unique<State>(format, std::move(limits)));
 }
 
 std::expected<Archive, Error> Archive::open(const std::filesystem::path& path, Format format, Limits limits) {
   auto zip = ZipArchive::open(path, source_kind(format), reader_limits(limits));
   if (!zip)
-    return std::unexpected(archive_error(zip.error()));
-  auto state = std::make_unique<State>(format, limits, path);
+    return std::unexpected(archive_error(std::move(zip.error())));
+  auto state = std::make_unique<State>(format, std::move(limits), path);
   if (auto loaded = state->load(std::move(*zip)); !loaded)
     return std::unexpected(std::move(loaded.error()));
   return Archive(std::move(state));
 }
 
-std::expected<Archive, Error> Archive::open(Bytes bytes, Format format, Limits limits) {
+std::expected<Archive, Error> Archive::open(std::vector<std::byte> bytes, Format format, Limits limits) {
   auto zip = ZipArchive::open(std::move(bytes), source_kind(format), reader_limits(limits));
   if (!zip)
-    return std::unexpected(archive_error(zip.error()));
-  auto state = std::make_unique<State>(format, limits);
+    return std::unexpected(archive_error(std::move(zip.error())));
+  auto state = std::make_unique<State>(format, std::move(limits));
   if (auto loaded = state->load(std::move(*zip)); !loaded)
     return std::unexpected(std::move(loaded.error()));
   return Archive(std::move(state));
@@ -333,6 +432,7 @@ const Entry* Archive::find(std::string_view name) const {
   return match == state->names.end() ? nullptr : &state->entries[match->second];
 }
 
+// Every editor entry has staged bytes or an original index; add/replace/erase preserve this invariant.
 std::expected<Bytes, Error> Archive::read(std::string_view name) const {
   if (state->limits.cancellation.stop_requested())
     return failure(ErrorKind::Cancelled, state->source, name, "archive read cancelled");
@@ -344,9 +444,9 @@ std::expected<Bytes, Error> Archive::read(std::string_view name) const {
   const auto& contents = state->contents[match->second];
   if (contents.bytes)
     return *contents.bytes;
-  auto result = state->original->read(name, state->limits.max_entry_uncompressed_bytes);
+  auto result = state->original->read(name, state->limits.max_entry_uncompressed_bytes); // NOLINT(bugprone-unchecked-optional-access)
   if (!result)
-    return std::unexpected(archive_error(result.error()));
+    return std::unexpected(archive_error(std::move(result.error())));
   return std::move(*result);
 }
 
@@ -383,8 +483,8 @@ std::expected<void, Error> Archive::erase(std::string_view name) {
   if (const auto& bytes = state->contents[index].bytes)
     state->staged_bytes -= bytes->size();
   state->names.erase(match);
-  state->entries.erase(state->entries.begin() + index);
-  state->contents.erase(state->contents.begin() + index);
+  state->entries.erase(state->entries.begin() + static_cast<std::ptrdiff_t>(index));
+  state->contents.erase(state->contents.begin() + static_cast<std::ptrdiff_t>(index));
   for (auto i = index; i < state->entries.size(); ++i)
     state->names.find(state->entries[i].name)->second = i;
   state->edited = true;

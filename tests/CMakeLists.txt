@@ -1,4 +1,19 @@
 set(fixture_dir "${CMAKE_CURRENT_SOURCE_DIR}/fixtures")
+
+# Each translation unit includes exactly one installed header, with no umbrella
+# header or precompiled context hiding a missing include.
+file(GLOB_RECURSE installed_headers CONFIGURE_DEPENDS
+  RELATIVE "${PROJECT_SOURCE_DIR}/include" "${PROJECT_SOURCE_DIR}/include/*.hpp")
+set(header_checks)
+foreach(header IN LISTS installed_headers)
+  set(header_check "${CMAKE_CURRENT_BINARY_DIR}/headers/${header}.cpp")
+  file(GENERATE OUTPUT "${header_check}" CONTENT "#include <${header}>\n")
+  list(APPEND header_checks "${header_check}")
+endforeach()
+add_library(hippocafe_header_checks OBJECT ${header_checks})
+target_link_libraries(hippocafe_header_checks PRIVATE hippocafe::hippocafe)
+hippocafe_configure_target(hippocafe_header_checks)
+
 file(GLOB test_sources CONFIGURE_DEPENDS unit/*.cpp integration/*.cpp regression/*.cpp)
 add_executable(hippocafe_tests ${test_sources})
 target_link_libraries(hippocafe_tests PRIVATE hippocafe::hippocafe GTest::gtest_main)
@@ -7,6 +22,14 @@ target_compile_definitions(hippocafe_tests PRIVATE HIPPOCAFE_FIXTURE_DIR="${fixt
 hippocafe_configure_target(hippocafe_tests)
 
 add_test(NAME hippocafe.tests COMMAND hippocafe_tests)
+if(TARGET hippocafe_quickstart)
+  add_test(NAME hippocafe.quickstart COMMAND hippocafe_quickstart)
+endif()
+find_package(Python3 QUIET COMPONENTS Interpreter)
+if(Python3_Interpreter_FOUND)
+  add_test(NAME hippocafe.documentation COMMAND "${Python3_EXECUTABLE}"
+    "${PROJECT_SOURCE_DIR}/tools/check_docs.py")
+endif()
 add_test(NAME hippocafe.fixture_checksums COMMAND "${CMAKE_COMMAND}"
   "-DFIXTURE_DIR=${fixture_dir}"
   -P "${CMAKE_CURRENT_SOURCE_DIR}/fixtures/verify_checksums.cmake"
@@ -112,5 +135,21 @@ if(Java_FOUND)
       "-DOUTPUT_DIR=${CMAKE_CURRENT_BINARY_DIR}/jvm-analysis"
       -P "${CMAKE_CURRENT_SOURCE_DIR}/integration/run_java_analysis.cmake"
     )
+    if(TARGET hippocafe_edit_and_compute AND
+       (EXISTS "${java_home}/jmods/java.base.jmod" OR
+        EXISTS "${java_home}/jre/lib/rt.jar" OR EXISTS "${java_home}/lib/rt.jar" OR
+        (hippocafe_jimage AND hippocafe_jmod)))
+      add_test(NAME hippocafe.jvm_example COMMAND "${CMAKE_COMMAND}"
+        "-DEDIT=$<TARGET_FILE:hippocafe_edit_and_compute>"
+        "-DJAVA=${Java_JAVA_EXECUTABLE}"
+        "-DJAVA_HOME=${java_home}"
+        "-DJAVA_RELEASE=${Java_VERSION_MAJOR}"
+        "-DJIMAGE=${hippocafe_jimage}"
+        "-DJMOD=${hippocafe_jmod}"
+        "-DINPUT=${fixture_dir}/supplied/classes/HelloWorld.class"
+        "-DOUTPUT_DIR=${CMAKE_CURRENT_BINARY_DIR}/jvm-example"
+        -P "${CMAKE_CURRENT_SOURCE_DIR}/integration/run_java_example.cmake"
+      )
+    endif()
   endif()
 endif()

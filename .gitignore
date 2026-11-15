@@ -39,3 +39,4 @@ compile_commands.json
 .DS_Store
 .codex
 *.jar
+__pycache__/

@@ -1,3 +1,9 @@
+/**
+ * @file
+ * @brief Bounded class-file parsing, layout, and serialization.
+ * @ingroup implementation
+ */
+
 #include "code_encoder.hpp"
 
 #include <utility>
@@ -11,6 +17,12 @@
 namespace cafe::detail {
 namespace {
 
+/**
+ * @brief Invert a conditional branch for long-branch expansion.
+ * @param opcode Opcode whose operand form or metadata is requested.
+ * @return The opposite conditional opcode.
+ * @ingroup implementation
+ */
 std::optional<Opcode> inverse_condition(Opcode opcode) {
   if (opcode >= Opcode::IfEq && opcode <= Opcode::IfACmpNe) {
     const auto base = std::to_underlying(Opcode::IfEq);
@@ -30,6 +42,7 @@ EncodedCode::EncodedCode(CodeLayout layout, std::pmr::memory_resource* scratch) 
   output.reserve(starts.size());
 }
 
+// layout_code validates instructions and operands; emission selects accessors by the immutable opcode.
 std::expected<EncodedCode, WriteError> encode_code(const MethodCode& code, ClassVersion version,
                                                    const ConstantPool& pool, std::uint16_t max_locals,
                                                    bool preserve_original_encodings,
@@ -82,25 +95,25 @@ std::expected<EncodedCode, WriteError> encode_code(const MethodCode& code, Class
       case OperandForm::ImplicitLocal:
         break;
       case OperandForm::SignedByte:
-        writer.s1(static_cast<std::int8_t>(*instruction.immediate_value()));
+        writer.s1(static_cast<std::int8_t>(*instruction.immediate_value())); // NOLINT(bugprone-unchecked-optional-access)
         break;
       case OperandForm::SignedShort:
-        writer.s2(static_cast<std::int16_t>(*instruction.immediate_value()));
+        writer.s2(static_cast<std::int16_t>(*instruction.immediate_value())); // NOLINT(bugprone-unchecked-optional-access)
         break;
       case OperandForm::Local:
-        writer.u1(static_cast<std::uint8_t>(*instruction.local_index()));
+        writer.u1(static_cast<std::uint8_t>(*instruction.local_index())); // NOLINT(bugprone-unchecked-optional-access)
         break;
       case OperandForm::Increment: {
-        auto increment = *instruction.increment_value();
+        auto increment = *instruction.increment_value(); // NOLINT(bugprone-unchecked-optional-access)
         writer.u1(static_cast<std::uint8_t>(increment.local));
         writer.s1(static_cast<std::int8_t>(increment.amount));
         break;
       }
       case OperandForm::ConstantByte:
-        writer.u1(static_cast<std::uint8_t>(instruction.constant_index()->value));
+        writer.u1(static_cast<std::uint8_t>(instruction.constant_index()->value)); // NOLINT(bugprone-unchecked-optional-access)
         break;
       case OperandForm::ConstantShort:
-        writer.u2(instruction.constant_index()->value);
+        writer.u2(instruction.constant_index()->value); // NOLINT(bugprone-unchecked-optional-access)
         break;
       case OperandForm::BranchShort:
         writer.s2(static_cast<std::int16_t>(displacement(*code.branch_target(id))));
@@ -130,20 +143,20 @@ std::expected<EncodedCode, WriteError> encode_code(const MethodCode& code, Class
         break;
       }
       case OperandForm::InvokeInterface:
-        writer.u2(instruction.constant_index()->value);
-        writer.u1(*instruction.interface_count());
+        writer.u2(instruction.constant_index()->value); // NOLINT(bugprone-unchecked-optional-access)
+        writer.u1(*instruction.interface_count()); // NOLINT(bugprone-unchecked-optional-access)
         writer.u1(0);
         break;
       case OperandForm::InvokeDynamic:
-        writer.u2(instruction.constant_index()->value);
+        writer.u2(instruction.constant_index()->value); // NOLINT(bugprone-unchecked-optional-access)
         writer.u2(0);
         break;
       case OperandForm::NewArray:
-        writer.u1(static_cast<std::uint8_t>(*instruction.array_type()));
+        writer.u1(static_cast<std::uint8_t>(*instruction.array_type())); // NOLINT(bugprone-unchecked-optional-access)
         break;
       case OperandForm::MultiANewArray:
-        writer.u2(instruction.constant_index()->value);
-        writer.u1(*instruction.dimensions());
+        writer.u2(instruction.constant_index()->value); // NOLINT(bugprone-unchecked-optional-access)
+        writer.u1(*instruction.dimensions()); // NOLINT(bugprone-unchecked-optional-access)
         break;
       case OperandForm::WidePrefix:
         writer.u1(static_cast<std::uint8_t>(instruction.opcode()));
@@ -151,7 +164,7 @@ std::expected<EncodedCode, WriteError> encode_code(const MethodCode& code, Class
           writer.u2(increment->local);
           writer.s2(increment->amount);
         } else {
-          writer.u2(*instruction.local_index());
+          writer.u2(*instruction.local_index()); // NOLINT(bugprone-unchecked-optional-access)
         }
         break;
       case OperandForm::Illegal:

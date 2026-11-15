@@ -1,3 +1,9 @@
+/**
+ * @file
+ * @brief Bounded class-file parsing, layout, and serialization.
+ * @ingroup implementation
+ */
+
 #include "code_layout.hpp"
 
 #include <algorithm>
@@ -12,23 +18,43 @@
 namespace cafe::detail {
 namespace {
 
-constexpr std::uint32_t NO_POSITION = std::numeric_limits<std::uint32_t>::max();
-constexpr unsigned MAX_LAYOUT_PASSES = 64;
+constexpr std::uint32_t NO_POSITION = std::numeric_limits<std::uint32_t>::max(); ///< Sentinel for an instruction/label position that has not been resolved.
+constexpr unsigned MAX_LAYOUT_PASSES = 64; ///< Hard ceiling on iterative branch-width/layout convergence passes.
 
+/**
+ * @brief Test whether a logical branch has a native wide encoding.
+ * @param logical Normalized logical opcode.
+ * @return True for goto and jsr.
+ * @ingroup implementation
+ */
 bool can_widen(Opcode logical) {
   return logical == Opcode::Goto || logical == Opcode::Jsr;
 }
 
+/**
+ * @brief Select the four-byte-displacement encoding of a widenable branch.
+ * @param logical Normalized logical opcode.
+ * @return The corresponding wide opcode.
+ * @ingroup implementation
+ */
 Opcode wide_branch(Opcode logical) {
   return logical == Opcode::Goto ? Opcode::GotoW : Opcode::JsrW;
 }
 
+/**
+ * @brief Choose an initial wire opcode from logical operands and retained encoding hints.
+ * @param instruction Logical instruction value; scoped operands require the owning method.
+ * @param preserve Whether retained wire encoding hints should be honored.
+ * @return A legal initial encoding; branch distances are resolved during layout.
+ * @ingroup implementation
+ */
+// Each operand accessor is selected by its matching immutable opcode/operand form.
 Opcode select_encoding(Instruction instruction, bool preserve) {
   auto opcode = instruction.opcode();
   auto hint = preserve ? instruction.encoding_hint() : EncodingHint::Automatic;
   switch (opcode_info(opcode).form) {
     case OperandForm::Local: {
-      auto local = *instruction.local_index();
+      auto local = *instruction.local_index(); // NOLINT(bugprone-unchecked-optional-access)
       if (local > 255 || hint == EncodingHint::Wide)
         return Opcode::Wide;
       if (local <= 3 && opcode != Opcode::Ret && hint != EncodingHint::Explicit) {
@@ -40,13 +66,13 @@ Opcode select_encoding(Instruction instruction, bool preserve) {
       break;
     }
     case OperandForm::Increment: {
-      auto increment = *instruction.increment_value();
+      auto increment = *instruction.increment_value(); // NOLINT(bugprone-unchecked-optional-access)
       if (increment.local > 255 || !std::in_range<std::int8_t>(increment.amount) || hint == EncodingHint::Wide)
         return Opcode::Wide;
       break;
     }
     case OperandForm::ConstantByte:
-      if (instruction.constant_index()->value > 255 || hint == EncodingHint::Wide)
+      if (instruction.constant_index()->value > 255 || hint == EncodingHint::Wide) // NOLINT(bugprone-unchecked-optional-access)
         return Opcode::LdcW;
       break;
     case OperandForm::BranchShort:
@@ -59,9 +85,13 @@ Opcode select_encoding(Instruction instruction, bool preserve) {
   return opcode;
 }
 
+/**
+ * @brief Original branch source and destination offsets used while converging instruction layout.
+ * @ingroup implementation
+ */
 struct BranchOffsets {
-  std::uint32_t source;
-  std::uint32_t target;
+  std::uint32_t source; ///< Source instruction ordinal in the layout arrays.
+  std::uint32_t target; ///< Target instruction ordinal in the layout arrays.
 };
 
 } // namespace

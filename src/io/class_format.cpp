@@ -1,3 +1,9 @@
+/**
+ * @file
+ * @brief Bounded class-file parsing, layout, and serialization.
+ * @ingroup implementation
+ */
+
 #include "class_format.hpp"
 
 #include "../detail/descriptor.hpp"
@@ -66,6 +72,15 @@ bool is_annotation_element(std::uint16_t owner_flags, std::uint16_t method_flags
 
 namespace {
 
+/**
+ * @brief Validate a NameAndType constant for field or method use.
+ * @param pool Owning class constant pool used for reference validation.
+ * @param index One-based constant-pool reference; the required tag is determined by this
+ *   operation.
+ * @param referring_tag Constant tag whose reference rules are being validated.
+ * @return A static explanation, or nullptr when valid.
+ * @ingroup implementation
+ */
 const char* name_and_type_issue(const ConstantPool& pool, CpIndex index, CpTag referring_tag) noexcept {
   const auto* entry = pool.get(index);
   if (!entry || entry->tag != CpTag::NameAndType)
@@ -87,6 +102,14 @@ const char* name_and_type_issue(const ConstantPool& pool, CpIndex index, CpTag r
   return nullptr;
 }
 
+/**
+ * @brief Validate a method-handle reference kind, target tag, name, and version rules.
+ * @param pool Owning class constant pool used for reference validation.
+ * @param entry MethodHandle constant to validate against its referenced member.
+ * @param version Exact JVM class-file major and minor version.
+ * @return A static explanation, or nullptr when valid.
+ * @ingroup implementation
+ */
 const char* method_handle_issue(const ConstantPool& pool, const CpEntry& entry, ClassVersion version) noexcept {
   const auto* target = pool.get(entry.first);
   if (!target || entry.reference_kind < 1 || entry.reference_kind > 9)

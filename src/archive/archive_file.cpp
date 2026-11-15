@@ -1,3 +1,9 @@
+/**
+ * @file
+ * @brief Bounded ZIP/JAR/JMOD access and transactional archive editing.
+ * @ingroup implementation
+ */
+
 #include "archive_file.hpp"
 
 #include <cerrno>
@@ -74,6 +80,13 @@ std::optional<RegularFile> open_regular_file(const std::filesystem::path& path) 
 
 namespace {
 
+/**
+ * @brief Attach a destination path to a native archive-publication failure.
+ * @param path Source or destination filesystem path.
+ * @param detail Explanation copied into the structured error.
+ * @return An unexpected archive I/O error.
+ * @ingroup implementation
+ */
 std::unexpected<Error> io_error(const std::filesystem::path& path, std::string detail) {
   return std::unexpected(Error{ErrorKind::IoError, path, {}, std::move(detail)});
 }
@@ -150,7 +163,7 @@ std::FILE* TemporaryArchiveFile::stream() const {
   return file.get();
 }
 
-std::expected<void, Error> TemporaryArchiveFile::publish(SaveMode mode, std::stop_token cancellation) {
+std::expected<void, Error> TemporaryArchiveFile::publish(SaveMode mode, const std::stop_token& cancellation) {
   if (std::fclose(file.release()) != 0)
     return io_error(destination, "could not close the temporary archive");
   if (cancellation.stop_requested())

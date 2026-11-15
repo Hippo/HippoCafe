@@ -1,4 +1,12 @@
+/**
+ * @file
+ * @brief Bounded class-file parsing, layout, and serialization.
+ * @ingroup implementation
+ */
+
 #include "class_writer_impl.hpp"
+
+#include <utility>
 
 #include <algorithm>
 #include <limits>
@@ -18,9 +26,16 @@
 namespace cafe::detail {
 namespace {
 
-constexpr auto MAX_COUNT = std::numeric_limits<std::uint16_t>::max();
-constexpr auto NO_HANDLER = std::numeric_limits<std::uint32_t>::max();
+constexpr auto MAX_COUNT = std::numeric_limits<std::uint16_t>::max(); ///< Largest u2 table count accepted by the class-file format.
+constexpr auto NO_HANDLER = std::numeric_limits<std::uint32_t>::max(); ///< Sentinel for an original handler ordinal that cannot be uniquely remapped.
 
+/**
+ * @brief Translate analysis failure classifications into writer failure classifications.
+ * @param error Underlying structured failure to translate or enrich.
+ * @param has_context Whether frame computation has an explicit hierarchy context.
+ * @return The corresponding WriteErrorKind.
+ * @ingroup implementation
+ */
 WriteErrorKind analysis_error_kind(const analysis::AnalysisError& error, bool has_context) {
   using enum analysis::AnalysisErrorKind;
   switch (error.kind) {
@@ -64,6 +79,16 @@ WriteErrorKind analysis_error_kind(const analysis::AnalysisError& error, bool ha
   return WriteErrorKind::InvalidVerificationFrame;
 }
 
+/**
+ * @brief Attach writer location and byte offsets to an analysis failure.
+ * @param error Underlying structured failure to translate or enrich.
+ * @param path Borrowed structural path included in diagnostics.
+ * @param has_context Whether frame computation has an explicit hierarchy context.
+ * @param code Decoded instruction sequence or associated Code attribute.
+ * @param offsets Instruction-order byte offsets for the selected code layout.
+ * @return An unexpected WriteError preserving the useful underlying explanation.
+ * @ingroup implementation
+ */
 std::unexpected<WriteError> analysis_error(
     const analysis::AnalysisError& error, std::string_view path, bool has_context,
     const MethodCode& code, std::span<const std::uint32_t> offsets = {}) {
@@ -92,6 +117,12 @@ std::unexpected<WriteError> analysis_error(
   return std::unexpected(WriteError{analysis_error_kind(error, has_context), std::string(path), std::move(detail)});
 }
 
+/**
+ * @brief Check whether decoded Code has control-flow boundaries requiring modern frames.
+ * @param method Code attribute whose branches and exception handlers are inspected.
+ * @return True when stack-map generation is required by the method structure.
+ * @ingroup implementation
+ */
 bool needs_stack_map(const CodeAttribute& method) {
   if (!method.exception_handlers().empty())
     return true;
@@ -117,13 +148,30 @@ bool needs_stack_map(const CodeAttribute& method) {
   return false;
 }
 
+/**
+ * @brief Form a stable comparison key for an exception-table entry.
+ * @param handler Exception-table entry whose labels or type are resolved.
+ * @return A tuple of scoped range, destination, and catch-type identities.
+ * @ingroup implementation
+ */
 auto handler_key(const ExceptionHandler& handler) {
   return std::tie(handler.start.scope, handler.start.value, handler.end.scope, handler.end.value,
                   handler.handler.scope, handler.handler.value, handler.catch_type.value);
 }
 
-// A catch annotation refers to a table ordinal, independent of byte offsets.
-// A replaced or ambiguous entry cannot inherit an annotation implicitly.
+/**
+ * @brief Match original handler ordinals to unchanged current entries without guessing ambiguous
+ * duplicates.
+ * @param original Original exception table whose labels are remapped to the emission plan.
+ * @param current Current exception table after edits.
+ * @param scratch Temporary allocator that must outlive any returned allocator-backed views.
+ * @return A scratch-owned old-to-new ordinal mapping; unmappable entries carry the invalid
+ *   sentinel.
+ * @ingroup implementation
+ *
+ * A catch annotation refers to a table ordinal, independent of byte offsets.
+ * A replaced or ambiguous entry cannot inherit an annotation implicitly.
+ */
 std::pmr::vector<std::uint32_t> remap_handlers(
     std::span<const ExceptionHandler> original, std::span<const ExceptionHandler> current,
     std::pmr::memory_resource* scratch) {
@@ -154,7 +202,8 @@ std::pmr::vector<std::uint32_t> remap_handlers(
 std::expected<void, WriteError> ClassWriter::write_analyzed_code(
     const CodeAttribute& code, const Method& method, std::string_view path) {
   const bool has_context = analysis_context != nullptr;
-  const auto limits = has_context ? analysis_context->limits() : analysis::AnalysisLimits{};
+  const analysis::AnalysisLimits default_limits;
+  const auto& limits = has_context ? analysis_context->limits() : default_limits;
   const bool frames = options.code_analysis == CodeAnalysisMode::ComputeFrames;
   const auto& instructions = code.instructions;
   const auto needed_locals = analysis::compute_max_locals(method, model, limits);
@@ -165,10 +214,10 @@ std::expected<void, WriteError> ClassWriter::write_analyzed_code(
   std::pmr::monotonic_buffer_resource scratch(&analysis_budget);
   // CP extension for frames is append-only, so these choices of ldc width
   // remain valid when the staged pool entries are committed.
-  const auto encoded = encode_code(instructions, version, pool, max_locals,
-                                   options.preserve_original_encodings, &scratch, path, frames);
+  auto encoded = encode_code(instructions, version, pool, max_locals,
+                             options.preserve_original_encodings, &scratch, path, frames);
   if (!encoded)
-    return std::unexpected(encoded.error());
+    return std::unexpected(std::move(encoded.error()));
   const auto original_bytes = code.original ? model.source_slice(code.original->code) : std::nullopt;
   const bool rewritten = !original_bytes || instructions.edited() || code.original_handlers || code.supplied_metadata ||
                          !std::ranges::equal(*original_bytes, encoded->bytes());
@@ -215,9 +264,9 @@ std::expected<void, WriteError> ClassWriter::write_analyzed_code(
         return write_error(WriteErrorKind::InvalidCodeLayout, path, "exception table count does not fit u2");
       expanded_handlers.reserve(handlers.size());
       for (const auto& handler : handlers) {
-        const auto wire = resolve_handler(handler, *encoded, path);
+        auto wire = resolve_handler(handler, *encoded, path);
         if (!wire)
-          return std::unexpected(wire.error());
+          return std::unexpected(std::move(wire.error()));
         const auto start = decoded->label_at(*expanded, wire->start);
         const auto end = decoded->label_at(*expanded, wire->end);
         const auto target = decoded->label_at(*expanded, wire->handler);
@@ -246,18 +295,18 @@ std::expected<void, WriteError> ClassWriter::write_analyzed_code(
       const InstructionOffsets instruction_offsets(emitted, offsets, &scratch);
       auto table = encode_stack_map(*computed, emitted, instruction_offsets, stack_map_constants, &scratch, path);
       if (!table)
-        return std::unexpected(table.error());
-      const auto name = stack_map_constants.utf8("StackMapTable", path);
+        return std::unexpected(std::move(table.error()));
+      auto name = stack_map_constants.utf8("StackMapTable", path);
       if (!name)
-        return std::unexpected(name.error());
+        return std::unexpected(std::move(name.error()));
       stack_map_name = *name;
       stack_map = std::move(*table);
     }
   }
 
-  const auto context = write_code_array(code, *encoded, max_stack, max_locals, path);
+  auto context = write_code_array(code, *encoded, max_stack, max_locals, path);
   if (!context)
-    return std::unexpected(context.error());
+    return std::unexpected(std::move(context.error()));
   return write_analyzed_code_attributes(code, *encoded, *context, stack_map_name, stack_map, rewritten, &scratch, path);
 }
 
@@ -367,7 +416,7 @@ std::expected<void, WriteError> ClassWriter::write_analyzed_code_attributes(
       already_seen = true;
       if (replace_frames && spec->kind == AttributeKind::StackMapTable) {
         if (stack_map_name) {
-          if (const auto written = emit(attribute.name_index(), stack_map); !written)
+          if (auto written = emit(attribute.name_index(), stack_map); !written)
             return written;
           stack_map_name = {};
         }
@@ -389,8 +438,8 @@ std::expected<void, WriteError> ClassWriter::write_analyzed_code_attributes(
       return {};
     };
     if (rewritten && (!spec || (!raw->source_slice() && !supplied))) {
-      if (const auto handled = unsafe(WriteErrorKind::UnsafeOpaqueAttribute,
-                                      "code attribute may depend on stale offsets or handler indices");
+      if (auto handled = unsafe(WriteErrorKind::UnsafeOpaqueAttribute,
+                                "code attribute may depend on stale offsets or handler indices");
           !handled)
         return handled;
       continue;
@@ -415,16 +464,16 @@ std::expected<void, WriteError> ClassWriter::write_analyzed_code_attributes(
           !checked) {
         if (!raw->source_slice())
           return write_error(WriteErrorKind::InvalidClassModel, attribute_path, checked.error().detail);
-        if (const auto handled = unsafe(WriteErrorKind::UnmappedCodeOffset, checked.error().detail); !handled)
+        if (auto handled = unsafe(WriteErrorKind::UnmappedCodeOffset, checked.error().detail); !handled)
           return handled;
         continue;
       }
     }
-    if (const auto written = emit(attribute.name_index(), final_bytes); !written)
+    if (auto written = emit(attribute.name_index(), final_bytes); !written)
       return written;
   }
   if (stack_map_name) {
-    if (const auto written = emit(stack_map_name, stack_map); !written)
+    if (auto written = emit(stack_map_name, stack_map); !written)
       return written;
   }
   if (!output.patch_u2(count_offset, static_cast<std::uint16_t>(count)))

@@ -1,3 +1,9 @@
+/**
+ * @file
+ * @brief Command-line inspection of class declarations and decoded methods.
+ */
+
+/** @cond example_programs */
 #include <iostream>
 #include <utility>
 
@@ -39,3 +45,5 @@ int main(int argc, char** argv) {
   for (const auto& warning : parsed->diagnostics)
     std::cerr << warning.path << " at byte " << warning.offset << ": " << warning.detail << '\n';
 }
+
+/** @endcond */

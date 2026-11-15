@@ -1,11 +1,22 @@
+/**
+ * @file
+ * @brief Stable instruction handles, operand storage, and bytecode editing.
+ * @ingroup implementation
+ */
+
 #include "cafe/bytecode/opcode.hpp"
 
 #include <array>
-#include <cstddef>
 
 namespace cafe {
 namespace {
 
+/**
+ * @brief Build one immutable table for wire forms, logical normalization, local widths, and
+ * control flow.
+ * @return Metadata for all 256 opcode bytes, including illegal/reserved entries.
+ * @ingroup implementation
+ */
 constexpr auto make_opcode_table() {
   std::array<OpcodeInfo, 256> table{};
   auto entry = [&](Opcode opcode) -> OpcodeInfo& {
@@ -97,7 +108,7 @@ constexpr auto make_opcode_table() {
   return table;
 }
 
-constexpr auto OPCODE_TABLE = make_opcode_table();
+constexpr auto OPCODE_TABLE = make_opcode_table(); ///< Shared immutable metadata for every possible opcode byte.
 
 } // namespace
 

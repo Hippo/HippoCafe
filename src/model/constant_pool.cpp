@@ -1,3 +1,9 @@
+/**
+ * @file
+ * @brief Owned class models, constant-pool storage, and attribute lifetimes.
+ * @ingroup implementation
+ */
+
 #include <cafe/constant_pool.hpp>
 
 #include <algorithm>
@@ -8,7 +14,7 @@
 namespace cafe {
 
 namespace {
-constexpr auto MAX_POOL_COUNT = std::numeric_limits<std::uint16_t>::max();
+constexpr auto MAX_POOL_COUNT = std::numeric_limits<std::uint16_t>::max(); ///< Maximum class-file constant_pool_count including reserved slots.
 }
 
 ConstantPool::ConstantPool(std::pmr::memory_resource* resource, std::pmr::memory_resource* string_resource) : string_resource(string_resource ? string_resource : resource),

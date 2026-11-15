@@ -1,3 +1,9 @@
+/**
+ * @file
+ * @brief Control flow, JVM verification types, and derived method metadata.
+ * @ingroup implementation
+ */
+
 #include "cafe/analysis/max_locals.hpp"
 
 #include "analysis_detail.hpp"
@@ -13,6 +19,7 @@ std::expected<std::uint16_t, AnalysisError> compute_max_locals(
   return compute_max_locals(method, owner, code->code(), limits);
 }
 
+// method_signature_issue validates the descriptor before method_parameter_slots is dereferenced.
 std::expected<std::uint16_t, AnalysisError> compute_max_locals(
     const Method& method, const ClassFile& owner, const MethodCode& code, const AnalysisLimits& limits) {
   const auto where = method_site(owner, method);
@@ -33,7 +40,7 @@ std::expected<std::uint16_t, AnalysisError> compute_max_locals(
     return where.fail(AnalysisErrorKind::Cancelled, "max_locals computation cancelled");
   if (code.size() > limits.max_instructions || code.size() > limits.max_work || code.size() > MAX_CODE_SIZE)
     return where.fail(AnalysisErrorKind::ResourceLimitExceeded, "instruction limit exceeded");
-  unsigned required = *detail::method_parameter_slots(where.descriptor) +
+  unsigned required = *detail::method_parameter_slots(where.descriptor) + // NOLINT(bugprone-unchecked-optional-access)
                       (detail::is_static_method(method.access_flags(), where.name) ? 0u : 1u);
   const unsigned wire_limit = detail::short_code_header(owner.version()) ? UINT8_MAX : UINT16_MAX;
   if (required > wire_limit)

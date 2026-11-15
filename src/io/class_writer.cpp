@@ -1,3 +1,9 @@
+/**
+ * @file
+ * @brief Bounded class-file parsing, layout, and serialization.
+ * @ingroup implementation
+ */
+
 #include <cafe/io/class_writer.hpp>
 
 #include <limits>
@@ -44,8 +50,8 @@ std::expected<WriteResult, WriteError> ClassWriter::write() try {
   output.u4(CLASS_MAGIC);
   output.u2(version.minor);
   output.u2(version.major);
-  if (const auto written = write_constant_pool(); !written)
-    return std::unexpected(written.error());
+  if (auto written = write_constant_pool(); !written)
+    return std::unexpected(std::move(written.error()));
   const auto constant_pool_end = output.size();
   output.u2(model.access_flags());
   output.u2(model.this_class().value);
@@ -57,12 +63,12 @@ std::expected<WriteResult, WriteError> ClassWriter::write() try {
                          "interface index must name a non-array class");
     output.u2(interfaces[i].value);
   }
-  if (const auto written = write_members(model.fields()); !written)
-    return std::unexpected(written.error());
-  if (const auto written = write_members(model.methods()); !written)
-    return std::unexpected(written.error());
-  if (const auto written = write_attributes(model.attributes(), {AttributeContext::Class, ""}); !written)
-    return std::unexpected(written.error());
+  if (auto written = write_members(model.fields()); !written)
+    return std::unexpected(std::move(written.error()));
+  if (auto written = write_members(model.methods()); !written)
+    return std::unexpected(std::move(written.error()));
+  if (auto written = write_attributes(model.attributes(), {AttributeContext::Class, ""}); !written)
+    return std::unexpected(std::move(written.error()));
   if (const auto extra = stack_map_constants.bytes(); !extra.empty()) {
     result.bytes.insert(result.bytes.begin() + static_cast<std::ptrdiff_t>(constant_pool_end),
                         extra.begin(), extra.end());
@@ -113,14 +119,14 @@ std::expected<void, WriteError> ClassWriter::write_members(std::span<const Membe
     output.u2(member.access_flags());
     output.u2(member.name_index().value);
     output.u2(member.descriptor_index().value);
-    if (const auto written = write_attributes(member.attributes(),
-                                              {.context = METHOD ? AttributeContext::Method : AttributeContext::Field,
-                                               .path = path,
-                                               .descriptor = *desc,
-                                               .code_required = code_required,
-                                               .is_static = is_static_method(member.access_flags(), *name),
-                                               .annotation_element = METHOD && is_annotation_element(model.access_flags(), member.access_flags(), *desc),
-                                               .method = method});
+    if (auto written = write_attributes(member.attributes(),
+                                        {.context = METHOD ? AttributeContext::Method : AttributeContext::Field,
+                                         .path = path,
+                                         .descriptor = *desc,
+                                         .code_required = code_required,
+                                         .is_static = is_static_method(member.access_flags(), *name),
+                                         .annotation_element = METHOD && is_annotation_element(model.access_flags(), member.access_flags(), *desc),
+                                         .method = method});
         !written)
       return written;
   }

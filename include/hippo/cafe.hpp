@@ -1,3 +1,9 @@
+/**
+ * @file
+ * @brief Convenience header for the complete public HippoCafe API.
+ * @ingroup model
+ */
+
 #pragma once
 
 #include <cafe/analysis/control_flow_graph.hpp>

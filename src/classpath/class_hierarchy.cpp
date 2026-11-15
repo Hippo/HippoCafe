@@ -1,3 +1,9 @@
+/**
+ * @file
+ * @brief Class source snapshots, metadata resolution, and reference-type relationships.
+ * @ingroup implementation
+ */
+
 #include <cafe/classpath/class_hierarchy.hpp>
 
 #include <algorithm>
@@ -17,15 +23,30 @@
 namespace cafe::classpath {
 namespace {
 
+/**
+ * @brief Shared immutable selected class hierarchy metadata.
+ */
 using Metadata = std::shared_ptr<const ClassInfo>;
 using detail::fail;
 
+/**
+ * @brief Parsed reference identity separating array dimensions and primitive/reference component
+ * spelling.
+ * @ingroup implementation
+ */
 struct Reference {
-  std::string_view component;
-  std::size_t dimensions = 0;
-  bool primitive = false;
+  std::string_view component; ///< Borrowed primitive/class component spelling after stripping array dimensions.
+  std::size_t dimensions = 0; ///< Number of leading array dimensions.
+  bool primitive = false; ///< Whether the reference descriptor's innermost component is primitive.
 };
 
+/**
+ * @brief Validate an internal class name or array descriptor for hierarchy operations.
+ * @param name Borrowed JVM name in modified UTF-8.
+ * @param limits Resource ceilings and cooperative cancellation policy.
+ * @return Its array rank and component identity, or a name error.
+ * @ingroup implementation
+ */
 std::expected<Reference, ResolutionError> parse_reference(std::string_view name, const ClassPathLimits& limits) {
   const bool array = name.starts_with('[');
   if (name.size() > limits.max_name_bytes && (!array || name.size() - limits.max_name_bytes > 257)) {
@@ -48,22 +69,50 @@ std::expected<Reference, ResolutionError> parse_reference(std::string_view name,
   return invalid();
 }
 
+/**
+ * @brief Recognize Object, Cloneable, and Serializable as array supertypes.
+ * @param name Borrowed JVM name in modified UTF-8.
+ * @return True for one of the JVM's universal array supertypes.
+ * @ingroup implementation
+ */
 bool array_supertype(std::string_view name) {
   return name == detail::OBJECT || name == detail::CLONEABLE || name == detail::SERIALIZABLE;
 }
 
+/**
+ * @brief Test whether selected class metadata declares an interface.
+ * @param info Selected class or archive metadata used by the operation.
+ * @return True when ACC_INTERFACE is present.
+ * @ingroup implementation
+ */
 bool is_interface(const ClassInfo& info) {
   return has_flag(info.access_flags, AccessFlag::Interface);
 }
 
+/**
+ * @brief Resolved hierarchy node and traversal metadata in a validated closure.
+ * @ingroup implementation
+ */
 struct Ancestor {
-  Metadata info;
-  std::size_t depth;
+  Metadata info; ///< Shared immutable hierarchy metadata for this definition.
+  std::size_t depth; ///< Traversal depth from the queried class in an ancestor closure.
 };
 
+/**
+ * @brief Owned validated class/interface ancestor records.
+ */
 using Ancestors = std::unordered_map<std::string_view, Ancestor, detail::NameHash, std::equal_to<>>;
+/**
+ * @brief Shared immutable ancestor closure reused by hierarchy queries.
+ */
 using Closure = std::shared_ptr<const Ancestors>;
 
+/**
+ * @brief Wrap a reference join in the requested number of array dimensions.
+ * @param result Output/result storage populated by this operation.
+ * @param dimensions Nonzero number of array dimensions to allocate.
+ * @ingroup implementation
+ */
 void wrap_arrays(JoinResult& result, std::size_t dimensions) {
   if (dimensions == 0)
     return;
@@ -79,6 +128,15 @@ void wrap_arrays(JoinResult& result, std::size_t dimensions) {
     wrap(candidate);
 }
 
+/**
+ * @brief Find a deterministic common class and interface candidates from validated ancestor
+ * closures.
+ * @param a First reference type, expressed as an internal name or array descriptor.
+ * @param left Validated ancestor closure of the first reference.
+ * @param right Validated ancestor closure of the second reference.
+ * @return The representable join and bounded alternatives.
+ * @ingroup implementation
+ */
 JoinResult join_classes(std::string_view a, const Ancestors& left, const Ancestors& right) {
   std::unordered_set<std::string_view> less_specific;
   for (const auto& [name, value] : left) {
@@ -108,24 +166,56 @@ JoinResult join_classes(std::string_view a, const Ancestors& left, const Ancesto
   return JoinResult{std::string(current == left.end() ? detail::OBJECT : current->first), std::move(most_specific)};
 }
 
+/**
+ * @brief Owned pair of reference names used as a hierarchy-query cache key.
+ * @ingroup implementation
+ */
 struct PairKey {
-  std::string source;
-  std::string destination;
+  std::string source; ///< Owned source reference name or array descriptor for assignability.
+  std::string destination; ///< Owned destination reference name or array descriptor for assignability.
 };
 
+/**
+ * @brief Borrowed reference-name pair for allocation-free cache lookup.
+ */
 using PairView = std::pair<std::string_view, std::string_view>;
 
+/**
+ * @brief Borrow the two reference names from a pair-cache key.
+ * @param pair Source/destination reference pair used for assignability caching.
+ * @return A pair of string views valid while the key's storage is alive.
+ * @ingroup implementation
+ */
 PairView pair_view(const PairKey& pair) {
   return {pair.source, pair.destination};
 }
 
+/**
+ * @brief Borrow the two reference names from a pair-cache key.
+ * @param pair Source/destination reference pair used for assignability caching.
+ * @return A pair of string views valid while the key's storage is alive.
+ * @ingroup implementation
+ */
 PairView pair_view(PairView pair) {
   return pair;
 }
 
+/**
+ * @brief Transparent hash for owned and borrowed reference-pair keys.
+ * @ingroup implementation
+ */
 struct PairHash {
+  /**
+   * @brief Enables heterogeneous lookup using borrowed names or pair views.
+   */
   using is_transparent = void;
 
+  /**
+   * @brief Hash two reference names without allocating an owned pair.
+   * @param key Frame-slot and reference-pair key to hash.
+   * @return The cache-key hash.
+   * @ingroup implementation
+   */
   template<typename Pair>
   [[nodiscard]] std::size_t operator()(const Pair& key) const noexcept {
     const auto [source, destination] = pair_view(key);
@@ -135,9 +225,23 @@ struct PairHash {
   }
 };
 
+/**
+ * @brief Transparent equality for owned and borrowed reference-pair keys.
+ * @ingroup implementation
+ */
 struct PairEqual {
+  /**
+   * @brief Enables heterogeneous lookup using borrowed names or pair views.
+   */
   using is_transparent = void;
 
+  /**
+   * @brief Compare two owned or borrowed reference-name pairs.
+   * @param a First owned or borrowed pair of reference names.
+   * @param b Second owned or borrowed pair of reference names.
+   * @return True when both name components match exactly.
+   * @ingroup implementation
+   */
   template<typename Left, typename Right>
   [[nodiscard]] bool operator()(const Left& a, const Right& b) const noexcept {
     return pair_view(a) == pair_view(b);
@@ -146,13 +250,32 @@ struct PairEqual {
 
 } // namespace
 
+/**
+ * @brief Shared synchronized hierarchy closure and pair caches, optionally overlaying one copied
+ * class declaration. The reverse recent-overlay link is weak to avoid ownership cycles.
+ * @ingroup implementation
+ */
 struct ClassHierarchy::State {
+  /**
+   * @brief Initialize shared synchronized hierarchy closure and pair caches, optionally overlaying
+   * one copied class declaration
+   * @param resolver Resolver snapshot whose metadata and cache are shared.
+   * @param overlay Copied class metadata that takes precedence over the base hierarchy.
+   * @param overlay_members Copied member declarations belonging to the overlay class.
+   * @param declaration_revision Class declaration stamp captured by this analysis or overlay.
+   * @param base Base hierarchy or offset used by the operation.
+   */
   explicit State(ClassResolver resolver, Metadata overlay = {}, detail::DeclaredMembers overlay_members = {},
                  std::uint64_t declaration_revision = 0, std::weak_ptr<State> base = {}) :
       resolver(std::move(resolver)), overlay(std::move(overlay)), overlay_members(std::move(overlay_members)),
       declaration_revision(declaration_revision), base(std::move(base)) {
   }
 
+  /**
+   * @brief Resolve a class with the current overlay taking precedence.
+   * @param name Borrowed JVM name in modified UTF-8.
+   * @return Shared metadata, or the underlying resolver error.
+   */
   [[nodiscard]] std::expected<Metadata, ResolutionError> resolve(std::string_view name) const {
     if (resolver.limits().cancellation.stop_requested())
       return fail(ResolutionErrorKind::Cancelled, name.substr(0, resolver.limits().max_name_bytes), {}, "hierarchy lookup cancelled");
@@ -161,25 +284,32 @@ struct ClassHierarchy::State {
     return resolver.resolve(name);
   }
 
-  // Callers hold mutex so closure cache entries and pair answers belong to
-  // the same snapshot and simultaneous lookups cannot duplicate cold work.
+  /**
+   * @brief Build or reuse a validated superclass/interface closure while holding the state mutex.
+   * @param name Borrowed JVM name in modified UTF-8.
+   * @return A shared immutable closure, or a cycle, parent, resolution, or budget error.
+   *
+   * Callers hold mutex so closure cache entries and pair answers belong to
+   * the same snapshot and simultaneous lookups cannot duplicate cold work.
+   */
   [[nodiscard]] std::expected<Closure, ResolutionError> ancestors(std::string_view name);
 
-  inline static std::atomic<std::uint64_t> next_snapshot_id{1};
+  inline static std::atomic<std::uint64_t> next_snapshot_id{1}; ///< Atomic nonzero serial source for hierarchy snapshot identities.
 
-  ClassResolver resolver;
-  const std::uint64_t snapshot_id = next_snapshot_id.fetch_add(1, std::memory_order_relaxed);
-  Metadata overlay;
-  detail::DeclaredMembers overlay_members;
-  std::uint64_t declaration_revision;
-  // The base can retain one recent overlay; the reverse link is weak and
-  // overlays never retain sibling overlays.
+  ClassResolver resolver; ///< Shared class metadata resolver underlying hierarchy queries.
+  const std::uint64_t snapshot_id = next_snapshot_id.fetch_add(1, std::memory_order_relaxed); ///< Identity stamp of this immutable hierarchy context.
+  Metadata overlay; ///< Optional copied class metadata overriding the base resolver definition.
+  detail::DeclaredMembers overlay_members; ///< Copied member declarations for the overlay class.
+  std::uint64_t declaration_revision; ///< Revision of the class declaration used to construct this overlay.
+  /**
+   * @brief Weak reference to the underlying hierarchy, avoiding an overlay ownership cycle.
+   */
   std::weak_ptr<State> base;
-  std::shared_ptr<State> recent_overlay;
-  std::mutex mutex;
-  std::unordered_map<std::string_view, Closure, detail::NameHash, std::equal_to<>> closures;
-  std::unordered_map<PairKey, bool, PairHash, PairEqual> assignability;
-  std::size_t cache_bytes = 0;
+  std::shared_ptr<State> recent_overlay; ///< Shared ownership of one reusable recent overlay.
+  std::mutex mutex; ///< Serializes shared mutable cache or stream state.
+  std::unordered_map<std::string_view, Closure, detail::NameHash, std::equal_to<>> closures; ///< Cached validated ancestor closures indexed by internal class name.
+  std::unordered_map<PairKey, bool, PairHash, PairEqual> assignability; ///< Memoized source/destination reference assignability answers.
+  std::size_t cache_bytes = 0; ///< Accounted bytes currently retained by this cache.
 };
 
 std::expected<Closure, ResolutionError> ClassHierarchy::State::ancestors(std::string_view name) {
@@ -358,12 +488,12 @@ std::expected<bool, ResolutionError> ClassHierarchy::is_assignable(
   const auto& limits = state->resolver.limits();
   if (limits.cancellation.stop_requested())
     return fail(ResolutionErrorKind::Cancelled, source.substr(0, limits.max_name_bytes), {}, "assignability lookup cancelled");
-  const auto from = parse_reference(source, limits);
+  auto from = parse_reference(source, limits);
   if (!from)
-    return std::unexpected(from.error());
-  const auto to = parse_reference(destination, limits);
+    return std::unexpected(std::move(from.error()));
+  auto to = parse_reference(destination, limits);
   if (!to)
-    return std::unexpected(to.error());
+    return std::unexpected(std::move(to.error()));
 
   std::scoped_lock guard(state->mutex);
   if (const auto hit = state->assignability.find(PairView{source, destination}); hit != state->assignability.end())
@@ -408,12 +538,12 @@ std::expected<JoinResult, ResolutionError> ClassHierarchy::join_reference_types(
   const auto& limits = state->resolver.limits();
   if (limits.cancellation.stop_requested())
     return fail(ResolutionErrorKind::Cancelled, a.substr(0, limits.max_name_bytes), {}, "type join cancelled");
-  const auto first = parse_reference(a, limits);
+  auto first = parse_reference(a, limits);
   if (!first)
-    return std::unexpected(first.error());
-  const auto second = parse_reference(b, limits);
+    return std::unexpected(std::move(first.error()));
+  auto second = parse_reference(b, limits);
   if (!second)
-    return std::unexpected(second.error());
+    return std::unexpected(std::move(second.error()));
 
   std::scoped_lock guard(state->mutex);
   Closure left;

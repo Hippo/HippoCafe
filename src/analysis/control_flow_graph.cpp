@@ -1,3 +1,9 @@
+/**
+ * @file
+ * @brief Control flow, JVM verification types, and derived method metadata.
+ * @ingroup implementation
+ */
+
 #include "cafe/analysis/control_flow_graph.hpp"
 
 #include <algorithm>
@@ -12,31 +18,57 @@
 namespace cafe::analysis {
 namespace {
 
-constexpr unsigned LEADER = 1;
-constexpr unsigned FRAME_BOUNDARY = 2;
+constexpr unsigned LEADER = 1; ///< Instruction-boundary bit marking a basic-block leader.
+constexpr unsigned FRAME_BOUNDARY = 2; ///< Instruction-boundary bit marking a possible emitted verifier frame.
 
+/**
+ * @brief Pack an instruction slot and generation for sparse CFG lookup.
+ * @param id Stable instruction handle belonging to the supplied method.
+ * @return A unique 64-bit handle key.
+ * @ingroup implementation
+ */
 [[nodiscard]] std::uint64_t key(InstructionId id) noexcept {
   return (static_cast<std::uint64_t>(id.generation) << 32) | id.index;
 }
 
+/**
+ * @brief Normal successor staged with its source/target instruction-order positions.
+ * @ingroup implementation
+ */
 struct PlannedEdge {
-  std::uint32_t from;
-  std::uint32_t to;
-  EdgeKind kind;
-  std::optional<std::int32_t> case_key{};
+  std::uint32_t from; ///< Source instruction-order position of a planned edge or original branch.
+  std::uint32_t to; ///< Destination instruction-order position or original branch offset.
+  EdgeKind kind; ///< Discriminator selecting the interpretation of this record.
+  std::optional<std::int32_t> case_key{}; ///< Signed key for a SwitchCase edge; empty for other edge kinds.
 };
 
+/**
+ * @brief Exception-table interval staged before graph range-index allocation.
+ * @ingroup implementation
+ */
 struct PlannedRange {
-  std::uint32_t begin;
-  std::uint32_t end;
-  std::uint32_t target;
+  std::uint32_t begin; ///< Inclusive instruction-order position.
+  std::uint32_t end; ///< Exclusive instruction-order position.
+  std::uint32_t target; ///< Scoped destination instruction boundary or graph block.
 };
 
+/**
+ * @brief Instruction generation and order position for dense CFG handle lookup.
+ * @ingroup implementation
+ */
 struct SlotPosition {
-  std::uint32_t generation = 0;
-  std::uint32_t position = 0;
+  std::uint32_t generation = 0; ///< Nonzero handle generation; changes when a slot is reused.
+  std::uint32_t position = 0; ///< Current index in method instruction order.
 };
 
+/**
+ * @brief Visit the disjoint segment-tree nodes covering a half-open interval.
+ * @param leaf_count Power-of-two leaf capacity of the exception-range segment tree.
+ * @param first Inclusive lower boundary of the processed interval.
+ * @param end Exclusive upper boundary of the processed interval.
+ * @param visit Callback invoked for each node in the disjoint segment-tree cover.
+ * @ingroup implementation
+ */
 template<typename Visitor>
 void visit_cover(std::size_t leaf_count, std::size_t first, std::size_t end, Visitor&& visit) {
   first += leaf_count;
@@ -51,6 +83,15 @@ void visit_cover(std::size_t leaf_count, std::size_t first, std::size_t end, Vis
   }
 }
 
+/**
+ * @brief Construct a CFG failure with optional instruction and label context.
+ * @param kind Payload or error discriminator.
+ * @param detail Explanation copied into the structured error.
+ * @param instruction Instruction handle belonging to the analyzed method.
+ * @param label Optional scoped label associated with a failure.
+ * @return An unexpected AnalysisError.
+ * @ingroup implementation
+ */
 [[nodiscard]] std::unexpected<AnalysisError> graph_error(
     AnalysisErrorKind kind, const char* detail, std::optional<InstructionId> instruction = {},
     std::optional<LabelId> label = {}) {
@@ -59,7 +100,19 @@ void visit_cover(std::size_t leaf_count, std::size_t first, std::size_t end, Vis
 
 } // namespace
 
+/**
+ * @brief Budgeted block/edge arrays, dense or sparse handle lookup, and a segment-tree index for
+ * exception ranges.
+ * @ingroup implementation
+ */
 struct ControlFlowGraph::Storage {
+  /**
+   * @brief Initialize budgeted block/edge arrays, dense or sparse handle lookup, and a segment-tree
+   * index for exception ranges.
+   * @param code Decoded instruction sequence or associated Code attribute.
+   * @param resource PMR resource that must outlive the allocated object or returned storage.
+   * @param limits Resource ceilings and cooperative cancellation policy.
+   */
   explicit Storage(const MethodCode& code, std::pmr::memory_resource* resource, const AnalysisLimits& limits) :
       budget(resource, limits.max_memory_bytes), block_list(&budget), edges(&budget), outgoing_offsets(&budget),
       ranges(&budget), dense_positions(&budget), sparse_positions(&budget), block_ids(&budget),
@@ -67,6 +120,11 @@ struct ControlFlowGraph::Storage {
       revision(code.revision()) {
   }
 
+  /**
+   * @brief Resolve a stable instruction handle through dense or sparse indexing.
+   * @param id Stable instruction handle belonging to the supplied method.
+   * @return Its method-order position, or nullopt when unrecognized.
+   */
   [[nodiscard]] std::optional<std::uint32_t> position(InstructionId id) const {
     if (id.generation == 0)
       return std::nullopt;
@@ -79,21 +137,25 @@ struct ControlFlowGraph::Storage {
     return found == sparse_positions.end() ? std::nullopt : std::optional{found->second};
   }
 
-  detail::BudgetResource budget;
-  std::pmr::vector<BasicBlock> block_list;
-  std::pmr::vector<Edge> edges;
-  std::pmr::vector<std::size_t> outgoing_offsets;
-  std::pmr::vector<ProtectedRange> ranges;
-  std::pmr::vector<SlotPosition> dense_positions;
-  std::pmr::unordered_map<std::uint64_t, std::uint32_t> sparse_positions;
-  std::pmr::vector<BlockId> block_ids;
-  // Each range is stored in a disjoint cover of segment tree nodes. Each node
-  // owns a slice of cover_ranges, and point queries walk one ancestor path.
+  detail::BudgetResource budget; ///< Owning forwarding resource enforcing charged allocation bytes.
+  std::pmr::vector<BasicBlock> block_list; ///< Basic blocks in instruction order.
+  std::pmr::vector<Edge> edges; ///< Normal CFG successors grouped by source block.
+  std::pmr::vector<std::size_t> outgoing_offsets; ///< Offsets delimiting each block's slice of the normal edge array.
+  std::pmr::vector<ProtectedRange> ranges; ///< Protected exception-table intervals retained in table order.
+  std::pmr::vector<SlotPosition> dense_positions; ///< Dense slot-index table with generation checks and method-order positions.
+  std::pmr::unordered_map<std::uint64_t, std::uint32_t> sparse_positions; ///< Sparse generation/slot-to-position lookup for heavily edited methods.
+  std::pmr::vector<BlockId> block_ids; ///< Block identity for each method-order instruction position.
+  /**
+   * @brief Segment-tree node offsets delimiting slices of covered exception-range indices.
+   *
+   * Each range is stored in a disjoint cover of segment tree nodes. Each node
+   * owns a slice of cover_ranges, and point queries walk one ancestor path.
+   */
   std::pmr::vector<std::size_t> cover_offsets;
-  std::pmr::vector<std::uint32_t> cover_ranges;
-  std::size_t leaf_count = 0;
-  std::uint32_t scope;
-  std::uint64_t revision;
+  std::pmr::vector<std::uint32_t> cover_ranges; ///< Exception-range indices stored in disjoint segment-tree node covers.
+  std::size_t leaf_count = 0; ///< Power-of-two leaf capacity of the protected-range index.
+  std::uint32_t scope; ///< Method identity used to reject foreign labels or switches.
+  std::uint64_t revision; ///< Instruction revision captured when this metadata was supplied.
 };
 
 ControlFlowGraph::ControlFlowGraph(std::unique_ptr<Storage> storage) noexcept : storage(std::move(storage)) {

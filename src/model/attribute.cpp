@@ -1,3 +1,9 @@
+/**
+ * @file
+ * @brief Owned class models, constant-pool storage, and attribute lifetimes.
+ * @ingroup implementation
+ */
+
 #include <cafe/attribute.hpp>
 
 #include <algorithm>
@@ -15,6 +21,9 @@ RawAttribute::RawAttribute(SourceSlice slice) noexcept : storage(slice) {
 RawAttribute::RawAttribute(std::vector<std::byte> bytes) noexcept : storage(std::move(bytes)) {
 }
 
+// Storage is only constructed, copied, or moved. Both alternatives have nonthrowing
+// moves, so variant stages a potentially throwing vector copy before changing alternatives.
+// NOLINTNEXTLINE(bugprone-exception-escape)
 std::optional<std::span<const std::byte>> RawAttribute::bytes(const ClassFile& owner) const noexcept {
   if (const auto* slice = source_slice())
     return owner.source_slice(*slice);

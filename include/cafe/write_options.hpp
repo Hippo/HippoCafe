@@ -1,23 +1,53 @@
+/**
+ * @file
+ * @brief Owned class models, constant-pool storage, and attribute lifetimes.
+ * @ingroup model
+ */
+
 #pragma once
 
 namespace cafe {
 
-enum class CodeWritePolicy { RequireUnchangedOrSafe,
-                             CallerSuppliedMetadata };
+/**
+ * @brief Requirements for emitting changed Code and its dependent metadata.
+ * @ingroup model
+ */
+enum class CodeWritePolicy {
+  RequireUnchangedOrSafe, ///< Preserve Code unless its existing metadata remains safe for the chosen output.
+  CallerSuppliedMetadata, ///< Accept complete metadata explicitly supplied for the current revision and encoding.
+};
 
-enum class CodeAnalysisMode { Preserve,
-                              ComputeMaxs,
-                              ComputeFrames };
+/**
+ * @brief Whether to preserve, compute maxima, or compute complete verifier metadata.
+ * @ingroup model
+ */
+enum class CodeAnalysisMode {
+  Preserve, ///< Preserve stored maxima and verifier metadata subject to safety checks.
+  ComputeMaxs, ///< Compute stack/local limits without full reference assignability analysis.
+  ComputeFrames, ///< Compute limits and verifier frames for emission. Supply an analysis::AnalysisContext for runtime and dependency resolution.
+};
 
+/**
+ * @brief Class emission, metadata computation, and preservation policy. Defaults preserve original
+ * encodings and reject edits without safe metadata.
+ * @ingroup model
+ */
 struct WriteOptions {
-  CodeWritePolicy code_policy = CodeWritePolicy::RequireUnchangedOrSafe;
-  bool preserve_original_encodings = true;
-  bool force_reencode = false;
-  bool allow_opaque_code = false;
-  // Explicit computation visits every decoded Code attribute.
+  CodeWritePolicy code_policy = CodeWritePolicy::RequireUnchangedOrSafe; ///< Policy governing metadata after instruction/handler changes.
+  bool preserve_original_encodings = true; ///< Whether layout should honor retained wire-encoding hints.
+  bool force_reencode = false; ///< Exercise instruction encoding even for otherwise unchanged Code.
+  bool allow_opaque_code = false; ///< Permit verbatim emission of preserved undecodable Code.
+  /**
+   * @brief Metadata computation mode applied to every decoded Code attribute.
+   * @see @ref cafe::write_class(const ClassFile&,const WriteOptions&,analysis::AnalysisContext&) "Writing with computed frames"
+   */
   CodeAnalysisMode code_analysis = CodeAnalysisMode::Preserve;
-  // Permit dropping Code attributes whose offsets or dependencies cannot
-  // be relocated safely. Applies only when code analysis is requested.
+  /**
+   * @brief Allow analysis-mode emission to drop unrelocatable Code attributes with diagnostics.
+   *
+   * Permit dropping Code attributes whose offsets or dependencies cannot
+   * be relocated safely. Applies only when code analysis is requested.
+   */
   bool drop_unsafe_code_attributes = false;
 };
 

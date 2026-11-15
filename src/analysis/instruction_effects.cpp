@@ -1,3 +1,9 @@
+/**
+ * @file
+ * @brief Control flow, JVM verification types, and derived method metadata.
+ * @ingroup implementation
+ */
+
 #include "instruction_effects.hpp"
 
 #include <algorithm>
@@ -15,24 +21,46 @@
 namespace cafe::analysis {
 namespace {
 
+/**
+ * @brief Short implementation alias for verification value categories.
+ */
 using Kind = VerificationKind;
+/**
+ * @brief Successful verification step or a structured AnalysisError.
+ */
 using Status = std::expected<void, AnalysisError>;
+/**
+ * @brief Verification value or a structured AnalysisError.
+ */
 using ValueResult = std::expected<VerificationType, AnalysisError>;
 
-constexpr VerificationType INT{Kind::Integer};
-constexpr VerificationType FLOAT{Kind::Float};
-constexpr VerificationType LONG{Kind::Long};
-constexpr VerificationType DOUBLE{Kind::Double};
-constexpr VerificationType NULL_VALUE{Kind::Null};
-constexpr VerificationType REFERENCE{Kind::Object};
-constexpr VerificationType UNINITIALIZED_THIS{Kind::UninitializedThis};
-constexpr VerificationType THROWABLE{Kind::Object, "java/lang/Throwable"};
-constexpr std::string_view OBJECT = "java/lang/Object";
+constexpr VerificationType INT{Kind::Integer}; ///< Canonical int verification category.
+constexpr VerificationType FLOAT{Kind::Float}; ///< Canonical float verification category.
+constexpr VerificationType LONG{Kind::Long}; ///< Canonical long verification category occupying two slots.
+constexpr VerificationType DOUBLE{Kind::Double}; ///< Canonical double verification category occupying two slots.
+constexpr VerificationType NULL_VALUE{Kind::Null}; ///< Canonical null-reference verification value.
+constexpr VerificationType REFERENCE{Kind::Object}; ///< Generic reference expectation for category-only stack checks.
+constexpr VerificationType UNINITIALIZED_THIS{Kind::UninitializedThis}; ///< Constructor receiver verification value before initialization.
+constexpr VerificationType THROWABLE{Kind::Object, "java/lang/Throwable"}; ///< java/lang/Throwable verification identity for catch-all handlers and athrow checks.
+constexpr std::string_view OBJECT = "java/lang/Object"; ///< JVM java/lang/Object identity used for reference-type rules.
 
+/**
+ * @brief Construct the operation's structured failure while owning diagnostic text.
+ * @param kind Payload or error discriminator.
+ * @param detail Explanation copied into the structured error.
+ * @return An unexpected result carrying the appropriate error classification and location.
+ * @ingroup implementation
+ */
 std::unexpected<AnalysisError> fail(AnalysisErrorKind kind, std::string detail) {
   return std::unexpected(AnalysisError{.kind = kind, .detail = std::move(detail)});
 }
 
+/**
+ * @brief Wrap a class-resolution failure as an instruction analysis error.
+ * @param error Underlying structured failure to translate or enrich.
+ * @return An unexpected AnalysisError retaining the resolution cause.
+ * @ingroup implementation
+ */
 std::unexpected<AnalysisError> resolution_failure(classpath::ResolutionError error) {
   std::string message = error.detail;
   if (!error.name.empty())
@@ -42,14 +70,32 @@ std::unexpected<AnalysisError> resolution_failure(classpath::ResolutionError err
                                        .resolution = std::move(error)});
 }
 
+/**
+ * @brief Recognize uninitialized receiver/allocation verification values.
+ * @param value Verification type to test for an uninitialized receiver or allocation site.
+ * @return True for UninitializedThis or Uninitialized.
+ * @ingroup implementation
+ */
 bool is_uninitialized(VerificationType value) {
   return value.kind == Kind::Uninitialized || value.kind == Kind::UninitializedThis;
 }
 
+/**
+ * @brief Create an initialized reference verification value borrowing its name.
+ * @param name Borrowed JVM name in modified UTF-8.
+ * @return An Object verification value.
+ * @ingroup implementation
+ */
 VerificationType object(std::string_view name) {
   return {Kind::Object, name};
 }
 
+/**
+ * @brief Translate a parsed descriptor type into a verification value.
+ * @param type Parsed descriptor type converted into a verification value.
+ * @return The corresponding category/reference type; void maps to Top.
+ * @ingroup implementation
+ */
 VerificationType as_type(detail::DescriptorType type) {
   using D = detail::DescriptorKind;
   switch (type.kind) {
@@ -69,6 +115,12 @@ VerificationType as_type(detail::DescriptorType type) {
   return {};
 }
 
+/**
+ * @brief Render a verification value for a diagnostic.
+ * @param type Verification type formatted for a diagnostic.
+ * @return An owned readable type description.
+ * @ingroup implementation
+ */
 std::string type_name(VerificationType type) {
   switch (type.kind) {
     case Kind::Top:
@@ -95,10 +147,23 @@ std::string type_name(VerificationType type) {
   return "unknown value";
 }
 
+/**
+ * @brief Explain a failed expected-versus-actual verification type check.
+ * @param expected Required verification type or selected declaration identity.
+ * @param actual Actual incoming verification value.
+ * @return An unexpected TypeMismatch analysis error.
+ * @ingroup implementation
+ */
 std::unexpected<AnalysisError> type_mismatch(VerificationType expected, VerificationType actual) {
   return fail(AnalysisErrorKind::TypeMismatch, "expected " + type_name(expected) + ", found " + type_name(actual));
 }
 
+/**
+ * @brief Remove the top operand value and update slot accounting.
+ * @param frame Mutable verifier locals, operand values, and constructor state.
+ * @return The removed value, or StackUnderflow.
+ * @ingroup implementation
+ */
 ValueResult pop(Frame& frame) {
   if (frame.stack.empty())
     return fail(AnalysisErrorKind::StackUnderflow, "operand stack is empty");
@@ -108,6 +173,13 @@ ValueResult pop(Frame& frame) {
   return type;
 }
 
+/**
+ * @brief Append one verification value while maintaining slot accounting.
+ * @param frame Mutable verifier locals, operand values, and constructor state.
+ * @param value Verification value to append to the operand stack.
+ * @return Success or a stack-size/invalid-value failure.
+ * @ingroup implementation
+ */
 Status push(Frame& frame, VerificationType value) {
   if (frame.stack_slots + value.width() > std::numeric_limits<std::uint16_t>::max())
     return fail(AnalysisErrorKind::StackOverflow, "operand stack exceeds 65535 slots");
@@ -116,11 +188,22 @@ Status push(Frame& frame, VerificationType value) {
   return {};
 }
 
+/**
+ * @brief Empty the operand stack and reset its slot count.
+ * @param frame Mutable verifier locals, operand values, and constructor state.
+ * @ingroup implementation
+ */
 void clear_stack(Frame& frame) {
   frame.stack.clear();
   frame.stack_slots = 0;
 }
 
+/**
+ * @brief Clear a local and any overlapping category-two head/continuation.
+ * @param frame Mutable verifier locals, operand values, and constructor state.
+ * @param index Zero-based index in the corresponding table or slot array.
+ * @ingroup implementation
+ */
 void invalidate_local(Frame& frame, std::size_t index) {
   const auto previous = frame.locals[index];
   if (previous.kind == Kind::WideContinuation && index != 0)
@@ -130,6 +213,13 @@ void invalidate_local(Frame& frame, std::size_t index) {
   frame.locals[index] = {};
 }
 
+/**
+ * @brief Install a local value and its continuation after invalidating overlapping wide locals.
+ * @param frame Mutable verifier locals, operand values, and constructor state.
+ * @param index Zero-based index in the corresponding table or slot array.
+ * @param type Verification value to store, including any category-two continuation slot.
+ * @ingroup implementation
+ */
 void store_local(Frame& frame, std::size_t index, VerificationType type) {
   invalidate_local(frame, index);
   if (type.width() == 2) {
@@ -139,11 +229,20 @@ void store_local(Frame& frame, std::size_t index, VerificationType type) {
   frame.locals[index] = type;
 }
 
-constexpr std::array NUMERIC_TYPES{INT, LONG, FLOAT, DOUBLE};
-constexpr std::array LOCAL_TYPES{INT, LONG, FLOAT, DOUBLE, REFERENCE};
+constexpr std::array NUMERIC_TYPES{INT, LONG, FLOAT, DOUBLE}; ///< Opcode-family mapping to int, long, float, and double verification values.
+constexpr std::array LOCAL_TYPES{INT, LONG, FLOAT, DOUBLE, REFERENCE}; ///< Local load/store family mapping including reference values.
 
-// Validate an indivisible JVM operand group. A two-word group is either one
-// category-two value or exactly two consecutive category-one values.
+/**
+ * @brief Validate an indivisible one- or two-word JVM operand group.
+ * @param frame Borrowed frame whose operand-stack grouping is checked.
+ * @param end Exclusive upper boundary of the processed interval.
+ * @param words Number of JVM stack slots in the indivisible operand group.
+ * @return Its value-entry count, or an invalid category/underflow error.
+ * @ingroup implementation
+ *
+ * Validate an indivisible JVM operand group. A two-word group is either one
+ * category-two value or exactly two consecutive category-one values.
+ */
 std::expected<std::size_t, AnalysisError> group_size(const Frame& frame, std::size_t end, unsigned words) {
   if (words == 0)
     return 0;
@@ -161,6 +260,13 @@ std::expected<std::size_t, AnalysisError> group_size(const Frame& frame, std::si
   return 2;
 }
 
+/**
+ * @brief Apply JVM pop/dup/swap forms with category-aware grouping.
+ * @param frame Mutable verifier locals, operand values, and constructor state.
+ * @param opcode Opcode whose operand form or metadata is requested.
+ * @return Success or an invalid category/underflow error.
+ * @ingroup implementation
+ */
 Status manipulate_stack(Frame& frame, Opcode opcode) {
   struct Shape {
     unsigned top_words;
@@ -181,12 +287,12 @@ Status manipulate_stack(Frame& frame, Opcode opcode) {
       Shape{1, 1, false}, // swap
   };
   const auto shape = SHAPES[static_cast<unsigned>(opcode) - static_cast<unsigned>(Opcode::Pop)];
-  const auto top = group_size(frame, frame.stack.size(), shape.top_words);
+  auto top = group_size(frame, frame.stack.size(), shape.top_words);
   if (!top)
-    return std::unexpected(top.error());
-  const auto below = group_size(frame, frame.stack.size() - *top, shape.insertion_words);
+    return std::unexpected(std::move(top.error()));
+  auto below = group_size(frame, frame.stack.size() - *top, shape.insertion_words);
   if (!below)
-    return std::unexpected(below.error());
+    return std::unexpected(std::move(below.error()));
   if (!shape.duplicate && *below == 0) {
     frame.stack.resize(frame.stack.size() - *top);
     frame.stack_slots -= shape.top_words;
@@ -209,14 +315,34 @@ Status manipulate_stack(Frame& frame, Opcode opcode) {
   return {};
 }
 
+/**
+ * @brief Combine opcode and constant index for prepared instruction-effect caching.
+ * @param opcode Opcode whose operand form or metadata is requested.
+ * @param index One-based constant-pool reference; the required tag is determined by this
+ *   operation.
+ * @return A compact deterministic cache key.
+ * @ingroup implementation
+ */
 constexpr std::uint32_t effect_key(Opcode opcode, CpIndex index) {
   return (static_cast<std::uint32_t>(opcode) << 16) | index.value;
 }
 
+/**
+ * @brief Recognize field get/put opcodes.
+ * @param opcode Opcode whose operand form or metadata is requested.
+ * @return True for field operations.
+ * @ingroup implementation
+ */
 constexpr bool field_access(Opcode opcode) {
   return opcode >= Opcode::GetStatic && opcode <= Opcode::PutField;
 }
 
+/**
+ * @brief Identify field/invocation operations without an instance receiver.
+ * @param opcode Opcode whose operand form or metadata is requested.
+ * @return True for static access or invokedynamic.
+ * @ingroup implementation
+ */
 constexpr bool static_access(Opcode opcode) {
   return opcode == Opcode::GetStatic || opcode == Opcode::PutStatic ||
          opcode == Opcode::InvokeStatic || opcode == Opcode::InvokeDynamic;
@@ -230,6 +356,7 @@ InstructionEffects::InstructionEffects(const ClassFile& owner, const Method& met
     constants(scratch) {
 }
 
+// class_identity_issue and method_signature_issue validate the class name and descriptor before optional access.
 Status InstructionEffects::initialize(Frame& frame, std::uint16_t max_locals) {
   const auto& pool = owner.constant_pool();
   const auto name = pool.get_utf8(method.name_index());
@@ -242,13 +369,13 @@ Status InstructionEffects::initialize(Frame& frame, std::uint16_t max_locals) {
   if (const auto* issue = detail::class_identity_issue(pool, owner.version(), owner.access_flags(),
                                                        owner.this_class(), owner.super_class()))
     return fail(AnalysisErrorKind::InvalidConstantPoolReference, issue);
-  self = *detail::class_name(pool, owner.this_class());
+  self = *detail::class_name(pool, owner.this_class()); // NOLINT(bugprone-unchecked-optional-access)
   if (owner.super_class())
-    superclass = *detail::class_name(pool, owner.super_class());
+    superclass = *detail::class_name(pool, owner.super_class()); // NOLINT(bugprone-unchecked-optional-access)
 
   const bool instance = !detail::is_static_method(method.access_flags(), *name);
   const auto receiver_slots = instance ? 1u : 0u;
-  if (*detail::method_parameter_slots(*descriptor) + receiver_slots > max_locals)
+  if (*detail::method_parameter_slots(*descriptor) + receiver_slots > max_locals) // NOLINT(bugprone-unchecked-optional-access)
     return fail(AnalysisErrorKind::LocalOverflow, "maximum locals cannot hold the method parameters");
 
   frame.locals.assign(max_locals, {});
@@ -263,10 +390,11 @@ Status InstructionEffects::initialize(Frame& frame, std::uint16_t max_locals) {
     store_local(frame, slot, type);
     slot += type.width();
   });
-  return_type = as_type(signature->return_type);
+  return_type = as_type(signature->return_type); // NOLINT(bugprone-unchecked-optional-access)
   return {};
 }
 
+// Instruction factories make opcode-specific operands immutable; each accessor below is selected by its matching opcode.
 Status InstructionEffects::prepare(InstructionId at, Instruction instruction, std::uint16_t max_locals) {
   const auto invalid = [at](AnalysisErrorKind kind, std::string_view issue) -> Status {
     return std::unexpected(AnalysisError{.kind = kind, .instruction = at, .detail = std::string(issue)});
@@ -282,9 +410,9 @@ Status InstructionEffects::prepare(InstructionId at, Instruction instruction, st
       // These operands are encoded in the instruction itself and may
       // differ between uses of the same constant-pool reference.
       const auto limit = found->second.auxiliary_limit;
-      if (opcode == Opcode::InvokeInterface && *instruction.interface_count() != limit)
+      if (opcode == Opcode::InvokeInterface && *instruction.interface_count() != limit) // NOLINT(bugprone-unchecked-optional-access)
         return invalid(AnalysisErrorKind::InvalidCode, "invokeinterface count does not match the descriptor slot count");
-      if (opcode == Opcode::MultiANewArray && (*instruction.dimensions() == 0 || *instruction.dimensions() > limit))
+      if (opcode == Opcode::MultiANewArray && (*instruction.dimensions() == 0 || *instruction.dimensions() > limit)) // NOLINT(bugprone-unchecked-optional-access)
         return invalid(AnalysisErrorKind::InvalidCode, "multianewarray dimensions exceed array rank");
       return {};
     }
@@ -317,11 +445,12 @@ std::string_view InstructionEffects::array_of(std::string_view component) {
   return *array_names.emplace(std::move(name)).first;
 }
 
+// prepare validates the instruction and constant cross-references before this opcode-specific lookup.
 std::expected<InstructionEffects::ConstantEffect, AnalysisError> InstructionEffects::read_constant(Instruction instruction) {
   const auto& pool = owner.constant_pool();
   const auto version = owner.version();
   const auto opcode = instruction.opcode();
-  const auto* entry = pool.get(*instruction.constant_index());
+  const auto* entry = pool.get(*instruction.constant_index()); // NOLINT(bugprone-unchecked-optional-access)
   if (const auto* issue = detail::cp_reference_issue(pool, *entry, version, false))
     return fail(AnalysisErrorKind::InvalidConstantPoolReference, issue);
 
@@ -354,7 +483,7 @@ std::expected<InstructionEffects::ConstantEffect, AnalysisError> InstructionEffe
         break;
       case CpTag::Dynamic: {
         auto descriptor = *pool.get_utf8(pool.get(entry->second)->second);
-        effect.value = as_type(*detail::parse_field_type(descriptor));
+        effect.value = as_type(*detail::parse_field_type(descriptor)); // NOLINT(bugprone-unchecked-optional-access)
         break;
       }
       default:
@@ -398,7 +527,7 @@ std::expected<InstructionEffects::ConstantEffect, AnalysisError> InstructionEffe
     }
   }
   if (is_field) {
-    effect.value = as_type(*detail::parse_field_type(descriptor));
+    effect.value = as_type(*detail::parse_field_type(descriptor)); // NOLINT(bugprone-unchecked-optional-access)
     return effect;
   }
 
@@ -564,9 +693,9 @@ Status InstructionEffects::execute_field(Frame& frame, Opcode opcode, ConstantEf
       return std::unexpected(std::move(field_value.error()));
   }
   if (!static_access(opcode)) {
-    const auto receiver = pop(frame);
+    auto receiver = pop(frame);
     if (!receiver)
-      return std::unexpected(receiver.error());
+      return std::unexpected(std::move(receiver.error()));
     // Before a this()/super() call, only fields declared in this class may
     // be assigned through the uninitialized receiver.
     const bool early_assignment = opcode == Opcode::PutField && effect.declared_here &&
@@ -583,9 +712,9 @@ Status InstructionEffects::execute_field(Frame& frame, Opcode opcode, ConstantEf
 
 Status InstructionEffects::initialize_receiver(Frame& frame, ConstantEffect& effect,
                                                std::optional<VerificationType>& initialized) {
-  const auto receiver = pop(frame);
+  auto receiver = pop(frame);
   if (!receiver)
-    return std::unexpected(receiver.error());
+    return std::unexpected(std::move(receiver.error()));
   const bool this_receiver = receiver->kind == Kind::UninitializedThis;
   if (this_receiver) {
     if (!frame.constructor_uninitialized || (effect.member_class != self && effect.member_class != superclass))
@@ -613,7 +742,7 @@ Status InstructionEffects::execute_invoke(Frame& frame, Opcode opcode, ConstantE
     return initialize_receiver(frame, effect, initialized);
   if (!static_access(opcode)) {
     const auto expected = object(opcode == Opcode::InvokeSpecial ? self : effect.member_class);
-    const auto receiver = pop_matching(frame, expected);
+    auto receiver = pop_matching(frame, expected);
     if (!receiver)
       return std::unexpected(std::move(receiver.error()));
     if (opcode == Opcode::InvokeVirtual) {
@@ -648,9 +777,9 @@ Status InstructionEffects::execute_array_access(Frame& frame, Opcode opcode) {
   }
   if (auto index = pop_matching(frame, INT); !index)
     return std::unexpected(std::move(index.error()));
-  const auto array = pop_matching(frame, REFERENCE);
+  auto array = pop_matching(frame, REFERENCE);
   if (!array)
-    return std::unexpected(array.error());
+    return std::unexpected(std::move(array.error()));
 
   auto result = access.value;
   if (array->kind == Kind::Null) {
@@ -692,6 +821,7 @@ Status InstructionEffects::execute_return(Frame& frame, Opcode opcode) {
   return {};
 }
 
+// prepare caches validated constant and invocation operands before worklist execution.
 Status InstructionEffects::execute_constant(Frame& frame, InstructionId at, Instruction instruction,
                                             ConstantEffect& effect, std::optional<VerificationType>& initialized) {
   const auto opcode = instruction.opcode();
@@ -720,7 +850,7 @@ Status InstructionEffects::execute_constant(Frame& frame, InstructionId at, Inst
     case Opcode::ANewArray:
       return transition(frame, {INT}, effect.value);
     case Opcode::MultiANewArray:
-      for (unsigned dimension = 0; dimension < *instruction.dimensions(); ++dimension) {
+      for (unsigned dimension = 0; dimension < *instruction.dimensions(); ++dimension) { // NOLINT(bugprone-unchecked-optional-access)
         if (auto length = pop_matching(frame, INT); !length)
           return std::unexpected(std::move(length.error()));
       }
@@ -734,6 +864,7 @@ Status InstructionEffects::execute_constant(Frame& frame, InstructionId at, Inst
   }
 }
 
+// prepare validates opcode-specific operands before execution; immutable instructions retain those operand forms.
 Status InstructionEffects::execute(Frame& frame, InstructionId at, Instruction instruction,
                                    std::optional<VerificationType>& initialized) {
   const auto opcode = instruction.opcode();
@@ -776,7 +907,7 @@ Status InstructionEffects::execute(Frame& frame, InstructionId at, Instruction i
     case Opcode::DLoad:
     case Opcode::ALoad: {
       const auto type = LOCAL_TYPES[static_cast<unsigned>(opcode) - static_cast<unsigned>(Opcode::ILoad)];
-      const auto index = *instruction.local_index();
+      const auto index = *instruction.local_index(); // NOLINT(bugprone-unchecked-optional-access)
       const auto value = frame.locals[index];
       if (auto valid = match(value, type, opcode == Opcode::ALoad); !valid)
         return valid;
@@ -790,14 +921,14 @@ Status InstructionEffects::execute(Frame& frame, InstructionId at, Instruction i
     case Opcode::DStore:
     case Opcode::AStore: {
       const auto type = LOCAL_TYPES[static_cast<unsigned>(opcode) - static_cast<unsigned>(Opcode::IStore)];
-      const auto value = pop_matching(frame, type, opcode == Opcode::AStore);
+      auto value = pop_matching(frame, type, opcode == Opcode::AStore);
       if (!value)
-        return std::unexpected(value.error());
-      store_local(frame, *instruction.local_index(), *value);
+        return std::unexpected(std::move(value.error()));
+      store_local(frame, *instruction.local_index(), *value); // NOLINT(bugprone-unchecked-optional-access)
       return {};
     }
     case Opcode::IInc:
-      return match(frame.locals[instruction.increment_value()->local], INT);
+      return match(frame.locals[instruction.increment_value()->local], INT); // NOLINT(bugprone-unchecked-optional-access)
     case Opcode::IALoad:
     case Opcode::LALoad:
     case Opcode::FALoad:
@@ -943,15 +1074,15 @@ Status InstructionEffects::execute(Frame& frame, InstructionId at, Instruction i
       return execute_return(frame, opcode);
     case Opcode::NewArray: {
       constexpr std::array PRIMITIVE_ARRAYS{"[Z", "[C", "[F", "[D", "[B", "[S", "[I", "[J"};
-      const auto atype = static_cast<unsigned>(*instruction.array_type());
+      const auto atype = static_cast<unsigned>(*instruction.array_type()); // NOLINT(bugprone-unchecked-optional-access)
       if (atype < 4 || atype > 11)
         return fail(AnalysisErrorKind::InvalidCode, "invalid newarray component type");
       return transition(frame, {INT}, object(PRIMITIVE_ARRAYS[atype - 4]));
     }
     case Opcode::ArrayLength: {
-      const auto array = pop_matching(frame, REFERENCE);
+      auto array = pop_matching(frame, REFERENCE);
       if (!array)
-        return std::unexpected(array.error());
+        return std::unexpected(std::move(array.error()));
       if (hierarchy && array->kind != Kind::Null && !array->reference.starts_with('['))
         return fail(AnalysisErrorKind::TypeMismatch, "arraylength requires an array, found " + type_name(*array));
       return push(frame, INT);

@@ -1,4 +1,9 @@
-#include <fstream>
+/**
+ * @file
+ * @brief Command-line class-file round trip with diagnostic reporting.
+ */
+
+/** @cond example_programs */
 #include <iostream>
 #include <utility>
 
@@ -31,15 +36,10 @@ int main(int argc, char** argv) {
   for (const auto& warning : written->diagnostics)
     std::cerr << warning.path << " at byte " << warning.offset << ": " << warning.detail << '\n';
 
-  std::ofstream output(argv[2], std::ios::binary | std::ios::trunc);
-  if (!output || !output.write(reinterpret_cast<const char*>(written->bytes.data()),
-                               static_cast<std::streamsize>(written->bytes.size()))) {
-    std::cerr << "could not write output\n";
-    return 1;
-  }
-  output.close();
-  if (!output) {
-    std::cerr << "could not close output\n";
+  if (auto saved = examples::save_class(argv[2], written->bytes); !saved) {
+    std::cerr << argv[2] << ": " << saved.error() << '\n';
     return 1;
   }
 }
+
+/** @endcond */

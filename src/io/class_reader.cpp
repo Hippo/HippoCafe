@@ -1,3 +1,9 @@
+/**
+ * @file
+ * @brief Bounded class-file parsing, layout, and serialization.
+ * @ingroup implementation
+ */
+
 #include <cafe/io/class_reader.hpp>
 
 #include <limits>
@@ -51,12 +57,12 @@ std::expected<ReadResult, ReadError> ClassReader::read() {
     diagnose(DiagnosticCode::InvalidVersion, 4, "class.version", "nonstandard minor version retained", RecoveryAction::RetainedRaw);
   }
 
-  if (const auto result = read_constant_pool(); !result)
-    return std::unexpected(result.error());
-  if (const auto result = read_envelope(); !result)
-    return std::unexpected(result.error());
-  if (const auto result = check_bootstraps(); !result)
-    return std::unexpected(result.error());
+  if (auto result = read_constant_pool(); !result)
+    return std::unexpected(std::move(result.error()));
+  if (auto result = read_envelope(); !result)
+    return std::unexpected(std::move(result.error()));
+  if (auto result = check_bootstraps(); !result)
+    return std::unexpected(std::move(result.error()));
 
   if (input.remaining() != 0) {
     if (strict())
@@ -71,6 +77,7 @@ std::expected<ReadResult, ReadError> ClassReader::read() {
   return ReadResult{ClassFile(std::move(storage)), std::move(diagnostics)};
 }
 
+// The interface count is checked against the remaining input before the u2 reads.
 std::expected<void, ReadError> ClassReader::read_envelope() {
   const auto header_offset = input.offset();
   const auto flags = input.u2();
@@ -84,7 +91,7 @@ std::expected<void, ReadError> ClassReader::read_envelope() {
   const auto& pool = storage->pool;
   if (const auto* issue = class_identity_issue(pool, storage->version, *flags, storage->this_class, storage->super_class))
     return std::unexpected(ReadError{ReadErrorKind::InvalidClass, header_offset, "class.header", issue});
-  if (const auto result = check_constant_pool(); !result)
+  if (auto result = check_constant_pool(); !result)
     return result;
 
   const auto interface_count = input.u2();
@@ -93,18 +100,18 @@ std::expected<void, ReadError> ClassReader::read_envelope() {
   storage->interface_entries.reserve(*interface_count);
   for (std::size_t i = 0; i < *interface_count; ++i) {
     const auto offset = input.offset();
-    const CpIndex index{*input.u2()};
+    const CpIndex index{*input.u2()}; // NOLINT(bugprone-unchecked-optional-access)
     if (!class_name(pool, index))
       return std::unexpected(ReadError{ReadErrorKind::InvalidIndex, offset, index_path("interfaces", i),
                                        "interface index must name a non-array class"});
     storage->interface_entries.push_back(index);
   }
-  if (const auto result = read_members(storage->field_entries); !result)
+  if (auto result = read_members(storage->field_entries); !result)
     return result;
-  if (const auto result = read_members(storage->method_entries); !result)
+  if (auto result = read_members(storage->method_entries); !result)
     return result;
-  if (const auto result = read_attributes(input, storage->attribute_entries, {AttributeContext::Class, ""}); !result)
-    return std::unexpected(result.error());
+  if (auto result = read_attributes(input, storage->attribute_entries, {AttributeContext::Class, ""}); !result)
+    return std::unexpected(std::move(result.error()));
 
   if (is_module(storage->version, storage->flags)) {
     bool has_module = false;
@@ -156,15 +163,15 @@ std::expected<void, ReadError> ClassReader::read_members(std::pmr::vector<Member
       keys.push_back({*name_text, *descriptor_text, i, offset});
     const bool code_required = METHOD && needs_code(*flags, *name_text);
     Member member(*flags, name_index, descriptor_index, &storage->budget);
-    const auto result = read_attributes(input, member.attribute_entries,
-                                        {.context = METHOD ? AttributeContext::Method : AttributeContext::Field,
-                                         .path = path,
-                                         .descriptor = *descriptor_text,
-                                         .code_required = code_required,
-                                         .is_static = is_static_method(*flags, *name_text),
-                                         .annotation_element = METHOD && is_annotation_element(storage->flags, *flags, *descriptor_text)});
+    auto result = read_attributes(input, member.attribute_entries,
+                                  {.context = METHOD ? AttributeContext::Method : AttributeContext::Field,
+                                   .path = path,
+                                   .descriptor = *descriptor_text,
+                                   .code_required = code_required,
+                                   .is_static = is_static_method(*flags, *name_text),
+                                   .annotation_element = METHOD && is_annotation_element(storage->flags, *flags, *descriptor_text)});
     if (!result)
-      return std::unexpected(result.error());
+      return std::unexpected(std::move(result.error()));
     if constexpr (METHOD) {
       if (code_required && !member.code() && !member.opaque_code())
         return std::unexpected(ReadError{ReadErrorKind::MalformedEssentialCode, offset, path, "concrete method lacks Code"});
@@ -183,10 +190,22 @@ namespace cafe {
 
 namespace {
 
+/**
+ * @brief Check both configured input size and the u4 source-slice representation limit.
+ * @param size Requested byte count or checked input byte length.
+ * @param options Operation-specific parsing, emission, or entry policy.
+ * @return True when the input cannot be accepted safely.
+ * @ingroup implementation
+ */
 bool exceeds_input_limit(std::size_t size, const ReadOptions& options) {
   return size > options.limits.max_input_bytes || size > std::numeric_limits<std::uint32_t>::max();
 }
 
+/**
+ * @brief Describe an oversized class-file input.
+ * @return A ResourceLimitExceeded read error at the class input.
+ * @ingroup implementation
+ */
 std::unexpected<ReadError> input_limit_error() {
   return std::unexpected(ReadError{ReadErrorKind::ResourceLimitExceeded, 0, "class",
                                    "input exceeds class-file read limits"});

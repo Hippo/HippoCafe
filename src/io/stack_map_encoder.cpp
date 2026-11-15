@@ -1,4 +1,12 @@
+/**
+ * @file
+ * @brief Bounded class-file parsing, layout, and serialization.
+ * @ingroup implementation
+ */
+
 #include "stack_map_encoder.hpp"
+
+#include <utility>
 
 #include <algorithm>
 #include <cstring>
@@ -16,8 +24,19 @@
 namespace cafe::detail {
 namespace {
 
-constexpr auto MAX_U2 = std::numeric_limits<std::uint16_t>::max();
+constexpr auto MAX_U2 = std::numeric_limits<std::uint16_t>::max(); ///< Largest unsigned two-byte wire value.
 
+/**
+ * @brief Encode one verification_type_info using staged class constants.
+ * @param writer Big-endian byte writer receiving encoded output.
+ * @param type Verification type to encode, resolving object and uninitialized references.
+ * @param code Decoded instruction sequence or associated Code attribute.
+ * @param offsets Final instruction-identity to encoded byte-offset lookup.
+ * @param constants Writer-local constant-pool extension used by frame encoding.
+ * @param path Borrowed structural path included in diagnostics.
+ * @return Success or an unrepresentable type/offset/constant-pool error.
+ * @ingroup implementation
+ */
 std::expected<void, WriteError> write_type(
     BinaryWriter<std::pmr::vector<std::byte>>& writer, const analysis::VerificationType& type,
     const MethodCode& code, const InstructionOffsets& offsets, StackMapConstants& constants,
@@ -46,9 +65,9 @@ std::expected<void, WriteError> write_type(
       writer.u1(6);
       break;
     case Object: {
-      const auto index = constants.class_reference(type.reference, path);
+      auto index = constants.class_reference(type.reference, path);
       if (!index)
-        return std::unexpected(index.error());
+        return std::unexpected(std::move(index.error()));
       writer.u1(7);
       writer.u2(index->value);
       break;
@@ -122,9 +141,9 @@ std::expected<CpIndex, WriteError> StackMapConstants::class_reference(std::strin
     return existing->second;
   if (!(name.starts_with('[') ? valid_field_descriptor(name) : valid_class_name(name)))
     return write_error(WriteErrorKind::UnrepresentableFrame, path, "invalid reference in a stack-map frame");
-  const auto text = utf8(name, path);
+  auto text = utf8(name, path);
   if (!text)
-    return std::unexpected(text.error());
+    return std::unexpected(std::move(text.error()));
   if (next_index >= MAX_U2)
     return write_error(WriteErrorKind::ConstantPoolOverflow, path, "constant pool is full");
   BinaryWriter writer(extra);
@@ -186,8 +205,8 @@ std::expected<std::pmr::vector<std::byte>, WriteError> encode_stack_map(
     writer.u2(static_cast<std::uint16_t>(locals.size() - static_cast<std::size_t>(continuations)));
     for (std::size_t slot = 0; slot < locals.size(); ++slot) {
       const auto& type = locals[slot];
-      if (const auto written = write_type(writer, type, code, offsets, constants, path); !written)
-        return std::unexpected(written.error());
+      if (auto written = write_type(writer, type, code, offsets, constants, path); !written)
+        return std::unexpected(std::move(written.error()));
       if (type.width() == 2) {
         if (++slot >= locals.size() || locals[slot].kind != WideContinuation)
           return write_error(WriteErrorKind::UnrepresentableFrame, path, "wide local lacks its second slot");
@@ -199,8 +218,8 @@ std::expected<std::pmr::vector<std::byte>, WriteError> encode_stack_map(
       if (type.kind == Top)
         return write_error(WriteErrorKind::UnrepresentableFrame, path, "operand stack contains an unusable type");
       slots += type.width();
-      if (const auto written = write_type(writer, type, code, offsets, constants, path); !written)
-        return std::unexpected(written.error());
+      if (auto written = write_type(writer, type, code, offsets, constants, path); !written)
+        return std::unexpected(std::move(written.error()));
     }
     if (slots != frame.stack_slots || slots > analysis.max_stack())
       return write_error(WriteErrorKind::UnrepresentableFrame, path, "operand stack exceeds the computed maximum");
