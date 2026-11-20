@@ -349,6 +349,20 @@ std::expected<cafe::WriteResult, std::string> reverse_difference(
 ```
 <!-- end snippet -->
 
+`analyze_ssa(owner, graph, context)` verifies the graph and returns a read-only
+snapshot. Use `uses(value)` on the snapshot to borrow the indexed operands,
+phi inputs, and debugger assignments that consume a definition. The
+`dominates` overloads compare block entries or test whether a definition is
+available at an operation or on an incoming edge. An exceptional edge observes
+the state before its protected operation produces a result. After a graph edit,
+reacquire the snapshot and any borrowed use spans. `dump_ssa(graph)` prints
+typed values, phi inputs keyed by edge, and exception sites using graph-local IDs.
+
+Run `hippocafe_ssa_constants` to see a pass follow indexed uses through two
+additions. The example in `examples/ssa_constants.cpp` records folds before
+editing the graph, replaces both results, and checks the value returned by
+the strictly reparsed method.
+
 For a new body, first add a concrete method declaration to the class and call
 `create_ssa`. Its entry block and descriptor-derived parameters are ready for use.
 Append operations, terminate each block, and define its outgoing edges. A phi

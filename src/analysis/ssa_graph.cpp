@@ -8,6 +8,7 @@
 #include <algorithm>
 #include <atomic>
 #include <limits>
+#include <tuple>
 #include <unordered_map>
 #include "../detail/member_signature.hpp"
 #include "../io/class_format.hpp"
@@ -113,6 +114,21 @@ auto guarded(const SsaStorage* storage, Work work) -> decltype(work()) {
   } catch (const detail::BudgetExceeded&) {
     return std::unexpected(fail(SsaErrorKind::ResourceLimitExceeded, "SSA graph resource limit exceeded"));
   }
+}
+
+/// Release cached indexes only after the edit has committed.
+/// @tparam Work Checked mutation callback.
+/// @param storage Graph being edited.
+/// @param work Mutation that preserves the graph on failure.
+/// @return Mutation result or a graph policy error.
+template<typename Work>
+auto edit(SsaStorage* storage, Work work) -> decltype(work()) {
+  auto result = guarded(storage, work);
+  if (result) {
+    storage->analysis.reset();
+    storage->use_index.reset();
+  }
+  return result;
 }
 
 /**
@@ -476,7 +492,7 @@ SsaResult<SsaMethod> create_ssa(const ClassFile& owner, std::size_t index, Analy
 }
 
 SsaResult<SsaBlockId> SsaMethod::add_block() {
-  return guarded(storage.get(), [&]() -> SsaResult<SsaBlockId> {
+  return edit(storage.get(), [&]() -> SsaResult<SsaBlockId> {
     auto& s = *storage;
     if (s.blocks.size() >= s.limits.max_instructions)
       return std::unexpected(fail(SsaErrorKind::ResourceLimitExceeded, "SSA block limit exceeded"));
@@ -486,7 +502,7 @@ SsaResult<SsaBlockId> SsaMethod::add_block() {
   });
 }
 SsaResult<SsaValueId> SsaMethod::add_phi(SsaBlockId block_id, SsaType type) {
-  return guarded(storage.get(), [&]() -> SsaResult<SsaValueId> {
+  return edit(storage.get(), [&]() -> SsaResult<SsaValueId> {
     if (!block(block_id))
       return std::unexpected(fail(SsaErrorKind::InvalidHandle, "unknown phi block"));
     auto& order = storage->blocks[block_id.index].phis;
@@ -497,7 +513,7 @@ SsaResult<SsaValueId> SsaMethod::add_phi(SsaBlockId block_id, SsaType type) {
   });
 }
 SsaResult<void> SsaMethod::set_phi_input(SsaValueId phi, SsaEdgeId incoming, SsaValueId input) {
-  return guarded(storage.get(), [&]() -> SsaResult<void> {
+  return edit(storage.get(), [&]() -> SsaResult<void> {
     const auto* def = value(phi);
     const auto* transfer = edge(incoming);
     if (!def || !value(input) || !transfer)
@@ -514,7 +530,7 @@ SsaResult<void> SsaMethod::set_phi_input(SsaValueId phi, SsaEdgeId incoming, Ssa
   });
 }
 SsaResult<SsaEdgeId> SsaMethod::add_edge(SsaBlockId source, SsaBlockId target, SsaEdgeKind kind, std::optional<std::int32_t> key) {
-  return guarded(storage.get(), [&]() -> SsaResult<SsaEdgeId> {
+  return edit(storage.get(), [&]() -> SsaResult<SsaEdgeId> {
     if (!block(source))
       return std::unexpected(fail(SsaErrorKind::InvalidHandle, "unknown source block"));
     if (kind < SsaEdgeKind::Fallthrough || kind > SsaEdgeKind::SwitchDefault ||
@@ -524,7 +540,7 @@ SsaResult<SsaEdgeId> SsaMethod::add_edge(SsaBlockId source, SsaBlockId target, S
   });
 }
 SsaResult<std::uint32_t> SsaMethod::add_handler(SsaBlockId target, CpIndex catch_type) {
-  return guarded(storage.get(), [&]() -> SsaResult<std::uint32_t> {
+  return edit(storage.get(), [&]() -> SsaResult<std::uint32_t> {
     if (!block(target))
       return std::unexpected(fail(SsaErrorKind::InvalidHandle, "unknown catch target"));
     auto& h = storage->handlers;
@@ -536,7 +552,7 @@ SsaResult<std::uint32_t> SsaMethod::add_handler(SsaBlockId target, CpIndex catch
   });
 }
 SsaResult<SsaEdgeId> SsaMethod::add_exception_edge(SsaOperationId site, std::uint32_t handler, SsaType caught) {
-  return guarded(storage.get(), [&]() -> SsaResult<SsaEdgeId> {
+  return edit(storage.get(), [&]() -> SsaResult<SsaEdgeId> {
     auto& s = *storage;
     const auto* op = operation(site);
     if (!op || handler >= s.handlers.size())
@@ -555,7 +571,7 @@ SsaResult<SsaEdgeId> SsaMethod::add_exception_edge(SsaOperationId site, std::uin
   });
 }
 SsaResult<SsaEdgeId> SsaMethod::add_dead_root(SsaBlockId target, bool constructor_uninitialized) {
-  return guarded(storage.get(), [&]() -> SsaResult<SsaEdgeId> {
+  return edit(storage.get(), [&]() -> SsaResult<SsaEdgeId> {
     if (!block(target))
       return std::unexpected(fail(SsaErrorKind::InvalidHandle, "unknown disconnected root"));
     for (const auto id : storage->blocks[target.index].incoming) {
@@ -566,7 +582,7 @@ SsaResult<SsaEdgeId> SsaMethod::add_dead_root(SsaBlockId target, bool constructo
   });
 }
 SsaResult<SsaValueId> SsaMethod::add_root_input(SsaEdgeId root, SsaValueKind kind, std::uint32_t slot, SsaType type) {
-  return guarded(storage.get(), [&]() -> SsaResult<SsaValueId> {
+  return edit(storage.get(), [&]() -> SsaResult<SsaValueId> {
     const auto* e = edge(root);
     if (!e)
       return std::unexpected(fail(SsaErrorKind::InvalidHandle, "unknown dead root"));
@@ -586,7 +602,7 @@ SsaResult<SsaValueId> SsaMethod::add_root_input(SsaEdgeId root, SsaValueKind kin
 }
 SsaResult<SsaOperationId> SsaMethod::append_operation(SsaBlockId block_id, Instruction instr,
                                                       std::span<const SsaValueId> inputs, std::optional<SsaType> result) {
-  return guarded(storage.get(), [&]() -> SsaResult<SsaOperationId> {
+  return edit(storage.get(), [&]() -> SsaResult<SsaOperationId> {
     const auto* b = block(block_id);
     if (!b)
       return std::unexpected(fail(SsaErrorKind::InvalidHandle, "unknown operation block"));
@@ -597,7 +613,7 @@ SsaResult<SsaOperationId> SsaMethod::append_symbolic(SsaBlockId block_id, const 
                                                      std::span<const SsaValueId> inputs, std::optional<SsaType> result) {
   if (const auto* raw = std::get_if<Instruction>(&instruction))
     return append_operation(block_id, *raw, inputs, result);
-  return guarded(storage.get(), [&]() -> SsaResult<SsaOperationId> {
+  return edit(storage.get(), [&]() -> SsaResult<SsaOperationId> {
     const auto* b = block(block_id);
     if (!b)
       return std::unexpected(fail(SsaErrorKind::InvalidHandle, "unknown symbolic operation block"));
@@ -628,7 +644,7 @@ SsaResult<SsaOperationId> SsaMethod::append_symbolic(SsaBlockId block_id, const 
   });
 }
 SsaResult<SsaOperationId> SsaMethod::append_terminator(SsaBlockId block_id, Opcode opcode, std::span<const SsaValueId> inputs) {
-  return guarded(storage.get(), [&]() -> SsaResult<SsaOperationId> {
+  return edit(storage.get(), [&]() -> SsaResult<SsaOperationId> {
     const auto* b = block(block_id);
     if (!b)
       return std::unexpected(fail(SsaErrorKind::InvalidHandle, "unknown terminator block"));
@@ -640,7 +656,7 @@ SsaResult<SsaOperationId> SsaMethod::append_terminator(SsaBlockId block_id, Opco
   });
 }
 SsaResult<SsaOperationId> SsaMethod::insert_before(SsaOperationId at, Instruction instruction, std::span<const SsaValueId> inputs, std::optional<SsaType> result) {
-  return guarded(storage.get(), [&]() -> SsaResult<SsaOperationId> {
+  return edit(storage.get(), [&]() -> SsaResult<SsaOperationId> {
     const auto* op = operation(at);
     if (!op)
       return std::unexpected(fail(SsaErrorKind::InvalidHandle, "unknown insertion point"));
@@ -680,54 +696,81 @@ SsaResult<SsaOperationId> SsaMethod::insert_symbolic_before(SsaOperationId at, c
   return inserted;
 }
 
-SsaResult<std::vector<SsaUse>> SsaMethod::uses(SsaValueId id) const {
-  return guarded(storage.get(), [&]() -> SsaResult<std::vector<SsaUse>> {
-    if (!value(id))
-      return std::unexpected(fail(SsaErrorKind::InvalidHandle, "unknown value"));
-    check_scan(*storage);
-    std::vector<SsaUse> uses;
-    const auto add = [&](SsaUse use) {
-      if (uses.size() >= storage->limits.max_memory_bytes / sizeof(SsaUse))
-        throw detail::BudgetExceeded();
-      uses.push_back(use);
-    };
-    for (const auto& op : storage->operations) {
-      if (!op.id)
-        continue;
-      for (std::size_t i = 0; i < op.inputs.size(); ++i)
-        if (op.inputs[i] == id)
-          add({.operation = op.id, .index = i});
-      if (op.local_assignment && op.local_assignment->value == id)
-        add({.operation = op.id, .local_assignment = true});
+SsaResult<SsaStorage::UseIndex*> SsaStorage::indexed_uses() const {
+  return guarded(this, [&]() -> SsaResult<UseIndex*> {
+    if (!use_index) {
+      check_scan(*this);
+      UseIndex index(&budget);
+      index.resize(values.size());
+      for (const auto& op : operations) {
+        if (!op.id)
+          continue;
+        for (std::size_t i = 0; i < op.inputs.size(); ++i)
+          index[op.inputs[i].index].push_back({.operation = op.id, .index = i});
+        if (op.local_assignment)
+          index[op.local_assignment->value.index].push_back({.operation = op.id, .local_assignment = true});
+      }
+      for (const auto& phi : values) {
+        for (std::size_t i = 0; i < phi.incoming.size(); ++i) {
+          const auto& input = phi.incoming[i];
+          index[input.value.index].push_back({.phi = phi.id, .edge = input.edge, .index = i});
+        }
+      }
+      use_index.emplace(std::move(index));
     }
-    for (const auto& v : storage->values)
-      for (std::size_t i = 0; i < v.incoming.size(); ++i)
-        if (v.incoming[i].value == id)
-          add({.phi = v.id, .edge = v.incoming[i].edge, .index = i});
-    return uses;
+    return &*use_index;
   });
 }
+
+SsaResult<std::vector<SsaUse>> SsaMethod::uses(SsaValueId id) const {
+  if (!value(id))
+    return std::unexpected(fail(SsaErrorKind::InvalidHandle, "unknown value"));
+  std::lock_guard lock(storage->index_mutex);
+  const auto index = storage->indexed_uses();
+  if (!index)
+    return std::unexpected(index.error());
+  const auto& sites = (**index)[id.index];
+  return std::vector<SsaUse>(sites.begin(), sites.end());
+}
+
 SsaResult<void> SsaMethod::replace_uses(SsaValueId from, SsaValueId to) {
   return guarded(storage.get(), [&]() -> SsaResult<void> {
     if (!value(from) || !value(to))
       return std::unexpected(fail(SsaErrorKind::InvalidHandle, "unknown replacement value"));
     if (from == to)
       return {};
-    check_scan(*storage);
-    for (auto& op : storage->operations) {
-      std::ranges::replace(op.inputs, from, to);
-      if (op.local_assignment && op.local_assignment->value == from)
-        op.local_assignment->value = to;
+    auto index = storage->indexed_uses();
+    if (!index)
+      return std::unexpected(index.error());
+    auto& source = (**index)[from.index];
+    auto& target = (**index)[to.index];
+    if (source.empty())
+      return {};
+    if (source.size() + target.size() > storage->limits.max_work)
+      return std::unexpected(fail(SsaErrorKind::ResourceLimitExceeded, "SSA replacement exceeds graph work limit"));
+    // Preserve the traversal order returned by uses(), including duplicate operands.
+    const auto order = [](const SsaUse& use) {
+      return std::tuple{bool(use.phi), use.phi ? use.phi.index : use.operation.index, use.local_assignment, use.index};
+    };
+    std::pmr::vector<SsaUse> merged(&storage->budget);
+    merged.reserve(source.size() + target.size());
+    std::ranges::merge(source, target, std::back_inserter(merged), std::less<>{}, order, order);
+    for (const auto& site : source) {
+      if (site.phi)
+        storage->values[site.phi.index].incoming[site.index].value = to;
+      else if (site.local_assignment)
+        storage->operations[site.operation.index].local_assignment->value = to;
+      else
+        storage->operations[site.operation.index].inputs[site.index] = to;
     }
-    for (auto& v : storage->values)
-      for (auto& arg : v.incoming)
-        if (arg.value == from)
-          arg.value = to;
+    storage->analysis.reset();
+    target.swap(merged);
+    std::pmr::vector<SsaUse>(&storage->budget).swap(source);
     return {};
   });
 }
 SsaResult<void> SsaMethod::set_input(SsaOperationId id, std::size_t index, SsaValueId input) {
-  return guarded(storage.get(), [&]() -> SsaResult<void> {
+  return edit(storage.get(), [&]() -> SsaResult<void> {
     const auto* op = operation(id);
     if (!op || !value(input) || index >= op->inputs.size())
       return std::unexpected(fail(SsaErrorKind::InvalidHandle, "unknown operation, operand or replacement value"));
@@ -736,7 +779,7 @@ SsaResult<void> SsaMethod::set_input(SsaOperationId id, std::size_t index, SsaVa
   });
 }
 SsaResult<void> SsaMethod::redirect_edge(SsaEdgeId id, SsaBlockId target) {
-  return guarded(storage.get(), [&]() -> SsaResult<void> {
+  return edit(storage.get(), [&]() -> SsaResult<void> {
     const auto* e = edge(id);
     if (!e || !block(target))
       return std::unexpected(fail(SsaErrorKind::InvalidHandle, "unknown edge or target"));
@@ -755,7 +798,7 @@ SsaResult<void> SsaMethod::redirect_edge(SsaEdgeId id, SsaBlockId target) {
   });
 }
 SsaResult<void> SsaMethod::erase_edge(SsaEdgeId id) {
-  return guarded(storage.get(), [&]() -> SsaResult<void> {
+  return edit(storage.get(), [&]() -> SsaResult<void> {
     const auto* e = edge(id);
     if (!e)
       return std::unexpected(fail(SsaErrorKind::InvalidHandle, "unknown edge"));
@@ -787,7 +830,7 @@ SsaResult<void> SsaMethod::erase_edge(SsaEdgeId id) {
   });
 }
 SsaResult<void> SsaMethod::erase_operation(SsaOperationId id) {
-  return guarded(storage.get(), [&]() -> SsaResult<void> {
+  return edit(storage.get(), [&]() -> SsaResult<void> {
     const auto* op = operation(id);
     if (!op)
       return std::unexpected(fail(SsaErrorKind::InvalidHandle, "unknown operation"));
@@ -818,7 +861,7 @@ SsaResult<void> SsaMethod::erase_operation(SsaOperationId id) {
   });
 }
 SsaResult<void> SsaMethod::erase_phi(SsaValueId id) {
-  return guarded(storage.get(), [&]() -> SsaResult<void> {
+  return edit(storage.get(), [&]() -> SsaResult<void> {
     const auto* v = value(id);
     if (!v)
       return std::unexpected(fail(SsaErrorKind::InvalidHandle, "unknown phi"));
@@ -830,6 +873,60 @@ SsaResult<void> SsaMethod::erase_phi(SsaValueId id) {
     std::pmr::vector<SsaPhiInput>(&storage->budget).swap(storage->values[id.index].incoming);
     return {};
   });
+}
+
+namespace {
+/// Resolve graph-scoped handles and check membership in the represented dominator subtree.
+/// @tparam DefId Definition-side handle type.
+/// @tparam UseId Use-side handle type.
+/// @param revision Weak token for the analyzed revision.
+/// @param definition Dominating point handle.
+/// @param use Dominated point handle.
+/// @param def_intervals Member selecting definition-side subtree bounds.
+/// @param use_intervals Member selecting use-side subtree bounds.
+/// @return Whether the use lies in the definition's subtree, or a handle error.
+template<typename DefId, typename UseId>
+SsaResult<bool> dominates_at(const std::weak_ptr<const SsaAnalysisData>& revision, DefId definition, UseId use,
+                             auto def_intervals, auto use_intervals) {
+  const auto snapshot = revision.lock();
+  if (!snapshot)
+    return std::unexpected(fail(SsaErrorKind::InvalidHandle, "expired SSA analysis"));
+  const auto& definitions = (*snapshot).*def_intervals;
+  const auto& uses = (*snapshot).*use_intervals;
+  if (definition.scope != snapshot->scope || use.scope != snapshot->scope ||
+      definition.index >= definitions.size() || use.index >= uses.size())
+    return std::unexpected(fail(SsaErrorKind::InvalidHandle, "unknown SSA dominance query handle"));
+  const auto def = definitions[definition.index];
+  const auto site = uses[use.index];
+  if (def.end == 0 || site.end == 0)
+    return std::unexpected(fail(SsaErrorKind::InvalidHandle, "retired SSA dominance query handle"));
+  return def.begin <= site.begin && site.begin < def.end;
+}
+} // namespace
+
+bool SsaAnalysis::is_current() const noexcept {
+  return !indexes.expired();
+}
+
+SsaResult<std::span<const SsaUse>> SsaAnalysis::uses(SsaValueId id) const {
+  const auto snapshot = indexes.lock();
+  if (!snapshot)
+    return std::unexpected(fail(SsaErrorKind::InvalidHandle, "expired SSA analysis"));
+  if (id.scope != snapshot->scope || id.index >= snapshot->values.size() || snapshot->values[id.index].end == 0)
+    return std::unexpected(fail(SsaErrorKind::InvalidHandle, "unknown SSA definition"));
+  return std::span<const SsaUse>(snapshot->uses[id.index]);
+}
+
+SsaResult<bool> SsaAnalysis::dominates(SsaBlockId definition, SsaBlockId use) const {
+  return dominates_at(indexes, definition, use, &SsaAnalysisData::blocks, &SsaAnalysisData::blocks);
+}
+
+SsaResult<bool> SsaAnalysis::dominates(SsaValueId definition, SsaOperationId use) const {
+  return dominates_at(indexes, definition, use, &SsaAnalysisData::values, &SsaAnalysisData::operations);
+}
+
+SsaResult<bool> SsaAnalysis::dominates(SsaValueId definition, SsaEdgeId use) const {
+  return dominates_at(indexes, definition, use, &SsaAnalysisData::values, &SsaAnalysisData::edges);
 }
 
 } // namespace cafe::analysis

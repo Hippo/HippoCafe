@@ -19,6 +19,11 @@
  */
 
 /**
+ * @example ssa_constants.cpp
+ * Use an SSA analysis snapshot to propagate integer constants through additions and fold them.
+ */
+
+/**
  * @example inspect_class.cpp
  * Inspect class declarations and decoded instructions from the command line.
  */

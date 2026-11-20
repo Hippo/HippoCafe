@@ -190,6 +190,7 @@ private:
   /// Destination extent and optional exact operation for a source ordinal.
   struct Origin {
     Extent extent; ///< Lowered bytecode span for this source instruction.
+    std::uint16_t local_begin; ///< Earliest PC in this block covered by the incoming debugger state.
     std::optional<std::uint16_t> exact; ///< Offset of the equivalent operation for instruction annotations.
   };
 
@@ -289,6 +290,52 @@ Status Relocator::write_bytes(std::size_t amount) {
   return {};
 }
 
+/**
+ * @brief Recover the coordinate system of retained attributes, including anchors surviving raw edits.
+ * @tparam Boundary Callback accepting a byte offset, source instruction and unchanged flag.
+ * @param owner Class containing the method.
+ * @param source Source method Code and retained instruction anchors.
+ * @param input_bytes Buffer sized to the encoded source method.
+ * @param starts Output bitmap of source instruction boundaries used by Code attributes.
+ * @param scratch Bounded scratch allocator.
+ * @param path Diagnostic path for encoding and boundary errors.
+ * @param boundary Receives each mapped source boundary.
+ * @return Success or a missing or invalid source layout error.
+ */
+template<class Boundary>
+Status source_coordinates(const ClassFile& owner, const CodeAttribute& source, std::pmr::vector<std::byte>& input_bytes,
+                          std::pmr::vector<std::uint8_t>& starts, std::pmr::memory_resource* scratch,
+                          std::string_view path, Boundary boundary) {
+  const auto& code = source.code();
+  const auto original = SsaRelocationAccess::original_size(source);
+  const auto supplied = SsaRelocationAccess::supplied_encoding(source);
+  // Supplied metadata replaces parsed attributes and has an independent coordinate system.
+  if (supplied) {
+    auto input = encode_code(code, owner.version(), owner.constant_pool(), source.max_locals(), *supplied, scratch, path);
+    if (!input)
+      return std::unexpected(std::move(input.error()));
+    input_bytes.resize(input->bytes().size());
+    starts.assign(input->instruction_starts().begin(), input->instruction_starts().end());
+    const auto pcs = input->instruction_offsets();
+    for (std::uint32_t i = 0; i < code.size(); ++i)
+      boundary(pcs[i], code.at(i), true);
+  } else if (original) {
+    input_bytes.resize(*original);
+    starts.resize(*original);
+    for (const auto& record : SsaRelocationAccess::boundaries(source)) {
+      if (record.offset >= starts.size())
+        return error(WriteErrorKind::InvalidClassModel, path, "original Code boundary is outside code_length");
+      starts[record.offset] = 1;
+      const auto instruction = code.get(record.instruction);
+      if (instruction)
+        boundary(record.offset, record.instruction, *instruction == record.original_instruction);
+    }
+  } else {
+    return error(WriteErrorKind::StaleCodeMetadata, path, "source Code metadata has no current offset map");
+  }
+  return {};
+}
+
 Status Relocator::source_layout() {
   const auto& code = source.code();
   if (auto charged = spend(code.size() + provenance.instructions.size()); !charged)
@@ -325,7 +372,10 @@ Status Relocator::source_layout() {
       if (same_operation && opcode_info(wire).logical_opcode == to->opcode())
         exact = *pc;
     }
-    spans[pos->second] = Origin{*lowered, exact};
+    const auto local_begin = origin.local_begin.scope ? encoded.offset_of(origin.local_begin) : std::optional<std::uint32_t>{lowered->begin};
+    if (!local_begin || *local_begin > lowered->begin)
+      return error(WriteErrorKind::InvalidCodeLayout, path, "invalid local scope start for source instruction");
+    spans[pos->second] = Origin{*lowered, static_cast<std::uint16_t>(*local_begin), exact};
   }
 
   for (const auto& local : provenance.locals) {
@@ -338,33 +388,14 @@ Status Relocator::source_layout() {
     return std::tie(a.first, a.second.interval.begin) < std::tie(b.first, b.second.interval.begin);
   });
 
-  const auto original = SsaRelocationAccess::original_size(source);
-  const auto supplied = SsaRelocationAccess::supplied_encoding(source);
-  // Supplied metadata replaces parsed attributes and has an independent coordinate system.
-  if (supplied) {
-    auto input = encode_code(code, owner.version(), owner.constant_pool(), source.max_locals(), *supplied, scratch, path);
-    if (!input)
-      return std::unexpected(std::move(input.error()));
-    input_bytes.resize(input->bytes().size());
-    starts.assign(input->instruction_starts().begin(), input->instruction_starts().end());
-    const auto pcs = input->instruction_offsets();
-    for (std::uint32_t i = 0; i < code.size(); ++i)
-      boundaries.emplace(pcs[i], Boundary{i, true});
-  } else if (original) {
-    input_bytes.resize(*original);
-    starts.resize(*original);
-    for (const auto& record : SsaRelocationAccess::boundaries(source)) {
-      if (record.offset >= starts.size())
-        return error(WriteErrorKind::InvalidClassModel, path, "original Code boundary is outside code_length");
-      starts[record.offset] = 1;
-      const auto ordinal = ordinals.find(key(record.instruction));
-      const auto instruction = code.get(record.instruction);
-      if (ordinal != ordinals.end() && instruction)
-        boundaries.emplace(record.offset, Boundary{ordinal->second, *instruction == record.original_instruction});
-    }
-  } else {
-    return error(WriteErrorKind::StaleCodeMetadata, path, "source Code metadata has no current offset map");
-  }
+  auto layout = source_coordinates(owner, source, input_bytes, starts, scratch, path,
+                                   [&](std::uint32_t pc, InstructionId id, bool unchanged) {
+                                     const auto found = ordinals.find(key(id));
+                                     if (found != ordinals.end())
+                                       boundaries.emplace(pc, Boundary{found->second, unchanged});
+                                   });
+  if (!layout)
+    return layout;
   boundaries.emplace(input_bytes.size(), Boundary{static_cast<std::uint32_t>(code.size()), false});
   return {};
 }
@@ -446,8 +477,8 @@ std::expected<std::pmr::vector<LocalRange>, WriteError> Relocator::local_ranges(
     pieces.push_back({*anchor, *anchor});
   } else {
     for (auto i = from->second.ordinal; i < to->second.ordinal; ++i)
-      if (const auto& origin = spans[i]; origin && origin->extent.begin < origin->extent.end)
-        pieces.push_back(origin->extent);
+      if (const auto& origin = spans[i]; origin && origin->local_begin < origin->extent.end)
+        pieces.push_back({origin->local_begin, origin->extent.end});
     // A local may be in scope only for a load that vanished through SSA renaming. Its
     // known destination boundary can still describe that now-empty lexical scope.
     if (pieces.empty()) {
@@ -477,10 +508,6 @@ std::expected<std::pmr::vector<LocalRange>, WriteError> Relocator::local_ranges(
       result.push_back({part, home});
   };
   for (const auto interval : merged) {
-    if (provenance.preserves_local_slots) {
-      append(interval, slot);
-      continue;
-    }
     if (auto charged = spend(homes.size()); !charged)
       return std::unexpected(std::move(charged.error()));
     auto covered = interval.begin;
@@ -660,18 +687,98 @@ std::expected<std::vector<std::byte>, WriteError> Relocator::rewrite(const Attri
 
 } // namespace
 
-bool ssa_has_local_metadata(const ClassFile& owner, const CodeAttribute& code) {
-  return std::ranges::any_of(code.attributes(), [&](const Attribute& attribute) {
-    auto kind = attribute.kind();
-    if (kind == AttributeKind::Unknown) {
-      const auto name = owner.constant_pool().get_utf8(attribute.name_index());
-      const auto* spec = name ? find_attribute(*name) : nullptr;
-      if (spec)
-        kind = spec->kind;
+std::expected<std::pmr::vector<std::uint8_t>, WriteError> ssa_debug_slot_widths(
+    const ClassFile& owner, const CodeAttribute& source, const analysis::AnalysisLimits& limits,
+    std::size_t& remaining, std::pmr::memory_resource* scratch, std::pmr::vector<std::uint8_t>* anchors) {
+  std::pmr::vector<std::uint8_t> widths(scratch);
+  std::pmr::vector<std::byte> code_bytes(scratch);
+  std::pmr::vector<std::uint8_t> starts(scratch);
+  std::pmr::unordered_map<std::uint32_t, InstructionId> identities(scratch);
+  const auto anchor = [anchors](InstructionId id) {
+    if (anchors) {
+      if (anchors->size() <= id.index)
+        anchors->resize(std::size_t{id.index} + 1);
+      (*anchors)[id.index] = 1;
     }
-    return kind == AttributeKind::LocalVariableTable || kind == AttributeKind::LocalVariableTypeTable ||
-           kind == AttributeKind::RuntimeVisibleTypeAnnotations || kind == AttributeKind::RuntimeInvisibleTypeAnnotations;
-  });
+  };
+  bool unrelocatable = false;
+  for (const auto& attribute : source.attributes()) {
+    const auto name = owner.constant_pool().get_utf8(attribute.name_index());
+    const auto* spec = name ? find_attribute(*name) : nullptr;
+    if (!spec) {
+      unrelocatable = true;
+      continue;
+    }
+    if (spec->kind != AttributeKind::LocalVariableTable && spec->kind != AttributeKind::LocalVariableTypeTable &&
+        spec->kind != AttributeKind::RuntimeVisibleTypeAnnotations && spec->kind != AttributeKind::RuntimeInvisibleTypeAnnotations &&
+        !(anchors && spec->kind == AttributeKind::LineNumberTable))
+      continue;
+    const auto* raw = attribute.get<RawAttribute>();
+    if (!raw)
+      continue;
+    const auto bytes = raw->bytes(owner);
+    if (!bytes)
+      continue;
+    if (limits.cancellation.stop_requested())
+      return error(WriteErrorKind::Cancelled, *name, "SSA local slot discovery cancelled");
+    const auto layout_work = code_bytes.empty() ? source.code().size() : 0;
+    if (bytes->size() > remaining || layout_work > remaining - bytes->size())
+      return error(WriteErrorKind::ResourceLimitExceeded, *name, "SSA local slot discovery exceeds the work limit");
+    remaining -= bytes->size() + layout_work;
+    if (code_bytes.empty()) {
+      auto layout = source_coordinates(owner, source, code_bytes, starts, scratch, *name,
+                                       [&](std::uint32_t pc, InstructionId id, bool) {
+                                         if (anchors)
+                                           identities.emplace(pc, id);
+                                       });
+      if (!layout) {
+        if (layout.error().kind == WriteErrorKind::ResourceLimitExceeded)
+          return std::unexpected(std::move(layout.error()));
+        unrelocatable = true;
+        // Metadata with stale coordinates is handled by the final relocation policy.
+        break;
+      }
+    }
+    const CodeAttributeContext input{code_bytes, starts, source.max_locals(),
+                                     static_cast<std::uint16_t>(SsaRelocationAccess::original_handlers(source).size())};
+    const auto mark_offset = [&](std::uint32_t offset) {
+      if (auto found = identities.find(offset); found != identities.end())
+        anchor(found->second);
+    };
+    struct VisitorState {
+      std::pmr::vector<std::uint8_t>& widths;
+      decltype(mark_offset)& mark;
+    } state{widths, mark_offset};
+    CodeOffsetVisitor visitor{.state = &state};
+    visitor.visit = [](void* data, CodeOffsetField& field) {
+      const auto& mark = static_cast<VisitorState*>(data)->mark;
+      if (field.kind != CodeOffsetField::Kind::Handler)
+        mark(field.value);
+      if (field.kind == CodeOffsetField::Kind::Range)
+        mark(std::uint32_t{field.value} + field.length);
+      return true;
+    };
+    visitor.local_slot = [](void* data, std::uint16_t slot, std::uint16_t width) {
+      auto& slots = static_cast<VisitorState*>(data)->widths;
+      if (slots.size() <= slot)
+        slots.resize(std::size_t{slot} + 1);
+      slots[slot] = std::max(slots[slot], static_cast<std::uint8_t>(width));
+    };
+    BinaryReader reader(*bytes);
+    const auto checked = validate_opaque_attribute(reader, *spec, AttributeContext::Code, owner.constant_pool(),
+                                                   ReadLimits{}, *name, &input, scratch, visitor);
+    if (!checked && checked.error().kind == ReadErrorKind::ResourceLimitExceeded)
+      return error(WriteErrorKind::ResourceLimitExceeded, *name, checked.error().detail);
+    unrelocatable |= !checked;
+  }
+  if (unrelocatable && anchors) {
+    if (source.code().size() > remaining)
+      return error(WriteErrorKind::ResourceLimitExceeded, "Code", "SSA metadata anchoring exceeds the work limit");
+    remaining -= source.code().size();
+    for (const auto& entry : source.code().instructions())
+      anchor(entry.id);
+  }
+  return widths;
 }
 
 std::expected<std::vector<Attribute>, WriteError> relocate_ssa_attributes(

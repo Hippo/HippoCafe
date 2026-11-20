@@ -302,53 +302,48 @@ cafe::ClassFile ssa_workload(bool loop) {
   return owner;
 }
 
+void edit_first_add(cafe::analysis::SsaMethod& graph) {
+  for (const auto& block : graph.blocks()) {
+    for (const auto id : block.operations) {
+      if (graph.operation(id)->opcode == cafe::Opcode::IAdd) {
+        graph.set_input(id, 1, graph.parameters()[0]).value();
+        return;
+      }
+    }
+  }
+  throw std::runtime_error("SSA benchmark failed to find the addition");
+}
+
 void benchmark_ssa(bool loop, std::size_t rounds) {
   using namespace cafe;
   analysis::AnalysisContext context;
-  const auto original = write_class(ssa_workload(loop), {.code_analysis = CodeAnalysisMode::ComputeFrames}, context).value();
+  auto wire = write_class(ssa_workload(loop), {.code_analysis = CodeAnalysisMode::ComputeFrames}, context).value();
+  std::cout << "SSA " << (loop ? "loop with two carried locals" : "straight line with 64 additions") << '\n';
   Clock::duration lifting{}, lowering{};
-  std::size_t original_instructions = 0, output_instructions = 0;
-  std::size_t output_bytes = 0;
-  std::uint16_t original_locals = 0, output_locals = 0;
-  for (std::size_t round = 0; round < rounds; ++round) {
-    auto parsed = read_class(original.bytes, {.mode = ParseMode::Strict}).value();
+  for (std::size_t round = 0;; ++round) {
+    auto parsed = read_class(wire.bytes, {.mode = ParseMode::Strict}).value();
     auto& owner = parsed.class_file;
-    original_instructions = owner.methods()[0].code()->code().size();
-    original_locals = owner.methods()[0].code()->max_locals();
+    if (round <= 1 || round == rounds) {
+      const auto& code = *owner.methods()[0].code();
+      std::cout << "  Round " << round << ": " << wire.bytes.size() << " class bytes, " << code.code().size()
+                << " instructions, " << code.max_locals() << " locals\n";
+    }
+    if (round == rounds)
+      break;
     auto start = Clock::now();
     auto graph = analysis::lift_ssa(owner, 0, context).value();
     lifting += Clock::now() - start;
-    // Force a real operand edit, including on implementations that preserve pristine bytecode.
-    bool edited = false;
-    for (const auto& block : graph.blocks()) {
-      for (const auto id : block.operations) {
-        if (graph.operation(id)->opcode == Opcode::IAdd) {
-          graph.set_input(id, 1, graph.parameters()[0]).value();
-          edited = true;
-          break;
-        }
-      }
-      if (edited)
-        break;
-    }
-    if (!edited)
-      throw std::runtime_error("SSA benchmark failed to find the addition");
+    if (round == 0)
+      edit_first_add(graph);
     start = Clock::now();
     auto result = analysis::lower_ssa(owner, graph, context);
     lowering += Clock::now() - start;
     if (!result)
       throw std::runtime_error("SSA benchmark lowering failed: " + result.error().detail);
-    const auto written = write_class(owner).value();
-    const auto reopened = read_class(written.bytes, {.mode = ParseMode::Strict}).value();
-    output_bytes = written.bytes.size();
-    output_instructions = reopened.class_file.methods()[0].code()->code().size();
-    output_locals = reopened.class_file.methods()[0].code()->max_locals();
+    wire = write_class(owner).value();
   }
-  std::cout << "SSA " << (loop ? "loop with two carried locals" : "straight line with 64 additions")
-            << ", " << rounds << " rounds, lift " << seconds(lifting) * 1'000 << " ms, lower "
-            << seconds(lowering) * 1'000 << " ms, class bytes " << original.bytes.size() << " -> " << output_bytes
-            << ", instructions " << original_instructions << " -> " << output_instructions
-            << ", max_locals " << original_locals << " -> " << output_locals << '\n';
+  std::cout << "  " << rounds << " successive rewrites, lift " << seconds(lifting) * 1'000 << " ms, lower "
+            << seconds(lowering) * 1'000 << " ms\n";
 }
 
 } // namespace

@@ -38,6 +38,80 @@ void annotation_suffix(BinaryWriter<std::vector<std::byte>>& writer, CpIndex typ
   writer.u2(0);
 }
 
+TEST(SsaRelocation, PreservesDistinctLinesAlongAThreadedJumpChain) {
+  auto owner = ClassFile::create({52, 0}, "LineScope").value();
+  auto& pool = owner.constant_pool();
+  const auto name = [&](std::string_view text) { return pool.append_utf8(text).value(); };
+  const auto method = owner.add_method(0x0009, name("run"), name("()V")).value();
+  auto& source = owner.add_code(method, name("Code")).value().get();
+  auto& code = source.code();
+  const auto via = code.make_label().value(), line = code.make_label().value(), exit = code.make_label().value();
+  const auto ids = code.append(std::array<InstructionBuilder, 4>{
+                                   Branch{Opcode::Goto, via}, Branch{Opcode::Goto, exit}, Instruction::return_void(), Branch{Opcode::Goto, line}})
+                       .value();
+  code.bind_label(via, {ids[3]}).value();
+  code.bind_label(line, {ids[1]}).value();
+  code.bind_label(exit, {ids[2]}).value();
+  std::vector<Attribute> metadata;
+  metadata.push_back(Attribute::raw(name("LineNumberTable"), u2_fields({2, 3, 42, 6, 43})));
+  source.supply_metadata(0, 0, {}, std::move(metadata));
+
+  analysis::AnalysisContext context;
+  auto graph = analysis::lift_ssa(owner, method, context);
+  ASSERT_TRUE(graph) << graph.error().detail;
+  auto lowered = analysis::lower_ssa(owner, *graph, context);
+  ASSERT_TRUE(lowered) << lowered.error().detail;
+
+  const auto& result = *owner.methods()[method].code();
+  const auto& body = result.code();
+  ASSERT_EQ(body.size(), 2u);
+  EXPECT_EQ(body.get(body.at(0))->opcode(), Opcode::Goto);
+  EXPECT_EQ(body.get(body.at(1))->opcode(), Opcode::Return);
+  const auto attrs = result.attributes();
+  const auto table = std::ranges::find(attrs, AttributeKind::LineNumberTable, &Attribute::kind);
+  ASSERT_NE(table, attrs.end());
+  EXPECT_TRUE(std::ranges::equal(table->get<RawAttribute>()->bytes(owner).value(), u2_fields({2, 0, 42, 3, 43})));
+}
+
+TEST(SsaRelocation, CompactsSparseWideDebugSlotAndIgnoresUnnamedTemporary) {
+  auto owner = ClassFile::create({52, 0}, "SparseLocals").value();
+  auto& pool = owner.constant_pool();
+  const auto name = [&](std::string_view text) { return pool.append_utf8(text).value(); };
+  const auto method = owner.add_method(0x0009, name("run"), name("()J")).value();
+  auto& source = owner.add_code(method, name("Code")).value().get();
+  for (const auto instruction : {Instruction::simple(Opcode::LConst1).value(), Instruction::lstore(200),
+                                 Instruction::simple(Opcode::IConst2).value(), Instruction::istore(97),
+                                 Instruction::lload(200), Instruction::simple(Opcode::LReturn).value()})
+    source.code().append(instruction).value();
+  const auto var = name("visible");
+  const auto type = name("J");
+  std::vector<Attribute> metadata;
+  metadata.push_back(Attribute::raw(name("LocalVariableTable"), u2_fields({1, 3, 6, var.value, type.value, 200})));
+  source.supply_metadata(2, 202, {}, std::move(metadata));
+
+  analysis::AnalysisContext context;
+  auto graph = analysis::lift_ssa(owner, method, context);
+  ASSERT_TRUE(graph) << graph.error().detail;
+  auto lowered = analysis::lower_ssa(owner, *graph, context);
+  ASSERT_TRUE(lowered) << lowered.error().detail;
+  const auto bytes = write_class(owner);
+  ASSERT_TRUE(bytes) << bytes.error().detail;
+  auto parsed = read_class(bytes->bytes, {.mode = ParseMode::Strict});
+  ASSERT_TRUE(parsed) << parsed.error().detail;
+  const auto& result = *parsed->class_file.methods()[method].code();
+  EXPECT_LE(result.max_locals(), 4u);
+  const auto attrs = result.attributes();
+  const auto table = std::ranges::find(attrs, AttributeKind::LocalVariableTable, &Attribute::kind);
+  ASSERT_NE(table, attrs.end());
+  const auto payload = table->get<RawAttribute>()->bytes(parsed->class_file).value();
+  ASSERT_EQ(payload.size(), 12u);
+  EXPECT_EQ(payload[10], std::byte{0});
+  EXPECT_EQ(payload[11], std::byte{0});
+  EXPECT_TRUE(std::ranges::any_of(result.code().instructions(), [](const auto& entry) {
+    return entry.instruction.opcode() == Opcode::LStore && entry.instruction.local_index() == 0;
+  }));
+}
+
 TEST(SsaRelocation, KeepsLocalScopeThatContainsOnlyAnEliminatedLoad) {
   auto owner = ClassFile::create({52, 0}, "LocalScope").value();
   auto& pool = owner.constant_pool();
@@ -49,7 +123,6 @@ TEST(SsaRelocation, KeepsLocalScopeThatContainsOnlyAnEliminatedLoad) {
   std::vector<Attribute> metadata;
   metadata.push_back(Attribute::raw(name("LocalVariableTable"), u2_fields({1, 0, 1, name("argument").value, name("I").value, 0})));
   source.supply_metadata(1, 1, {}, std::move(metadata));
-  EXPECT_TRUE(ssa_has_local_metadata(owner, source));
   analysis::AnalysisContext context;
   auto graph = analysis::lift_ssa(owner, index, context);
   ASSERT_TRUE(graph) << graph.error().detail;

@@ -34,6 +34,7 @@ struct AnalysisLimits {
    */
   std::pmr::memory_resource* upstream_resource = std::pmr::get_default_resource();
   std::stop_token cancellation{}; ///< Cooperative stop token checked during bounded work.
+  friend bool operator==(const AnalysisLimits&, const AnalysisLimits&) = default;
 };
 
 } // namespace cafe::analysis

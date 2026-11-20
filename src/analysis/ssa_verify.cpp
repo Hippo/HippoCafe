@@ -265,6 +265,13 @@ public:
     return reachable(def) && reachable(use) && nodes[def].begin <= nodes[use].begin && nodes[use].begin < nodes[def].end;
   }
 
+  /// Return subtree bounds suitable for a read-only snapshot after verification.
+  /// @param point Program point or absent sentinel.
+  /// @return Preorder interval, or an empty interval for an absent point.
+  SsaDominanceInterval interval(Point point) const {
+    return reachable(point) ? SsaDominanceInterval{nodes[point].begin, nodes[point].end} : SsaDominanceInterval{};
+  }
+
   /**
    * @brief Record an allocation identity invalidated at this point.
    * @param point Expanded control-flow position.
@@ -524,6 +531,30 @@ public:
           return ok;
     }
     return check_uses();
+  }
+
+  /// Publish immutable tree intervals using exactly the program points checked by verify().
+  /// @return Success or the work or memory error preventing publication.
+  Status save_analysis() {
+    if (data.analysis)
+      return {};
+    const auto uses = data.indexed_uses();
+    if (!uses)
+      return std::unexpected(uses.error());
+    if (!work.spend(entry.size()) || !work.spend(defs.size()) || !work.spend(before.size()) || !work.spend(transfer.size()))
+      return work.failure();
+    auto result = std::make_shared<SsaAnalysisData>(data.scope, **uses, work.limits, &data.budget);
+    const auto copy = [&](const auto& points, auto& intervals) {
+      intervals.reserve(points.size());
+      for (Point point : points)
+        intervals.push_back(flow.interval(point));
+    };
+    copy(entry, result->blocks);
+    copy(defs, result->values);
+    copy(before, result->operations);
+    copy(transfer, result->edges);
+    data.analysis = std::move(result);
+    return {};
   }
 
 private:
@@ -1059,21 +1090,50 @@ private:
   std::uint16_t locals = 0; ///< Descriptor local-slot count.
 };
 
-} // namespace
-
-SsaResult<void> verify_ssa(const ClassFile& owner, const SsaMethod& graph, AnalysisContext& context) try {
+/// Run the verifier, optionally retaining query indexes from this revision.
+/// @param owner Class declaring the method.
+/// @param graph Bound graph to verify.
+/// @param context Verification hierarchy and resource policy.
+/// @param save_analysis Whether to retain dominance intervals and index value uses.
+/// @return Success or the first verification or resource error.
+Status verify_graph(const ClassFile& owner, const SsaMethod& graph, AnalysisContext& context, bool save_analysis) try {
   const auto& limits = context.limits();
   if (limits.cancellation.stop_requested())
     return Location{}.fail(SsaErrorKind::Cancelled, "SSA verification cancelled");
   if (graph.method_index() >= owner.methods().size() || !graph.is_current(owner, context))
     return Location{}.fail(SsaErrorKind::StaleSource, "SSA graph no longer matches its source method or hierarchy");
+  if (save_analysis) {
+    const auto& cached = SsaAccess::get(graph).analysis;
+    if (cached && cached->policy == limits)
+      return {};
+  }
   auto scoped = context.hierarchy().with_class(owner);
   if (!scoped)
     return Location{}.cause({.kind = AnalysisErrorKind::TypeResolutionFailure, .detail = "cannot bind SSA owner to hierarchy", .resolution = std::move(scoped.error())});
   detail::BudgetResource budget(limits.upstream_resource, limits.max_memory_bytes);
-  return GraphVerifier(owner, graph, *scoped, limits, &budget).verify();
+  GraphVerifier verifier(owner, graph, *scoped, limits, &budget);
+  auto status = verifier.verify();
+  if (status && save_analysis)
+    return verifier.save_analysis();
+  return status;
 } catch (const detail::BudgetExceeded&) {
   return Location{}.fail(SsaErrorKind::ResourceLimitExceeded, "SSA verification memory limit exceeded");
+}
+
+} // namespace
+
+SsaResult<void> verify_ssa(const ClassFile& owner, const SsaMethod& graph, AnalysisContext& context) {
+  return verify_graph(owner, graph, context, false);
+}
+
+SsaResult<SsaAnalysis> analyze_ssa(const ClassFile& owner, const SsaMethod& graph, AnalysisContext& context) {
+  if (!graph.entry_block())
+    return Location{}.fail(SsaErrorKind::InvalidHandle, "moved-from SSA graph");
+  const auto& data = SsaAccess::get(graph);
+  std::lock_guard lock(data.index_mutex);
+  if (auto result = verify_graph(owner, graph, context, true); !result)
+    return std::unexpected(std::move(result.error()));
+  return SsaAnalysis(data.analysis);
 }
 
 } // namespace cafe::analysis

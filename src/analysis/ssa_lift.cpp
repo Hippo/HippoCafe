@@ -105,13 +105,13 @@ public:
   /// @param graph Destination graph carrying method parameter definitions.
   /// @param cfg Control flow split at declared verifier frames.
   /// @param frames Verified frame for each CFG block.
+  /// @param debug_widths Slots observable through variable and local type annotation tables.
+  /// @param work Remaining construction work after inspecting Code metadata.
   Lifter(const ClassFile& owner, const CodeAttribute& body, SsaMethod& graph,
-         const ControlFlowGraph& cfg, const SsaFrames& frames) :
+         const ControlFlowGraph& cfg, const SsaFrames& frames, std::span<const std::uint8_t> debug_widths, std::size_t work) :
       owner(owner), code(body.code()), graph(graph), storage(SsaAccess::get(graph)), cfg(cfg), frames(frames),
-      resource(&storage.budget), remaining(storage.limits.max_work), origin(resource), position(resource),
+      resource(&storage.budget), remaining(work), debug_widths(debug_widths), origin(resource), position(resource),
       allocation_sites(resource), roots(resource), changes(resource), exits(resource), entry_offsets(resource), phis(resource), pending(resource) {
-    // Source local assignments also represent debugger-visible uses where local ranges are present.
-    keep_locals = ::cafe::detail::ssa_has_local_metadata(owner, body);
   }
 
   /// Lift the verified method and seal its phi arguments.
@@ -207,7 +207,7 @@ private:
   const SsaFrames& frames; ///< Converged verifier entries in CFG order.
   std::pmr::memory_resource* resource; ///< Destination graph budget shared by scratch allocations.
   std::size_t remaining; ///< Remaining symbolic construction work.
-  bool keep_locals = false; ///< Whether local assignments are observable by source metadata.
+  std::span<const std::uint8_t> debug_widths; ///< Source slots observable through debug metadata.
   std::pmr::vector<SsaOperationId> origin; ///< Operation at each source instruction position.
   std::pmr::vector<std::uint32_t> position; ///< Source position of each original operation.
   std::pmr::unordered_map<std::uint32_t, SsaOperationId> allocation_sites; ///< SSA allocation by source instruction slot.
@@ -487,7 +487,7 @@ SsaResult<void> Lifter::simulate(std::uint32_t b, InstructionEffects& simulator)
       const auto stored = stack.back();
       changes[port(b, slot)].push_back({p, stored});
       stack.pop_back();
-      if (keep_locals) {
+      if (slot < debug_widths.size() && debug_widths[slot]) {
         auto value = materialize(stored);
         if (!value)
           return std::unexpected(std::move(value.error()));
@@ -503,7 +503,7 @@ SsaResult<void> Lifter::simulate(std::uint32_t b, InstructionEffects& simulator)
       op.inputs.push_back(*old);
       const auto updated = result(id, {VerificationKind::Integer});
       changes[port(b, slot)].push_back({p, {.value = updated}});
-      if (keep_locals)
+      if (slot < debug_widths.size() && debug_widths[slot])
         op.local_assignment = SsaLocalAssignment{slot, updated};
       continue;
     }
@@ -730,7 +730,13 @@ SsaResult<SsaMethod> lift_ssa(const ClassFile& owner, std::size_t method_index, 
     if (auto ok = simulator.prepare(item.id, item.instruction, frames->max_locals); !ok)
       return std::unexpected(from_analysis(std::move(ok.error())));
   }
-  Lifter lifter(owner, body, *graph, *cfg, *frames);
+  auto work = limits.max_work;
+  auto widths = ::cafe::detail::ssa_debug_slot_widths(owner, body, limits, work, limits.upstream_resource);
+  if (!widths)
+    return std::unexpected(SsaError{widths.error().kind == WriteErrorKind::Cancelled ? SsaErrorKind::Cancelled
+                                                                                     : SsaErrorKind::ResourceLimitExceeded,
+                                    widths.error().detail});
+  Lifter lifter(owner, body, *graph, *cfg, *frames, *widths, work);
   if (auto ok = lifter.run(simulator, declared->entries); !ok)
     return std::unexpected(std::move(ok.error()));
   return graph;

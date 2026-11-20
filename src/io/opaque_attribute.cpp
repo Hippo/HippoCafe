@@ -255,6 +255,8 @@ private:
     if (!slot || !code || std::size_t(*slot) + width > code->max_locals) {
       return failure_at(offset, ReadErrorKind::MalformedAttribute, "invalid local variable slot");
     }
+    if (offsets.local_slot)
+      offsets.local_slot(offsets.state, *slot, width);
     return {};
   }
 

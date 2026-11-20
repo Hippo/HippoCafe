@@ -59,9 +59,7 @@ std::expected<std::vector<Diagnostic>, WriteError> SsaCommit::finish(
   const auto needed = analysis::compute_max_locals(method, owner, staged, limits);
   if (!needed)
     return analysis_error(needed.error(), path, true, staged);
-  std::size_t local_count = *needed;
-  if (source && provenance.preserves_local_slots)
-    local_count = std::max<std::size_t>(local_count, source->max_locals());
+  std::size_t local_count = std::max<std::size_t>(*needed, provenance.debug_local_count);
   for (const auto& seed : seeds)
     local_count = std::max(local_count, seed.frame.locals.size());
   if (local_count > UINT16_MAX || local_count > limits.max_local_slots)

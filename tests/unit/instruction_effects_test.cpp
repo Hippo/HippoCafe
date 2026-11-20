@@ -479,7 +479,6 @@ TEST(SsaLift, RegistryOperandsSurviveLoweringAndStrictReparse) {
       code.append(Instruction::return_void()).value();
 
     const auto inspect = [&](const SsaMethod& graph, bool relifted) {
-      const auto expected_opcode = relifted && opcode == Opcode::IInc ? Opcode::IAdd : opcode;
       const SsaOperation* tested = nullptr;
       const SsaOperation* sink = nullptr;
       for (const auto& block : graph.blocks())
@@ -487,7 +486,7 @@ TEST(SsaLift, RegistryOperandsSurviveLoweringAndStrictReparse) {
           const auto* op = graph.operation(id);
           if (observer && op->instruction.constant_index() == observer)
             sink = op;
-          else if (op->opcode == expected_opcode && !op->anchor)
+          else if (!op->anchor && (op->opcode == opcode || (relifted && opcode == Opcode::IInc && op->opcode == Opcode::IAdd)))
             tested = op;
         }
       const auto params = graph.parameters();
@@ -499,10 +498,17 @@ TEST(SsaLift, RegistryOperandsSurviveLoweringAndStrictReparse) {
         } else if (opcode == Opcode::Return) {
           EXPECT_TRUE(tested->inputs.empty());
         } else if (opcode == Opcode::IInc) {
-          ASSERT_EQ(tested->inputs.size(), relifted ? 2u : 1u);
-          EXPECT_EQ(tested->inputs.front(), params.front());
-          if (relifted) {
-            const auto* immediate = graph.value(tested->inputs.back());
+          if (tested->opcode == Opcode::IInc) {
+            ASSERT_EQ(tested->inputs.size(), 1u);
+            EXPECT_EQ(tested->inputs.front(), params.front());
+            ASSERT_TRUE(tested->instruction.increment_value());
+            EXPECT_EQ(tested->instruction.increment_value()->amount, spec.increment_value()->amount);
+          } else {
+            // Lowering may expand an increment into a commutative add.
+            ASSERT_EQ(tested->inputs.size(), 2u);
+            const auto param = std::ranges::find(tested->inputs, params.front());
+            ASSERT_NE(param, tested->inputs.end());
+            const auto* immediate = graph.value(param == tested->inputs.begin() ? tested->inputs.back() : tested->inputs.front());
             ASSERT_NE(immediate, nullptr);
             const auto* op = graph.operation(immediate->operation);
             ASSERT_NE(op, nullptr);

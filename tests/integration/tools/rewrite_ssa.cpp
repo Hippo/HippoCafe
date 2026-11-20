@@ -139,10 +139,10 @@ void rewrite_fixture(const path& original, const path& rewritten, AnalysisContex
   check_catch_annotation(reparsed);
 }
 
-void rewrite_analysis(const path& original, const path& rewritten, AnalysisContext& context) {
+void rewrite_methods(const path& original, const path& rewritten, AnalysisContext& context) {
   auto owner = parse(read_bytes(original));
   reconstruct(owner, context);
-  save(rewritten, checked(write_class(owner), "write interface joins and arrays").bytes);
+  save(rewritten, checked(write_class(owner), original.filename().string()).bytes);
 }
 
 std::vector<std::byte> dead_fixture(bool seed) {
@@ -314,7 +314,7 @@ void test_dead(const path& original, const path& rewritten, AnalysisContext& con
 } // namespace
 
 int main(int argc, char** argv) try {
-  require(argc == 5, "usage: rewrite_ssa original-dir output-dir runtime-mode runtime-path");
+  require(argc >= 5, "usage: rewrite_ssa original-dir output-dir runtime-mode runtime-path [fixture ...]");
   const path original = argv[1];
   const path rewritten = argv[2];
   classpath::ClassPathBuilder builder;
@@ -327,7 +327,11 @@ int main(int argc, char** argv) try {
   test_dynamic(original / "SsaDynamic.class", rewritten / "SsaDynamic.class", context);
   test_linkage(original / "SsaLinkage.class", rewritten / "SsaLinkage.class", context);
   rewrite_fixture(original / "SsaFixture.class", rewritten / "SsaFixture.class", context);
-  rewrite_analysis(original / "AnalysisFixture.class", rewritten / "AnalysisFixture.class", context);
+  rewrite_methods(original / "AnalysisFixture.class", rewritten / "AnalysisFixture.class", context);
+  for (int i = 5; i < argc; ++i) {
+    const auto file = std::string(argv[i]) + ".class";
+    rewrite_methods(original / file, rewritten / file, context);
+  }
   return 0;
 } catch (const std::exception& error) {
   std::cerr << error.what() << '\n';

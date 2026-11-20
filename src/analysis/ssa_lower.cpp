@@ -119,7 +119,7 @@ SsaError write_failure(const WriteError& error) {
     default:
       break;
   }
-  return {kind, error.path + ": " + error.detail};
+  return {.kind = kind, .detail = error.path + ": " + error.detail, .write_error_kind = error.kind};
 }
 
 /// A contiguous emitted interval targeting a common exception pad.
@@ -136,21 +136,26 @@ public:
    * @brief Prepare temporary state for emission from a verified graph.
    * @param graph Verified SSA graph.
    * @param source Existing method body or null for a new method.
-   * @param mirrors Whether source local assignments must be mirrored.
+   * @param debug_homes Dedicated homes of source slots referenced by metadata.
+   * @param debug_count Physical slots reserved for parameters and debug homes.
+   * @param metadata_anchors Original instructions anchoring metadata.
    * @param slots Physical home assignments and available scratch slots.
    * @param commit Transaction owning the staged bytecode and resolved constants.
    * @param budget Shared lowering work and cancellation state.
    * @param memory Bounded allocator covering scratch and logical staging.
    */
-  Emitter(const SsaStorage& graph, const CodeAttribute* source, bool mirrors, SsaSlots& slots,
+  Emitter(const SsaStorage& graph, const CodeAttribute* source, std::span<const std::uint32_t> debug_homes,
+          std::size_t debug_count, std::span<const std::uint8_t> metadata_anchors, SsaSlots& slots,
           detail::SsaCommit& commit, SsaLowerBudget& budget, detail::BudgetResource& memory) :
-      graph(graph), source(source), mirrors(mirrors), slots(slots), commit(commit), code(commit.code()),
+      graph(graph), source(source), debug_homes(debug_homes), metadata_anchors(metadata_anchors), slots(slots), commit(commit), code(commit.code()),
       budget(budget), memory(memory), accounted_bytes(commit.class_allocation_bytes()), scratch(&memory),
-      block_labels(graph.blocks.size(), scratch), targets(graph.edges.size(), scratch), moves(graph.edges.size(), scratch),
+      bodies(scratch), block_labels(graph.blocks.size(), scratch), targets(graph.edges.size(), scratch),
+      moves(graph.edges.size(), scratch), predecessor_moves(graph.blocks.size(), scratch), handler_entries(graph.blocks.size(), scratch),
       exceptional(graph.operations.size(), scratch), root_edges(graph.blocks.size(), scratch),
       root_values(graph.edges.size(), scratch), root_positions(graph.edges.size(), scratch), pad_edges(scratch),
       bindings(scratch), boundaries(scratch), exact(graph.operations.size(), scratch), ranges(graph.handlers.size(), scratch),
       handlers(scratch), seeds(scratch), provenance(scratch) {
+    provenance.debug_local_count = debug_count;
   }
 
   /**
@@ -164,7 +169,14 @@ public:
 private:
   const SsaStorage& graph; ///< Verified graph supplying instructions and edges.
   const CodeAttribute* source; ///< Original Code, if present.
-  bool mirrors; ///< Whether source locals are maintained.
+  std::span<const std::uint32_t> debug_homes; ///< Physical home for each metadata-visible source slot.
+  std::span<const std::uint8_t> metadata_anchors; ///< Source instruction indices referenced by offset-bearing attributes.
+  /// Check whether metadata names a source local.
+  /// @param slot Source local index.
+  /// @return Whether the local has a reserved output home.
+  bool has_debug_home(std::size_t slot) const {
+    return slot < debug_homes.size() && debug_homes[slot] != SSA_NO_SLOT;
+  }
   SsaSlots& slots; ///< Allocated homes and stack scheduling flags.
   detail::SsaCommit& commit; ///< Staged class and bytecode transaction.
   MethodCode& code; ///< Detached bytecode owned by commit.
@@ -172,9 +184,12 @@ private:
   detail::BudgetResource& memory; ///< Shared ceiling for PMR scratch and unpublished class allocations.
   std::size_t accounted_bytes; ///< High-water mark of allocations on the owning class resource.
   std::pmr::memory_resource* scratch; ///< Storage for the lowering operation.
+  std::pmr::vector<SsaBlockId> bodies; ///< Blocks that emit a body, in physical order.
   std::pmr::vector<LabelId> block_labels; ///< Body label for each block, after verifier-root entry copies.
   std::pmr::vector<LabelId> targets; ///< Direct body or edge-pad label for each normal or exceptional edge.
   std::pmr::vector<std::pmr::vector<Move>> moves; ///< Simultaneous assignments for each incoming transfer.
+  std::pmr::vector<SsaEdgeId> predecessor_moves; ///< Representative normal bundle emitted before a block's terminator.
+  std::pmr::vector<SsaEdgeId> handler_entries; ///< Shared exceptional bundle emitted at an exclusively exceptional entry.
   std::pmr::vector<std::pmr::vector<SsaEdgeId>> exceptional; ///< Exceptional edge list at each protected operation.
   std::pmr::vector<std::pmr::vector<SsaEdgeId>> root_edges; ///< Synthetic entry transfers at each block.
   std::pmr::vector<std::pmr::vector<SsaValueId>> root_values; ///< Verifier-only local and stack inputs for each dead root.
@@ -233,6 +248,13 @@ private:
    * @param value Definition required next in evaluation order.
    */
   void reference(SsaValueId value);
+  /// @brief Store or discard a stack result that will not be carried to its user.
+  /// @param value SSA definition currently on the JVM stack.
+  void store_result(SsaValueId value);
+  /// @brief Increment a coalesced local in place or produce the sum on the stack.
+  /// @param op Verified integer increment.
+  /// @param core Receives the staged position to protect for exceptional transfers.
+  void increment(const SsaOperation& op, std::size_t& core);
   /**
    * @brief Record a physical copy required by a phi or handler input.
    * @param edge Transfer on which both homes are valid.
@@ -240,6 +262,12 @@ private:
    * @param destination SSA definition receiving the value.
    */
   void add_move(SsaEdgeId edge, std::uint32_t from, SsaValueId destination);
+  /// @brief Check whether a source instruction anchors offset-bearing metadata.
+  /// @param op Candidate source operation.
+  /// @return Whether its original instruction boundary must remain in the emitted code.
+  bool metadata_anchor(const SsaOperation& op) const;
+  /// Thread unprotected, unanchored jump-only chains and choose placement for normal copies.
+  void layout_blocks();
   /**
    * @brief Create block labels, parallel-copy bundles and shared pad destinations.
    */
@@ -260,8 +288,9 @@ private:
    * @param op Verified operation to translate.
    * @param block Owning block containing any outgoing branch arms.
    * @param next Next physically fallthrough-reachable body label, if known.
+   * @param local_begin Earliest position in this block sharing the source operation's incoming debugger state.
    */
-  void operation(const SsaOperation& op, const SsaBlock& block, LabelId next);
+  void operation(const SsaOperation& op, const SsaBlock& block, LabelId next, std::size_t local_begin);
   /**
    * @brief Emit a branch, switch, return or throw operation.
    * @param op Control operation whose operands are already on the stack.
@@ -362,16 +391,142 @@ void Emitter::reference(SsaValueId value) {
   }
 }
 
+void Emitter::store_result(SsaValueId value) {
+  if (slots.carried[value.index])
+    return;
+  const auto kind = graph.values[value.index].type.kind;
+  if (slots.needed[value.index])
+    emit(access(kind, static_cast<std::uint16_t>(slots.homes[value.index]), true));
+  else
+    emit(width(kind) == 2 ? Instruction::pop2() : Instruction::pop());
+}
+
+void Emitter::increment(const SsaOperation& op, std::size_t& core) {
+  const auto operand = op.instruction.increment_value();
+  if (!operand) {
+    fail(SsaErrorKind::InvalidGraph, "iinc has no immediate");
+    return;
+  }
+  const auto input = op.inputs.front();
+  const auto home = slots.homes[input.index];
+  if (home != SSA_NO_SLOT && home == slots.homes[op.result.index]) {
+    exact[op.id.index] = emit(Instruction::increment(static_cast<std::uint16_t>(home), operand->amount));
+    return;
+  }
+  // If the input is already on the stack, push the constant above it.
+  // Otherwise push the immediate first, as a stack-carried prefix of iadd
+  // that will retain the same schedule after the emitted code is lifted.
+  emit(Instruction::sipush(operand->amount));
+  reference(input);
+  core = code.size();
+  emit_simple(Opcode::IAdd);
+  store_result(op.result);
+}
+
 void Emitter::add_move(SsaEdgeId edge, std::uint32_t from, SsaValueId destination) {
   const auto to = slots.homes[destination.index];
   if (to != SSA_NO_SLOT && to != from)
     moves[edge.index].push_back({from, to, move_kind(graph.values[destination.index].type.kind)});
 }
 
-void Emitter::prepare() {
+bool Emitter::metadata_anchor(const SsaOperation& op) const {
+  return op.origin && op.origin->index < metadata_anchors.size() && metadata_anchors[op.origin->index];
+}
+
+void Emitter::layout_blocks() {
+  std::pmr::vector<SsaBlockId> forward(graph.blocks.size(), scratch);
+  for (const auto& block : graph.blocks) {
+    if (!block.id)
+      continue;
+    if (!charge(1 + block.incoming.size() + block.outgoing.size() + block.operations.size()))
+      return;
+    // The VM supplies the caught object on every incoming path. Consume it at
+    // the first instruction of a shared handler whenever the copies agree.
+    if (!block.incoming.empty()) {
+      const auto first = block.incoming.front();
+      bool common_handler = true;
+      for (const auto id : block.incoming) {
+        if (!charge(moves[id.index].size()))
+          return;
+        if (graph.edges[id.index].kind != SsaEdgeKind::Exceptional || moves[id.index] != moves[first.index]) {
+          common_handler = false;
+          break;
+        }
+      }
+      if (common_handler)
+        handler_entries[block.id.index] = first;
+    }
+    const auto& term = graph.operations[block.operations.back().index];
+    // Evaluate control operands before copies. If all normal arms require the
+    // same transfer, the copies can run immediately before the branch unless
+    // a handler needs the locals as they were on entry to this instruction.
+    SsaEdgeId normal{};
+    bool common_transfer = true;
+    for (auto id : block.outgoing) {
+      const auto& edge = graph.edges[id.index];
+      if (edge.kind == SsaEdgeKind::Exceptional) {
+        if (edge.site == term.id)
+          common_transfer = false;
+      } else if (!normal) {
+        normal = id;
+      } else {
+        if (!charge(moves[id.index].size()))
+          return;
+        if (edge.target != graph.edges[normal.index].target || moves[id.index] != moves[normal.index])
+          common_transfer = false;
+      }
+    }
+    if (!normal || !common_transfer)
+      continue;
+    if (!moves[normal.index].empty()) {
+      predecessor_moves[block.id.index] = normal;
+      continue;
+    }
+    // A lifted block may contain local loads or stack shuffles whose only
+    // remaining purpose is provenance. Keep it if any origin anchors a
+    // handler, debugger-visible assignment, or offset-bearing attribute.
+    if (opcode_info(term.opcode).control_flow != ControlFlow::Jump || block.outgoing.size() != 1)
+      continue;
+    if (std::ranges::any_of(block.operations, [&](SsaOperationId id) {
+          const auto& op = graph.operations[id.index];
+          return (id != term.id && !op.anchor) || op.local_assignment || metadata_anchor(op);
+        }))
+      continue;
+    const bool has_entry = std::ranges::any_of(block.incoming, [&](SsaEdgeId id) {
+      const auto& edge = graph.edges[id.index];
+      return !edge.source || edge.kind == SsaEdgeKind::Exceptional;
+    });
+    if (!has_entry)
+      forward[block.id.index] = graph.edges[normal.index].target;
+  }
+
+  // Resolve each chain once. For a cycle, retain one real self-jump so its
+  // incoming branches still target an instruction and execution stays in it.
+  std::pmr::vector<bool> visited(graph.blocks.size(), false, scratch);
+  std::pmr::vector<SsaBlockId> path(scratch);
+  for (const auto& block : graph.blocks) {
+    auto at = block.id;
+    if (!at || block_labels[at.index].scope)
+      continue;
+    while (forward[at.index] && !visited[at.index]) {
+      visited[at.index] = true;
+      path.push_back(at);
+      at = forward[at.index];
+    }
+    if (!block_labels[at.index].scope) {
+      block_labels[at.index] = label();
+      forward[at.index] = {};
+    }
+    for (auto id : path)
+      block_labels[id.index] = block_labels[at.index];
+    path.clear();
+  }
   for (const auto& block : graph.blocks)
-    if (block.id)
-      block_labels[block.id.index] = label();
+    if (block.id && !forward[block.id.index])
+      bodies.push_back(block.id);
+}
+
+void Emitter::prepare() {
   for (const auto& value : graph.values) {
     if (!value.id)
       continue;
@@ -390,6 +545,7 @@ void Emitter::prepare() {
     }
   }
 
+  layout_blocks();
   // One pad can serve different throwing sites when both their live homes and handler agree.
   std::pmr::unordered_multimap<std::size_t, SsaEdgeId> unique(scratch);
   for (const auto& edge : graph.edges) {
@@ -405,7 +561,8 @@ void Emitter::prepare() {
     const bool is_handler = edge.kind == SsaEdgeKind::Exceptional;
     if (is_handler)
       exceptional[edge.site.index].push_back(edge.id);
-    if (bundle.empty() && !is_handler) {
+    if ((is_handler && handler_entries[edge.target.index]) ||
+        (!is_handler && (bundle.empty() || predecessor_moves[edge.source.index]))) {
       targets[edge.id.index] = block_labels[edge.target.index];
       continue;
     }
@@ -440,24 +597,34 @@ void Emitter::copies(std::span<const Move> bundle, bool from_handler) {
   std::pmr::vector<Move> pending(bundle.begin(), bundle.end(), scratch);
   const auto limit = std::min<std::size_t>(UINT16_MAX, budget.limits.max_local_slots);
   if (from_handler) {
-    const bool consumed = std::ranges::any_of(pending, [](Move m) { return m.from == SSA_NO_SLOT; });
-    if (!consumed) {
+    const auto caught = std::ranges::find(pending, SSA_NO_SLOT, &Move::from);
+    if (caught == pending.end()) {
       emit(Instruction::pop());
-    } else if (pending.size() == 1) {
-      emit(Instruction::astore(static_cast<std::uint16_t>(pending.front().to)));
-      return;
     } else {
-      if (caught_slot == SSA_NO_SLOT) {
-        if (slots.count >= limit) {
-          fail(SsaErrorKind::ResourceLimitExceeded, "caught exception requires a scratch local");
-          return;
+      // Capture directly in the destination unless another copy still reads its
+      // old contents. Other consumers can then copy from this same reference home.
+      if (!charge(pending.size()))
+        return;
+      auto capture = caught->to;
+      const bool still_read = std::ranges::any_of(pending, [&](const Move& move) {
+        return move.from != SSA_NO_SLOT && overlap(move.from, width(move.kind), capture, 1);
+      });
+      if (!still_read) {
+        pending.erase(caught);
+      } else {
+        if (caught_slot == SSA_NO_SLOT) {
+          if (slots.count >= limit) {
+            fail(SsaErrorKind::ResourceLimitExceeded, "caught exception requires a scratch local");
+            return;
+          }
+          caught_slot = slots.count++;
         }
-        caught_slot = slots.count++;
+        capture = caught_slot;
       }
-      emit(Instruction::astore(static_cast<std::uint16_t>(caught_slot)));
+      emit(Instruction::astore(static_cast<std::uint16_t>(capture)));
       for (auto& move : pending)
         if (move.from == SSA_NO_SLOT)
-          move.from = caught_slot;
+          move.from = capture;
     }
   }
   if (pending.empty())
@@ -575,11 +742,11 @@ void Emitter::copies(std::span<const Move> bundle, bool from_handler) {
 
 void Emitter::root(const SsaEdge& edge) {
   root_positions[edge.id.index] = code.size();
-  if (edge.kind == SsaEdgeKind::Entry && mirrors) {
+  if (edge.kind == SsaEdgeKind::Entry && !debug_homes.empty()) {
     for (auto id : graph.parameters) {
-      if (!slots.needed[id.index])
-        continue;
       const auto& value = graph.values[id.index];
+      if (!slots.needed[id.index] || slots.homes[id.index] == value.slot)
+        continue;
       emit(access(value.type.kind, static_cast<std::uint16_t>(value.slot), false));
       emit(access(value.type.kind, static_cast<std::uint16_t>(slots.homes[id.index]), true));
     }
@@ -594,6 +761,8 @@ void Emitter::root(const SsaEdge& edge) {
 void Emitter::control(const SsaOperation& op, const SsaBlock& block, LabelId next, std::size_t& core) {
   LabelId jump{}, other{};
   std::pmr::vector<LookupPair> cases(scratch);
+  if (const auto edge = predecessor_moves[block.id.index])
+    copies(moves[edge.index], false);
   for (auto id : block.outgoing) {
     const auto& edge = graph.edges[id.index];
     switch (edge.kind) {
@@ -616,7 +785,7 @@ void Emitter::control(const SsaOperation& op, const SsaBlock& block, LabelId nex
   switch (opcode_info(op.opcode).control_flow) {
     case ControlFlow::Jump: {
       const auto target = jump.scope ? jump : other;
-      if (target != next || !exceptional[op.id.index].empty())
+      if (target != next || !exceptional[op.id.index].empty() || metadata_anchor(op))
         exact[op.id.index] = emit(Branch{Opcode::Goto, target});
       break;
     }
@@ -658,7 +827,7 @@ void Emitter::protect(const SsaOperation& op, std::size_t position) {
   }
 }
 
-void Emitter::operation(const SsaOperation& op, const SsaBlock& block, LabelId next) {
+void Emitter::operation(const SsaOperation& op, const SsaBlock& block, LabelId next, std::size_t local_begin) {
   if (!charge(1 + op.inputs.size() + exceptional[op.id.index].size()))
     return;
   current = op.id;
@@ -668,6 +837,8 @@ void Emitter::operation(const SsaOperation& op, const SsaBlock& block, LabelId n
   if (op.anchor) {
     if (!exceptional[op.id.index].empty())
       emit(Instruction::nop());
+  } else if (op.opcode == Opcode::IInc) {
+    increment(op, core);
   } else {
     const bool constructor_result = op.opcode == Opcode::InvokeSpecial && op.result && !op.inputs.empty() &&
                                     (graph.values[op.inputs.front().index].type.kind == Kind::Uninitialized ||
@@ -680,15 +851,6 @@ void Emitter::operation(const SsaOperation& op, const SsaBlock& block, LabelId n
     core = code.size();
     if (flow != ControlFlow::Next) {
       control(op, block, next, core);
-    } else if (op.opcode == Opcode::IInc) {
-      const auto increment = op.instruction.increment_value();
-      if (!increment) {
-        fail(SsaErrorKind::InvalidGraph, "iinc has no immediate");
-        return;
-      }
-      emit(Instruction::sipush(increment->amount));
-      core = code.size();
-      emit_simple(Opcode::IAdd);
     } else if (op.symbolic) {
       auto instruction = commit.resolve(*op.symbolic);
       if (!instruction) {
@@ -699,20 +861,15 @@ void Emitter::operation(const SsaOperation& op, const SsaBlock& block, LabelId n
     } else {
       exact[op.id.index] = emit(op.instruction);
     }
-    if (op.result && !slots.carried[op.result.index] && (slots.needed[op.result.index] || !constructor_result)) {
-      const auto kind = graph.values[op.result.index].type.kind;
-      if (slots.needed[op.result.index])
-        emit(access(kind, static_cast<std::uint16_t>(slots.homes[op.result.index]), true));
-      else
-        emit(width(kind) == 2 ? Instruction::pop2() : Instruction::pop());
-    }
+    if (op.result && (slots.needed[op.result.index] || !constructor_result))
+      store_result(op.result);
   }
   if (!exceptional[op.id.index].empty())
     protect(op, core);
-  if (mirrors && op.local_assignment) {
+  if (op.local_assignment && has_debug_home(op.local_assignment->slot)) {
     const auto id = op.local_assignment->value;
     reference(id);
-    const auto store = access(graph.values[id.index].type.kind, op.local_assignment->slot, true);
+    const auto store = access(graph.values[id.index].type.kind, static_cast<std::uint16_t>(debug_homes[op.local_assignment->slot]), true);
     const auto at = emit(store);
     if (op.origin && op.anchor && op.instruction.opcode() == store.opcode())
       exact[op.id.index] = at;
@@ -720,7 +877,8 @@ void Emitter::operation(const SsaOperation& op, const SsaBlock& block, LabelId n
   if (op.origin) {
     const auto matched = exact[op.id.index];
     provenance.instructions.push_back({*op.origin, boundary(begin), boundary(code.size()),
-                                       matched.generation ? std::optional{matched} : std::nullopt});
+                                       matched.generation ? std::optional{matched} : std::nullopt,
+                                       local_begin != begin ? boundary(local_begin) : LabelId{}});
   }
 }
 
@@ -762,26 +920,34 @@ void Emitter::finalize() {
     for (auto id : root_values[edge.id.index]) {
       const auto& value = graph.values[id.index];
       add(slots.homes[id.index], value.type);
-      if (mirrors && value.kind == SsaValueKind::RootLocal)
-        add(value.slot, value.type);
+      if (value.kind == SsaValueKind::RootLocal && has_debug_home(value.slot))
+        add(debug_homes[value.slot], value.type);
     }
   }
 }
 
 SsaResult<SsaLowerResult> Emitter::run(AnalysisContext& context, const SsaLowerOptions& options) {
   prepare();
-  for (std::size_t index = 0; index < graph.blocks.size(); ++index) {
-    const auto& block = graph.blocks[index];
-    if (failure || !block.id)
-      continue;
-    for (auto id : root_edges[index])
+  for (std::size_t index = 0; !failure && index < bodies.size(); ++index) {
+    const auto& block = graph.blocks[bodies[index].index];
+    for (auto id : root_edges[block.id.index])
       root(graph.edges[id.index]);
-    bindings.emplace_back(block_labels[index], code.size());
+    bindings.emplace_back(block_labels[block.id.index], code.size());
+    if (const auto handler = handler_entries[block.id.index])
+      copies(moves[handler.index], true);
     LabelId next{};
-    if (index + 1 < graph.blocks.size() && root_edges[index + 1].empty())
-      next = block_labels[index + 1];
-    for (auto id : block.operations)
-      operation(graph.operations[id.index], block, next);
+    if (index + 1 < bodies.size() && root_edges[bodies[index + 1].index].empty())
+      next = block_labels[bodies[index + 1].index];
+    // Inserted operations can read and write SSA homes, but never touch a
+    // dedicated debug home. Include them in the next source operation's local
+    // coverage while preserving its exact line and annotation coordinates.
+    auto local_begin = code.size();
+    for (auto id : block.operations) {
+      const auto& op = graph.operations[id.index];
+      operation(op, block, next, local_begin);
+      if (op.origin)
+        local_begin = code.size();
+    }
   }
   current = {};
   for (auto id : pad_edges) {
@@ -792,23 +958,35 @@ SsaResult<SsaLowerResult> Emitter::run(AnalysisContext& context, const SsaLowerO
     copies(moves[id.index], edge.kind == SsaEdgeKind::Exceptional);
     emit(Branch{Opcode::Goto, block_labels[edge.target.index]});
   }
+  // Each debugger home is dedicated for the method. Relocation intersects these
+  // verified homes with the emitted fragments of each individual source range.
+  if (!failure && !debug_homes.empty() && source) {
+    std::pmr::vector<bool> intact(debug_homes.size(), true, scratch);
+    std::pmr::unordered_map<std::uint32_t, InstructionId> writes(scratch);
+    for (const auto& op : graph.operations)
+      if (op.id && op.origin && op.local_assignment)
+        writes.emplace(op.origin->index, *op.origin);
+    for (const auto& entry : source->code().instructions()) {
+      const auto opcode = entry.instruction.opcode();
+      if ((opcode < Opcode::IStore || opcode > Opcode::AStore) && opcode != Opcode::IInc)
+        continue;
+      const auto slot = opcode == Opcode::IInc ? entry.instruction.increment_value()->local : *entry.instruction.local_index();
+      if (!has_debug_home(slot))
+        continue;
+      const auto found = writes.find(entry.id.index);
+      if (found == writes.end() || found->second != entry.id)
+        intact[slot] = false;
+    }
+    const auto begin = boundary(0);
+    const auto end = boundary(code.size());
+    for (std::size_t slot = 0; slot < debug_homes.size(); ++slot)
+      if (intact[slot] && has_debug_home(slot))
+        provenance.locals.push_back({static_cast<std::uint16_t>(slot), static_cast<std::uint16_t>(debug_homes[slot]), begin, end});
+  }
   if (!failure)
     finalize();
   if (failure)
     return std::unexpected(std::move(*failure));
-  if (mirrors && source) {
-    std::pmr::unordered_map<std::uint32_t, InstructionId> mirrored(scratch);
-    for (const auto& op : graph.operations)
-      if (op.id && op.origin && op.local_assignment)
-        mirrored.emplace(op.origin->index, *op.origin);
-    provenance.preserves_local_slots = std::ranges::all_of(source->code().instructions(), [&](const InstructionEntry& entry) {
-      const auto opcode = entry.instruction.opcode();
-      if ((opcode < Opcode::IStore || opcode > Opcode::AStore) && opcode != Opcode::IInc)
-        return true;
-      const auto it = mirrored.find(entry.id.index);
-      return it != mirrored.end() && it->second == entry.id;
-    });
-  }
   auto limits = context.limits();
   limits.upstream_resource = &memory;
   limits.max_work = budget.remaining;
@@ -827,26 +1005,51 @@ SsaResult<SsaLowerResult> lower_ssa(ClassFile& owner, const SsaMethod& method, A
     return std::unexpected(std::move(verified.error()));
   const auto& graph = SsaAccess::get(method);
   const auto* source = owner.methods()[graph.method_index].code();
-  const bool mirror = source && detail::ssa_has_local_metadata(owner, *source);
-  std::size_t reserved = mirror ? source->max_locals() : 0u;
-  for (auto parameter : graph.parameters) {
-    const auto& value = graph.values[parameter.index];
-    reserved = std::max<std::size_t>(reserved, value.slot + value.type.width());
-  }
-  // Raw code edits may introduce local indices beyond the previous max_locals.
-  if (mirror)
-    for (const auto& op : graph.operations)
-      if (op.id && op.local_assignment)
-        reserved = std::max<std::size_t>(reserved, op.local_assignment->slot +
-                                                       graph.values[op.local_assignment->value.index].type.width());
   const auto& limits = context.limits();
   detail::BudgetResource memory(limits.upstream_resource, limits.max_memory_bytes);
   SsaLowerBudget work{limits, limits.max_work};
-  auto slots = assign_ssa_slots(graph, reserved, mirror, work, &memory);
+  std::pmr::vector<std::uint8_t> widths(&memory), metadata_anchors(&memory);
+  if (source) {
+    auto collected = detail::ssa_debug_slot_widths(owner, *source, limits, work.remaining, &memory, &metadata_anchors);
+    if (!collected)
+      return std::unexpected(write_failure(collected.error()));
+    widths = std::move(*collected);
+  }
+  std::size_t parameters = 0;
+  for (const auto id : graph.parameters) {
+    const auto& value = graph.values[id.index];
+    parameters = std::max<std::size_t>(parameters, value.slot + value.type.width());
+  }
+  // Some slots hold different categories in disjoint scopes. Include every
+  // mirrored write's width, even when only a narrow scope names this slot.
+  if (!widths.empty()) {
+    if (auto charged = work.spend(graph.operations.size() + graph.values.size() + widths.size()); !charged)
+      return std::unexpected(std::move(charged.error()));
+    for (const auto& op : graph.operations) {
+      if (op.id && op.local_assignment) {
+        const auto [slot, id] = *op.local_assignment;
+        if (slot < widths.size() && widths[slot])
+          widths[slot] = std::max<std::uint8_t>(widths[slot], graph.values[id.index].type.width());
+      }
+    }
+    for (const auto& value : graph.values)
+      if (value.id && value.kind == SsaValueKind::RootLocal && value.slot < widths.size() && widths[value.slot])
+        widths[value.slot] = std::max<std::uint8_t>(widths[value.slot], value.type.width());
+  }
+  std::pmr::vector<std::uint32_t> homes(widths.size(), SSA_NO_SLOT, &memory);
+  std::size_t reserved = parameters;
+  for (std::size_t slot = 0; slot < widths.size(); ++slot) {
+    if (!widths[slot])
+      continue;
+    const auto home = slot < parameters ? slot : reserved;
+    homes[slot] = static_cast<std::uint32_t>(home);
+    reserved = std::max(reserved, home + widths[slot]);
+  }
+  auto slots = assign_ssa_slots(graph, reserved, homes, work, &memory);
   if (!slots)
     return std::unexpected(std::move(slots.error()));
   detail::SsaCommit commit(owner, graph.method_index);
-  Emitter emitter(graph, source, mirror, *slots, commit, work, memory);
+  Emitter emitter(graph, source, homes, reserved, metadata_anchors, *slots, commit, work, memory);
   return emitter.run(context, options);
 } catch (const detail::BudgetExceeded&) {
   return std::unexpected(SsaError{SsaErrorKind::ResourceLimitExceeded, "SSA lowering memory budget exhausted"});

@@ -28,8 +28,28 @@ public final class VerifySsa {
         }
         try (PrintStream output = new PrintStream(args[0], StandardCharsets.UTF_8)) {
             trace(output);
+            for (int i = 1; i < args.length; ++i) {
+                traceProtectedLoop(output, args[i]);
+            }
             if (output.checkError()) {
                 throw new AssertionError("could not write execution trace");
+            }
+        }
+    }
+
+    static void traceProtectedLoop(PrintStream output, String fixture) throws Exception {
+        Method run = Class.forName(fixture).getMethod("run", int.class, int.class, StringBuilder.class);
+        for (int trips : new int[]{0, 1, 4}) {
+            // Zero completes normally. Every other input throws at one specific iteration and call.
+            for (int failure = 0; failure <= 2 * trips; ++failure) {
+                StringBuilder events = new StringBuilder();
+                int result = (int) run.invoke(null, trips, failure, events);
+                boolean arithmetic = events.indexOf("A") >= 0;
+                boolean runtime = events.indexOf("R") >= 0;
+                if (arithmetic != (failure % 2 == 1) || runtime != (failure > 0 && failure % 2 == 0)) {
+                    throw new AssertionError(fixture + " selected the wrong handler for failure " + failure);
+                }
+                output.println(fixture + "/" + trips + "/" + failure + "/" + result + "/" + events);
             }
         }
     }

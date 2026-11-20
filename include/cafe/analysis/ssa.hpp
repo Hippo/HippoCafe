@@ -171,6 +171,7 @@ struct SsaError {
   SsaOperationId operation{}; ///< Associated operation when known.
   SsaEdgeId edge{}; ///< Associated transfer when known.
   std::optional<AnalysisError> analysis{}; ///< Underlying JVM verifier or resolution error when available.
+  std::optional<WriteErrorKind> write_error_kind{}; ///< Writer failure category from final layout, verification, or metadata relocation.
 };
 /**
  * @brief Successful SSA operation or a structured failure.
@@ -444,6 +445,68 @@ private:
   explicit SsaMethod(std::unique_ptr<SsaStorage> storage) noexcept;
   std::unique_ptr<SsaStorage> storage; ///< Stable graph and allocator ownership.
 };
+
+/**
+ * @brief Render the editable graph in block and instruction order. Includes typed definitions,
+ * edge-labeled phi arguments, and the protected operation and handler for each exceptional edge.
+ * IDs use graph-local indices so independently built copies of the same graph can be compared.
+ * @param graph Method graph to inspect, which may be only partially constructed.
+ * @return Diagnostic text for people reading or comparing graphs.
+ * @ingroup analysis
+ */
+[[nodiscard]] std::string dump_ssa(const SsaMethod& graph);
+
+struct SsaAnalysisData;
+
+/// Read-only indexes for one verified graph revision. Moving the graph preserves the snapshot.
+/// A successful graph edit or destruction invalidates the snapshot and all borrowed use spans.
+/// @ingroup analysis
+class SsaAnalysis {
+public:
+  /// @return Whether the graph still owns this revision.
+  [[nodiscard]] bool is_current() const noexcept;
+
+  /// @brief Look up a definition's operation operands, debug assignments, and phi inputs.
+  /// @param value Graph-scoped definition.
+  /// @return Borrowed use sites, or InvalidHandle for a foreign handle or expired revision.
+  [[nodiscard]] SsaResult<std::span<const SsaUse>> uses(SsaValueId value) const;
+
+  /// @brief Test dominance of block entries. A block dominates itself.
+  /// @param definition Block whose entry is tested as the dominator.
+  /// @param use Block being queried.
+  /// @return Dominance result, or InvalidHandle for an invalid handle or expired revision.
+  [[nodiscard]] SsaResult<bool> dominates(SsaBlockId definition, SsaBlockId use) const;
+
+  /// @brief Test whether a definition dominates evaluation of the operation's operands.
+  /// @param definition Parameter, phi, instruction result, or edge-defined value.
+  /// @param use Operation at whose pre-state the definition must be available.
+  /// @return Dominance result, or InvalidHandle for an invalid handle or expired revision.
+  [[nodiscard]] SsaResult<bool> dominates(SsaValueId definition, SsaOperationId use) const;
+
+  /// @brief Test whether a definition dominates a specific incoming phi transfer.
+  /// @param definition Parameter, phi, instruction result, or edge-defined value.
+  /// @param use Transfer, including an exceptional transfer from an operation's pre-state.
+  /// @return Dominance result, or InvalidHandle for an invalid handle or expired revision.
+  [[nodiscard]] SsaResult<bool> dominates(SsaValueId definition, SsaEdgeId use) const;
+
+private:
+  /** @cond duplicate_friend_declarations */
+  friend SsaResult<SsaAnalysis> analyze_ssa(const ClassFile&, const SsaMethod&, AnalysisContext&);
+  /** @endcond */
+  /// Borrow the current graph-owned revision.
+  /// @param indexes Ownership token for the verified indexes.
+  explicit SsaAnalysis(const std::shared_ptr<SsaAnalysisData>& indexes) noexcept : indexes(indexes) {
+  }
+  std::weak_ptr<const SsaAnalysisData> indexes; ///< The graph owns the current revision's data.
+};
+
+/// @brief Verify a graph and expose its indexed uses and program-point dominance.
+/// @param owner Class containing the bound method and constant pool.
+/// @param graph Graph whose edits invalidate this snapshot.
+/// @param context Hierarchy snapshot, resource limits, and cancellation token.
+/// @return A snapshot of the current graph or a verification or resource error.
+/// @ingroup analysis
+[[nodiscard]] SsaResult<SsaAnalysis> analyze_ssa(const ClassFile& owner, const SsaMethod& graph, AnalysisContext& context);
 
 /**
  * @brief Start an empty SSA body for a concrete method. Initializes the entry and its parameters.

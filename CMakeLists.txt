@@ -86,6 +86,7 @@ add_library(hippocafe STATIC
   src/analysis/frame_merge.cpp
   src/analysis/instruction_effects.cpp
   src/analysis/max_locals.cpp
+  src/analysis/ssa_dump.cpp
   src/analysis/ssa_graph.cpp
   src/analysis/ssa_lift.cpp
   src/analysis/ssa_lower.cpp
@@ -142,7 +143,7 @@ if(HIPPOCAFE_BUILD_FUZZERS)
 endif()
 
 if(HIPPOCAFE_BUILD_EXAMPLES)
-  foreach(example IN ITEMS inspect_class roundtrip quickstart edit_and_compute edit_ssa)
+  foreach(example IN ITEMS inspect_class roundtrip quickstart edit_and_compute edit_ssa ssa_constants)
     add_executable(hippocafe_${example} examples/${example}.cpp)
     target_link_libraries(hippocafe_${example} PRIVATE hippocafe::hippocafe)
     hippocafe_configure_target(hippocafe_${example})

@@ -111,5 +111,89 @@ TEST(SsaGraph, EnumeratesParameterSlotsAndVerifierRootInputs) {
   EXPECT_EQ(graph.value(stack), nullptr);
   EXPECT_EQ(graph.edge(root), nullptr);
 }
+TEST(SsaGraph, AnalysisIndexesOperandsAndPhiEdgesAndUsesExceptionalPreState) {
+  auto owner = owner_with_declaration();
+  AnalysisContext context;
+  auto graph = create_ssa(owner, 0, context).value();
+  const auto entry = graph.entry_block();
+  const auto handler = graph.add_block().value();
+  const auto dead = graph.add_block().value();
+  (void)graph.add_dead_root(dead).value();
+  (void)graph.append_terminator(dead, Opcode::Return).value();
+  const auto integer = SsaType{VerificationKind::Integer};
+  const auto one = graph.append_operation(entry, Instruction::simple(Opcode::IConst1).value(), {}, integer).value();
+  const auto one_value = graph.operation(one)->result;
+  const auto two = graph.append_operation(entry, Instruction::simple(Opcode::IConst2).value(), {}, integer).value();
+  const auto two_value = graph.operation(two)->result;
+  const auto divide = graph.append_operation(entry, Instruction::simple(Opcode::IDiv).value(), std::array{one_value, one_value}, integer).value();
+  const auto quotient = graph.operation(divide)->result;
+  const auto end = graph.append_terminator(entry, Opcode::Return).value();
+  const auto clause = graph.add_handler(handler, {}).value();
+  const auto edge = graph.add_exception_edge(divide, clause, {VerificationKind::Object, "java/lang/Throwable"}).value();
+  const auto phi = graph.add_phi(handler, integer).value();
+  ASSERT_TRUE(graph.set_phi_input(phi, edge, one_value));
+  const auto unwind = graph.append_terminator(handler, Opcode::AThrow, std::array{graph.edge(edge)->exception}).value();
+
+  auto analysis = analyze_ssa(owner, graph, context);
+  ASSERT_TRUE(analysis) << analysis.error().detail;
+  EXPECT_TRUE(analysis->dominates(entry, handler).value());
+  EXPECT_TRUE(analysis->dominates(handler, handler).value());
+  EXPECT_FALSE(analysis->dominates(entry, dead).value());
+  EXPECT_FALSE(analysis->dominates(handler, entry).value());
+  EXPECT_TRUE(analysis->dominates(one_value, edge).value());
+  EXPECT_TRUE(analysis->dominates(quotient, end).value());
+  EXPECT_FALSE(analysis->dominates(quotient, edge).value());
+  EXPECT_FALSE(analysis->dominates(quotient, unwind).value());
+  EXPECT_TRUE(analysis->dominates(graph.edge(edge)->exception, edge).value());
+  EXPECT_FALSE(analysis->dominates(quotient, divide).value());
+  const auto uses = analysis->uses(one_value).value();
+  ASSERT_EQ(uses.size(), 3u);
+  EXPECT_EQ(uses[0].operation, divide);
+  EXPECT_EQ(uses[0].index, 0u);
+  EXPECT_EQ(uses[1].index, 1u);
+  EXPECT_EQ(uses[2].phi, phi);
+  EXPECT_EQ(uses[2].edge, edge);
+  EXPECT_FALSE(graph.set_input(divide, 99, two_value));
+  EXPECT_TRUE(analysis->is_current());
+  ASSERT_TRUE(graph.replace_uses(one_value, two_value));
+  EXPECT_FALSE(analysis->is_current());
+  EXPECT_EQ(analysis->uses(one_value).error().kind, SsaErrorKind::InvalidHandle);
+  EXPECT_EQ(analysis->dominates(quotient, end).error().kind, SsaErrorKind::InvalidHandle);
+  EXPECT_TRUE(graph.uses(one_value).value().empty());
+  ASSERT_EQ(graph.uses(two_value).value().size(), 3u);
+  EXPECT_EQ(graph.operation(divide)->inputs[1], two_value);
+  EXPECT_EQ(graph.value(phi)->incoming.front().value, two_value);
+  auto rebuilt = analyze_ssa(owner, graph, context).value();
+  ASSERT_TRUE(graph.set_input(divide, 1, one_value));
+  EXPECT_FALSE(rebuilt.is_current());
+  EXPECT_EQ(graph.uses(two_value).value().size(), 2u);
+  EXPECT_EQ(graph.uses(one_value).value().front().index, 1u);
+}
+
+TEST(SsaGraph, AnalysisSurvivesGraphMoveAndExpiresWhenOwnerIsDestroyed) {
+  auto owner = owner_with_declaration();
+  AnalysisContext context;
+  auto foreign = create_ssa(owner, 0, context).value();
+  std::optional<SsaAnalysis> saved;
+  {
+    auto graph = create_ssa(owner, 0, context).value();
+    (void)graph.append_terminator(graph.entry_block(), Opcode::Return).value();
+    saved = analyze_ssa(owner, graph, context).value();
+    auto moved = std::move(graph);
+    ASSERT_TRUE(saved->is_current());
+    EXPECT_TRUE(saved->dominates(moved.entry_block(), moved.entry_block()).value());
+    EXPECT_EQ(saved->dominates(foreign.entry_block(), moved.entry_block()).error().kind, SsaErrorKind::InvalidHandle);
+    EXPECT_EQ(saved->uses(foreign.parameters()[0]).error().kind, SsaErrorKind::InvalidHandle);
+    ASSERT_TRUE(analyze_ssa(owner, moved, context));
+    auto limits = context.limits();
+    limits.max_work = 0;
+    AnalysisContext restricted(context.hierarchy(), limits);
+    EXPECT_EQ(analyze_ssa(owner, moved, restricted).error().kind, SsaErrorKind::ResourceLimitExceeded);
+    EXPECT_TRUE(saved->is_current());
+  }
+  EXPECT_FALSE(saved->is_current());
+  EXPECT_EQ(saved->uses(foreign.parameters()[0]).error().kind, SsaErrorKind::InvalidHandle);
+}
+
 } // namespace
 } // namespace cafe::analysis

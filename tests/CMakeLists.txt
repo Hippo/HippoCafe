@@ -28,6 +28,9 @@ endif()
 if(TARGET hippocafe_edit_ssa)
   add_test(NAME hippocafe.edit_ssa COMMAND hippocafe_edit_ssa)
 endif()
+if(TARGET hippocafe_ssa_constants)
+  add_test(NAME hippocafe.ssa_constants COMMAND hippocafe_ssa_constants)
+endif()
 find_package(Python3 QUIET COMPONENTS Interpreter)
 if(Python3_Interpreter_FOUND)
   add_test(NAME hippocafe.documentation COMMAND "${Python3_EXECUTABLE}"
@@ -40,6 +43,18 @@ add_test(NAME hippocafe.fixture_checksums COMMAND "${CMAKE_COMMAND}"
 
 find_package(Java 17 QUIET COMPONENTS Runtime Development)
 if(Java_FOUND)
+  add_executable(hippocafe_repeat_ssa integration/tools/repeat_ssa.cpp)
+  target_link_libraries(hippocafe_repeat_ssa PRIVATE hippocafe::hippocafe)
+  target_include_directories(hippocafe_repeat_ssa PRIVATE "${PROJECT_SOURCE_DIR}/examples" "${PROJECT_SOURCE_DIR}/src")
+  hippocafe_configure_target(hippocafe_repeat_ssa)
+  foreach(mode IN ITEMS debug plain)
+    add_test(NAME hippocafe.jvm_ssa_repeated.${mode} COMMAND "${CMAKE_COMMAND}"
+      "-DREWRITE=$<TARGET_FILE:hippocafe_repeat_ssa>"
+      "-DJAVAC=${Java_JAVAC_EXECUTABLE}" "-DJAVA=${Java_JAVA_EXECUTABLE}"
+      "-DMODE=${mode}" "-DOUTPUT_DIR=${CMAKE_CURRENT_BINARY_DIR}/jvm-ssa-repeated/${mode}"
+      -P "${CMAKE_CURRENT_SOURCE_DIR}/integration/run_java_ssa_repeated.cmake")
+  endforeach()
+
   set(java_fixture_dir "${CMAKE_CURRENT_BINARY_DIR}/java-fixtures")
   set(java_sources "${fixture_dir}/java/module-info.java" "${fixture_dir}/java/cafe/fixtures/Features.java")
   add_custom_command(OUTPUT "${java_fixture_dir}/module-info.class"

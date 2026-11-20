@@ -140,6 +140,13 @@ results and stack permutations. Declared stack maps provide verifier inputs
 for disconnected modern code. Method-entry parameters, declared root inputs,
 and edge-defined exceptions have distinct definitions in the graph.
 
+A read-only analysis snapshot indexes each value's operation operands, local
+assignments, and incoming phi arguments. Dominance queries use the verifier's
+program points for block entry, operand evaluation, normal instruction results,
+and individual transfers. A result is available on normal completion of its
+instruction. Each exceptional transfer sees the pre-instruction state and its
+own caught value. Editing the graph invalidates the snapshot and its use spans.
+
 Lowering resolves phi copies on individual transfers, assigns JVM local slots,
 and maps protected instruction intervals to ordered catch clauses. Emission
 stages the new instructions, class dependencies and relocated Code attributes.

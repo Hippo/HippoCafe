@@ -9,6 +9,8 @@
 #include <cafe/analysis/ssa.hpp>
 #include <hippo/cafe.hpp>
 
+#include "io/class_format.hpp"
+
 namespace cafe::fuzz {
 namespace {
 
@@ -50,6 +52,25 @@ SsaOperationId subtraction(const SsaMethod& graph) {
     }
   }
   fail("lookup generated subtraction", "operation missing");
+}
+
+// Mutated inputs can exhaust the configured budgets or wire-format bounds. The
+// standalone fuzzer also has no external classpath for resolving new frame joins.
+bool expected_lower_failure(const SsaError& error) {
+  if (error.kind == SsaErrorKind::ResourceLimitExceeded)
+    return true;
+  if (error.kind != SsaErrorKind::EmissionFailure || !error.write_error_kind)
+    return false;
+  switch (*error.write_error_kind) {
+    case WriteErrorKind::ClassResolutionFailure:
+    case WriteErrorKind::ConstantPoolOverflow:
+    case WriteErrorKind::CodeTooLarge:
+    case WriteErrorKind::AttributeTooLarge:
+    case WriteErrorKind::StackMapOffsetOverflow:
+      return true;
+    default:
+      return false;
+  }
 }
 
 // Each property serializes the installed body through the ordinary writer. Reopen with
@@ -111,10 +132,16 @@ ClassFile make_program(std::string_view input) {
 
 void exercise_ssa(std::string_view input) {
   auto parsed = read_class(std::as_bytes(std::span(input)), STRICT_INPUT);
-  if (!parsed || !write_class(parsed->class_file))
+  if (!parsed)
     return;
-  AnalysisContext context(ssa_limits());
   auto& owner = parsed->class_file;
+  auto limits = ssa_limits();
+  if (cafe::detail::short_code_header(owner.version())) {
+    // Stay below the historical u1 maxima so expansion hits a resource limit first.
+    limits.max_local_slots = UINT8_MAX;
+    limits.max_stack_slots = UINT8_MAX - 2; // A single instruction can push a category-two value.
+  }
+  AnalysisContext context(limits);
   const auto method_count = owner.methods().size();
   std::size_t attempted = 0;
   for (std::size_t offset = 0; offset < method_count && attempted < 4; ++offset) {
@@ -131,10 +158,25 @@ void exercise_ssa(std::string_view input) {
       continue;
     if (!checked)
       fail("verify lifted SSA", checked.error().detail);
+    const WriteOptions reencode{.force_reencode = true};
+    const auto before = write_class(owner, reencode);
+    if (!before)
+      return;
+    const auto& code = owner.methods()[i].code()->code();
+    const auto first = code.at(0);
+    const auto instruction = code.get(first).value();
     const auto lowered = lower_ssa(owner, *graph, context, {.drop_unsafe_code_attributes = true});
     if (!lowered) {
+      if (!expected_lower_failure(lowered.error()))
+        fail("unexpected lowering failure", lowered.error().detail);
       if (!graph->is_current(owner, context))
         fail("failed lowering changed the source", lowered.error().detail);
+      const auto* body = owner.methods()[i].code();
+      if (!body || body->code().get(first) != instruction)
+        fail("failed lowering changed an instruction handle", lowered.error().detail);
+      const auto after = write_class(owner, reencode);
+      if (!after || before->bytes != after->bytes)
+        fail("failed lowering changed serialized bytes", lowered.error().detail);
       continue;
     }
     // Emitted code can have more instructions and locals than the bounded input.

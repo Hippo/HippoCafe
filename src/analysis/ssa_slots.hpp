@@ -53,12 +53,13 @@ struct SsaSlots {
  * @brief Compute conservative live intervals over ordinary and instruction-specific exceptional edges.
  * @param graph Verified graph supplying value definitions and incoming transfers.
  * @param reserved Leading physical slots reserved for receiver, arguments or visible source locals.
- * @param mirror_locals Include original source-local writes as uses for debug preservation.
+ * @param mirrored_homes Map from source slot to debugger home, or SSA_NO_SLOT when it needs no mirror.
  * @param budget Work and cancellation state shared with bytecode generation.
  * @param scratch Borrowed allocator for assignments and temporary liveness state.
  * @return Assignment indexed by graph value, or a slot, work or cancellation failure.
  */
 [[nodiscard]] SsaResult<SsaSlots> assign_ssa_slots(const SsaStorage& graph, std::size_t reserved,
-                                                   bool mirror_locals, SsaLowerBudget& budget, std::pmr::memory_resource* scratch);
+                                                   std::span<const std::uint32_t> mirrored_homes, SsaLowerBudget& budget,
+                                                   std::pmr::memory_resource* scratch);
 
 } // namespace cafe::analysis

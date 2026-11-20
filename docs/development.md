@@ -114,7 +114,12 @@ JMOD fixture when the installed JDK supplies no runtime archives.
 
 The SSA integration test launches the original and rewritten classes in separate
 `java -Xverify:all` processes. It compares execution traces and checks the
-expected results of an SSA edit and an SSA-authored method. CI runs the GCC
+expected results of an SSA edit and an SSA-authored method. Generated protected
+loops exercise competing handlers and record side effects around each throwing
+call. The `jvm_ssa_repeated` tests compile a counting loop with and without
+debug information, edit its addend, and check instruction and local counts
+through five successive rewrites. The debug case reads the slots advertised
+for both variables while the loop runs. CI runs the GCC
 debug suite on Java 17 and the Clang sanitizer suite on Java 25.
 
 ```sh
@@ -139,14 +144,19 @@ build/fuzz/fuzz/hippocafe_libfuzzer -seed=314159 -runs=5000 -max_len=524288 buil
 
 The two engines exercise parsing, preservation/re-encoding, bytecode analysis,
 SSA construction, edited emission and re-lifting, and archive/classpath boundaries.
+The unit suite requires every method in a set of checked-in SSA fixtures to
+lower and re-lift. On an expected lowering failure the raw-class fuzzer
+checks the source stamp, a live instruction handle, and the re-encoded bytes.
 Keep mutations and failure artifacts in the build tree. Reduce reproducible
 failures before adding fixtures or regression cases.
 
 The `release-benchmarks` preset builds `hippocafe_benchmarks`. Its arguments select a
 fixture directory, iteration count, and optional Java home. Measurements cover parsing,
 writing, memory, CFG/frame work, and optional runtime indexing/hierarchy resolution.
-The SSA cases report lift and lower times, class size, instruction count, and
-local slots for a straight-line arithmetic chain and a loop with two carried values.
+The SSA cases edit an addition on the first rewrite and use each strictly reparsed
+output as the input to the next rewrite. They report total lift and lower times
+and show class size, instruction count, and local slots at input, after the edit,
+and after the final rewrite for an arithmetic chain and a loop with two carried values.
 Compare identical fixtures and toolchain settings when changing allocation or hot paths.
 
 ## Documentation conventions

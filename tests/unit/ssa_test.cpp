@@ -200,6 +200,100 @@ TEST(SsaConstruction, LoopCarriedStackValuesFormAPairOfCyclicPhiCopies) {
     return pair.first != pair.second && std::ranges::find(back_values, std::pair{pair.second, pair.first}) != back_values.end();
   }));
   expect_writable(fixture, *graph);
+  // The unconditional backedge must swap both live values before branching.
+  // This loop has no critical edges or handlers that would need a trailing pad.
+  const auto& lowered = fixture.code();
+  EXPECT_EQ(lowered.get(lowered.at(lowered.size() - 1))->opcode(), Opcode::IReturn);
+}
+
+TEST(SsaLowering, ThreadsAConditionalArmThroughNonAdjacentJumps) {
+  MethodFixture fixture("(I)I");
+  auto& code = fixture.code();
+  const auto far = code.make_label().value();
+  const auto near = code.make_label().value();
+  const auto result = code.make_label().value();
+  const auto ids = code.append(std::array<InstructionBuilder, 8>{
+                                   Instruction::iload(0), Branch{Opcode::IfEq, far}, simple(Opcode::IConst1), simple(Opcode::IReturn),
+                                   Branch{Opcode::Goto, result}, simple(Opcode::IConst2), simple(Opcode::IReturn), Branch{Opcode::Goto, near}})
+                       .value();
+  code.bind_label(far, {ids[7]}).value();
+  code.bind_label(near, {ids[4]}).value();
+  code.bind_label(result, {ids[5]}).value();
+  auto graph = fixture.lift();
+  ASSERT_TRUE(graph) << graph.error().detail;
+  expect_writable(fixture, *graph);
+
+  const auto& lowered = fixture.code();
+  for (const auto [id, instruction] : lowered.instructions()) {
+    if (instruction.opcode() == Opcode::IfEq) {
+      const auto target = lowered.label_position(lowered.branch_target(id).value()).value().before;
+      ASSERT_TRUE(target);
+      EXPECT_EQ(lowered.get(*target)->opcode(), Opcode::IConst2);
+      return;
+    }
+  }
+  FAIL() << "missing conditional branch";
+}
+
+TEST(SsaLowering, ForwardingCycleKeepsOneExecutableJump) {
+  MethodFixture fixture("()V");
+  auto& code = fixture.code();
+  const auto left = code.make_label().value();
+  const auto right = code.make_label().value();
+  const auto ids = code.append(std::array<InstructionBuilder, 3>{
+                                   Branch{Opcode::Goto, right}, Branch{Opcode::Goto, right}, Branch{Opcode::Goto, left}})
+                       .value();
+  code.bind_label(left, {ids[1]}).value();
+  code.bind_label(right, {ids[2]}).value();
+  auto graph = fixture.lift();
+  ASSERT_TRUE(graph) << graph.error().detail;
+  expect_writable(fixture, *graph);
+
+  const auto& lowered = fixture.code();
+  ASSERT_EQ(lowered.size(), 1U);
+  const auto only = lowered.at(0);
+  ASSERT_EQ(lowered.get(only)->opcode(), Opcode::Goto);
+  EXPECT_EQ(lowered.label_position(lowered.branch_target(only).value())->before, only);
+}
+
+TEST(SsaLowering, KeepsAProtectedJumpAsAnExceptionSite) {
+  MethodFixture fixture("()V");
+  auto& code = fixture.code();
+  const auto start = code.make_label().value();
+  const auto end = code.make_label().value();
+  const auto handler = code.make_label().value();
+  const auto ids = code.append(std::array<InstructionBuilder, 5>{
+                                   Branch{Opcode::Goto, start}, Branch{Opcode::Goto, end}, Instruction::return_void(),
+                                   Instruction::pop(), Instruction::return_void()})
+                       .value();
+  code.bind_label(start, {ids[1]}).value();
+  code.bind_label(end, {ids[2]}).value();
+  code.bind_label(handler, {ids[3]}).value();
+  fixture.owner.edit_code(fixture.index)->set_exception_handlers(std::array{ExceptionHandler{start, end, handler, {}}});
+  auto graph = fixture.lift();
+  ASSERT_TRUE(graph) << graph.error().detail;
+  expect_writable(fixture, *graph);
+
+  const auto& attribute = *fixture.owner.methods()[fixture.index].code();
+  const auto& lowered = attribute.code();
+  const auto handlers = attribute.exception_handlers();
+  ASSERT_EQ(handlers.size(), 1U);
+  const auto protected_jump = lowered.label_position(handlers[0].start)->before;
+  ASSERT_TRUE(protected_jump);
+  ASSERT_EQ(lowered.get(*protected_jump)->opcode(), Opcode::Goto);
+  EXPECT_EQ(lowered.label_position(handlers[0].end), lowered.label_position(lowered.branch_target(*protected_jump).value()));
+
+  // Relifting the handler's generated exception pop must not add another landing pad.
+  auto wire = write_class(fixture.owner).value();
+  auto reparsed = read_class(wire.bytes, {.mode = ParseMode::Strict}).value();
+  auto& next_owner = reparsed.class_file;
+  auto next = lift_ssa(next_owner, fixture.index, fixture.context);
+  ASSERT_TRUE(next) << next.error().detail;
+  auto rewritten = lower_ssa(next_owner, *next, fixture.context);
+  ASSERT_TRUE(rewritten) << rewritten.error().detail;
+  const auto& repeated = *next_owner.methods()[fixture.index].code();
+  EXPECT_EQ(repeated.code().size(), lowered.size());
+  EXPECT_EQ(repeated.exception_handlers().size(), handlers.size());
 }
 
 TEST(SsaConstruction, ExceptionalPhiInputsSeeLocalsAtEachProtectedInstruction) {
@@ -552,40 +646,59 @@ TEST(SsaLowering, DetectsStaleInstructionAndMetadataSnapshotsAndPreservesNewerBy
 
 TEST(SsaLowering, ReportsOpaqueCodeAttributeBeforeCommitAndDropsItOnlyByRequest) {
   MethodFixture fixture("()I");
-  auto& code = fixture.code();
-  const auto original = code.append(simple(Opcode::IConst1)).value();
-  const auto returned = code.append(simple(Opcode::IReturn)).value();
+  (void)fixture.code().append(simple(Opcode::IConst1)).value();
+  (void)fixture.code().append(simple(Opcode::IReturn)).value();
+  // Assemble a writable class, then give its nested attribute a private name on the wire.
+  constexpr std::string_view attribute = "LineNumberTable";
   std::vector<Attribute> nested;
-  nested.push_back(Attribute::raw(fixture.owner.constant_pool().append_utf8("PrivateCodeOffsets").value(), {std::byte{1}}));
+  nested.push_back(Attribute::raw(fixture.owner.constant_pool().append_utf8(attribute).value(), {std::byte{0}, std::byte{0}}));
   fixture.owner.edit_code(fixture.index)->supply_metadata(1, 0, {}, std::move(nested));
-  auto graph = fixture.lift();
+  auto before = write_class(fixture.owner, {.code_policy = CodeWritePolicy::CallerSuppliedMetadata});
+  ASSERT_TRUE(before) << before.error().detail;
+  auto name = std::ranges::search(before->bytes, std::as_bytes(std::span(attribute)));
+  ASSERT_FALSE(name.empty());
+  *name.begin() = std::byte{'X'};
+  auto parsed = read_class(before->bytes, {.mode = ParseMode::Strict});
+  ASSERT_TRUE(parsed) << parsed.error().detail;
+  auto& owner = parsed->class_file;
+  const auto& code = owner.methods()[fixture.index].code()->code();
+  const auto original = code.at(0);
+  const auto returned = code.at(1);
+  auto graph = lift_ssa(owner, fixture.index, fixture.context);
   ASSERT_TRUE(graph) << graph.error().detail;
   const auto* ret = find_operation(*graph, returned);
   ASSERT_NE(ret, nullptr);
   const auto return_id = ret->id;
   const auto replacement = graph->insert_before(return_id, simple(Opcode::IConst2), {}, INT).value();
   ASSERT_TRUE(graph->set_input(return_id, 0, graph->operation(replacement)->result));
-  const auto original_size = fixture.owner.constant_pool().size();
+  const auto original_size = owner.constant_pool().size();
   const auto original_revision = code.revision();
-  const auto strict = lower_ssa(fixture.owner, *graph, fixture.context);
+  const auto strict = lower_ssa(owner, *graph, fixture.context);
   ASSERT_FALSE(strict);
   EXPECT_EQ(strict.error().kind, SsaErrorKind::UnsafeMetadata);
-  EXPECT_EQ(fixture.owner.constant_pool().size(), original_size);
-  EXPECT_EQ(fixture.code().get(original).value().opcode(), Opcode::IConst1);
-  EXPECT_EQ(fixture.code().revision(), original_revision);
-  auto preserved = fixture.owner.edit_code(fixture.index)->attributes();
+  EXPECT_EQ(strict.error().write_error_kind, WriteErrorKind::UnsafeOpaqueAttribute);
+  EXPECT_EQ(owner.constant_pool().size(), original_size);
+  const auto* body = owner.methods()[fixture.index].code();
+  ASSERT_NE(body, nullptr);
+  EXPECT_EQ(body->code().get(original), simple(Opcode::IConst1));
+  EXPECT_EQ(body->code().revision(), original_revision);
+  EXPECT_TRUE(graph->is_current(owner, fixture.context));
+  const auto after = write_class(owner, {.force_reencode = true});
+  ASSERT_TRUE(after) << after.error().detail;
+  EXPECT_EQ(after->bytes, before->bytes);
+  auto preserved = body->attributes();
   ASSERT_EQ(preserved.size(), 1U);
   const auto* raw = preserved.front().get<RawAttribute>();
   ASSERT_NE(raw, nullptr);
-  const auto raw_bytes = raw->bytes(fixture.owner);
+  const auto raw_bytes = raw->bytes(owner);
   ASSERT_TRUE(raw_bytes);
-  EXPECT_TRUE(std::ranges::equal(*raw_bytes, std::array{std::byte{1}}));
-  auto dropped = lower_ssa(fixture.owner, *graph, fixture.context, {.drop_unsafe_code_attributes = true});
+  EXPECT_TRUE(std::ranges::equal(*raw_bytes, std::array{std::byte{0}, std::byte{0}}));
+  auto dropped = lower_ssa(owner, *graph, fixture.context, {.drop_unsafe_code_attributes = true});
   ASSERT_TRUE(dropped) << dropped.error().detail;
   ASSERT_TRUE(std::ranges::any_of(dropped->diagnostics, [](const Diagnostic& diagnostic) {
     return diagnostic.code == DiagnosticCode::DroppedUnsafeCodeAttribute;
   }));
-  const auto output = write_class(fixture.owner);
+  const auto output = write_class(owner);
   ASSERT_TRUE(output) << output.error().detail;
 }
 

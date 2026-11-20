@@ -26,6 +26,7 @@ struct SsaInstructionOrigin {
   LabelId begin; ///< Inclusive start in the staged method.
   LabelId end; ///< Exclusive end in the staged method.
   std::optional<InstructionId> exact; ///< Staged instruction implementing the original operation.
+  LabelId local_begin{}; ///< Includes synthetic instructions inserted before this operation in its block.
 };
 
 /// Live interval during which a physical slot contains the source local's value.
@@ -50,16 +51,22 @@ struct SsaCodeProvenance {
   std::pmr::vector<SsaInstructionOrigin> instructions; ///< Source instructions and their emitted intervals.
   std::pmr::vector<SsaLocalOrigin> locals; ///< Lowered locations for original local values.
   std::pmr::vector<std::optional<std::uint16_t>> handler_sources; ///< Original clause of each emitted handler row.
-  bool preserves_local_slots = false; ///< All source local writes and homes are maintained during their debug lifetimes.
+  std::size_t debug_local_count = 0; ///< Required slot count for mapped variables, including unused category-2 entries.
 };
 
 /**
- * @brief Determine whether SSA must preserve local slots and assignments for source metadata.
- * @param owner Class owning the constant-pool names of nested attributes.
- * @param code Code attribute being lifted or lowered.
- * @return Whether a local-variable or Code type-annotation table may refer to original local slots.
+ * @brief Collect the widths of slots referenced by local-variable ranges in Code metadata.
+ * @param owner Owner of the constant pool and source bytes.
+ * @param source Source method and original offset anchors.
+ * @param limits Work and cancellation limits for inspecting metadata.
+ * @param remaining Remaining work charged for inspected bytes.
+ * @param scratch Budgeted allocator for the returned slot map and parser scratch.
+ * @param anchors Optional output bitmap of source instructions anchoring Code metadata.
+ * @return Zero for invisible slots, or one or two for each referenced slot.
  */
-[[nodiscard]] bool ssa_has_local_metadata(const ClassFile& owner, const CodeAttribute& code);
+[[nodiscard]] std::expected<std::pmr::vector<std::uint8_t>, WriteError> ssa_debug_slot_widths(
+    const ClassFile& owner, const CodeAttribute& source, const analysis::AnalysisLimits& limits,
+    std::size_t& remaining, std::pmr::memory_resource* scratch, std::pmr::vector<std::uint8_t>* anchors = nullptr);
 
 /**
  * @brief Build a new ordered Code attribute list for one staged SSA body.

@@ -79,6 +79,44 @@ TEST(ClassCorpus, supplied_fixtures_roundtrip) {
   }
 }
 
+TEST(ClassCorpus, supported_methods_lower_and_relift) {
+  // All methods in these checked-in classes have Code and need no external hierarchy.
+  // Exercise every declaration, including constructors, with the default metadata policy.
+  for (const auto name : {"generated/DynamicConstant.class", "generated/Early45_2.class",
+                          "supplied/classes/ArrayTest.class", "supplied/classes/BranchTest.class",
+                          "supplied/classes/ForLoopTest.class", "supplied/classes/ForLoopTestLong.class",
+                          "supplied/classes/InvokeDynamicTest.class", "supplied/classes/JumpInit.class",
+                          "supplied/classes/LookupSwitchTest.class", "supplied/classes/NestedForLoopTest.class",
+                          "supplied/classes/TableSwitchTest.class", "supplied/classes/TernaryTest.class"}) {
+    SCOPED_TRACE(name);
+    auto parsed = cafe::read_class(load_file(FIXTURES / name), STRICT);
+    ASSERT_TRUE(parsed) << parsed.error().detail;
+    auto& owner = parsed->class_file;
+    cafe::analysis::AnalysisContext context;
+    ASSERT_FALSE(owner.methods().empty());
+    for (std::size_t i = 0; i < owner.methods().size(); ++i) {
+      SCOPED_TRACE(i);
+      auto graph = cafe::analysis::lift_ssa(owner, i, context);
+      ASSERT_TRUE(graph) << graph.error().detail;
+      const auto lowered = cafe::analysis::lower_ssa(owner, *graph, context);
+      ASSERT_TRUE(lowered) << lowered.error().detail;
+      EXPECT_TRUE(lowered->diagnostics.empty());
+    }
+    const auto output = cafe::write_class(owner);
+    ASSERT_TRUE(output) << output.error().detail;
+    auto reopened = cafe::read_class(output->bytes, STRICT);
+    ASSERT_TRUE(reopened) << reopened.error().detail;
+    ASSERT_EQ(reopened->class_file.methods().size(), owner.methods().size());
+    for (std::size_t i = 0; i < owner.methods().size(); ++i) {
+      SCOPED_TRACE(i);
+      auto graph = cafe::analysis::lift_ssa(reopened->class_file, i, context);
+      ASSERT_TRUE(graph) << graph.error().detail;
+      const auto verified = cafe::analysis::verify_ssa(reopened->class_file, *graph, context);
+      ASSERT_TRUE(verified) << verified.error().detail;
+    }
+  }
+}
+
 TEST(ClassCorpus, early_versions_and_legacy_subroutines_roundtrip) {
   check_roundtrip(FIXTURES / "historical/OakTest.class");
   for (const auto name : {"Early45_0", "Early45_1", "Early45_2", "Early45_3", "LegacySubroutine"}) {
