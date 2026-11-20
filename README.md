@@ -1,4 +1,4 @@
-# hippocafe
+# HippoCafe
 
 A C++23 library for inspecting, editing, and writing JVM class files, JARs, and JMODs.
 

@@ -20,7 +20,8 @@ namespace cafe {
 
 namespace detail {
 class ClassReader;
-}
+class SymbolicEdit;
+} // namespace detail
 
 /**
  * @brief Class-file constant-pool tags with their wire values.
@@ -180,6 +181,7 @@ public:
 
 private:
   friend class detail::ClassReader;
+  friend class detail::SymbolicEdit;
 
   /**
    * @brief Borrowed modified UTF-8 bytes with their validation state.

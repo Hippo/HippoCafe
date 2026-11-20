@@ -170,6 +170,7 @@ public:
   /**
    * @brief Inspect ordered class attributes.
    * @return A borrowed span invalidated by adding attributes or destroying the class.
+   *   Symbolic dynamic edits may add a BootstrapMethods attribute or grow its row storage.
    */
   [[nodiscard]] std::span<const Attribute> attributes() const noexcept;
   /**
@@ -199,6 +200,38 @@ public:
    * @return Its current table index, or nullopt; later insertion/erasure can change indices.
    */
   [[nodiscard]] std::optional<std::size_t> find_method(std::string_view name, std::string_view descriptor) const noexcept;
+
+  /**
+   * @brief Find ordinary calls with an exact symbolic owner, name, and descriptor.
+   * @param owner Internal JVM owner name or array descriptor in modified UTF-8.
+   * @param name Target method name in modified UTF-8.
+   * @param descriptor Target method descriptor in modified UTF-8.
+   * @param method_index Restrict the search to this method, or nullopt to search the class.
+   * @return Locations in method and instruction order, or an invalid method or operand error.
+   *   Methods without decoded code are skipped. Owner comparison uses the reference as encoded.
+   */
+  [[nodiscard]] std::expected<std::vector<InstructionLocation>, CodeEditError> find_invocations(
+      std::string_view owner, std::string_view name, std::string_view descriptor,
+      std::optional<std::size_t> method_index = std::nullopt) const;
+  /**
+   * @brief Find field accesses with an exact symbolic owner, name, and descriptor.
+   * @param owner Internal JVM owner name in modified UTF-8.
+   * @param name Target field name in modified UTF-8.
+   * @param descriptor Target field descriptor in modified UTF-8.
+   * @param method_index Restrict the search to this method, or nullopt to search the class.
+   * @return Locations in method and instruction order, or an invalid method or operand error.
+   *   Methods without decoded code are skipped. Owner comparison uses the reference as encoded.
+   */
+  [[nodiscard]] std::expected<std::vector<InstructionLocation>, CodeEditError> find_field_accesses(
+      std::string_view owner, std::string_view name, std::string_view descriptor,
+      std::optional<std::size_t> method_index = std::nullopt) const;
+  /**
+   * @brief Resolve an instruction's symbolic operand and any reachable bootstrap arguments.
+   * @param location Current method index and instruction handle.
+   * @return A symbolic operand, or InvalidMethod, NoCode, InvalidInstruction, or InvalidOperand
+   *   on invalid input. WrongOperandForm identifies an instruction outside the symbolic forms.
+   */
+  [[nodiscard]] std::expected<SymbolicInstruction, CodeEditError> inspect_instruction(InstructionLocation location) const;
 
   /**
    * @brief Append a validated direct-interface Class reference.

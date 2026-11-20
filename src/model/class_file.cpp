@@ -252,7 +252,7 @@ ClassFile::add_code(std::size_t method_index, CpIndex name) {
 std::optional<MethodEditor> ClassFile::edit_method(std::size_t index) noexcept {
   if (index >= methods().size())
     return std::nullopt;
-  return MethodEditor(storage->method_entries[index]);
+  return MethodEditor(*storage, storage->method_entries[index]);
 }
 
 CodeAttribute* ClassFile::edit_code(std::size_t method_index) noexcept {

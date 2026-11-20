@@ -9,6 +9,7 @@
 #include <atomic>
 #include <limits>
 #include <memory_resource>
+#include <unordered_map>
 #include <utility>
 #include <vector>
 
@@ -34,14 +35,14 @@ inline std::uint64_t next_declaration_revision() noexcept {
 }
 
 /**
- * @brief Stable class-owned storage with a read-time budget, metadata arena, immutable original
+ * @brief Stable class-owned storage with a read-time budget, immutable original
  * source, constant pool, and ordered declaration tables. Resources precede dependent containers to
  * guarantee destruction order.
  * @ingroup implementation
  */
 struct ClassStorage {
   /**
-   * @brief Initialize stable class-owned storage with a read-time budget, metadata arena, immutable
+   * @brief Initialize stable class-owned storage with a read-time budget, immutable
    * original source, constant pool, and ordered declaration tables
    * @param source Owned original class-file bytes transferred into class storage.
    * @param upstream Upstream PMR resource that must outlive the owning class; null selects the
@@ -50,9 +51,9 @@ struct ClassStorage {
    */
   ClassStorage(std::vector<std::byte> source, std::pmr::memory_resource* upstream,
                std::size_t limit = std::numeric_limits<std::size_t>::max()) : budget(upstream, limit),
-                                                                              metadata_arena(&budget),
                                                                               source(std::move(source)),
-                                                                              pool(&budget, &metadata_arena),
+                                                                              pool(&budget),
+                                                                              constant_lookup(&budget),
                                                                               interface_entries(&budget),
                                                                               field_entries(&budget),
                                                                               method_entries(&budget),
@@ -68,7 +69,6 @@ struct ClassStorage {
    * as soon as they are destroyed, including after speculative decodes fail.
    */
   BudgetResource budget;
-  std::pmr::monotonic_buffer_resource metadata_arena; ///< Monotonic storage for immutable class metadata, backed by the class budget.
   const std::vector<std::byte> source; ///< Owned immutable original class-file input; empty for a programmatic class.
 
   ClassVersion version; ///< Exact class-file major and minor version.
@@ -78,6 +78,8 @@ struct ClassStorage {
   CpIndex super_class; ///< Direct superclass Class constant, or zero where permitted.
   ClassValidity validity = ClassValidity::Programmatic; ///< Parsing provenance and compatible recovery state.
   ConstantPool pool; ///< Owned constant pool backed by this class's allocation resources and source.
+  std::pmr::unordered_multimap<std::size_t, CpIndex> constant_lookup; ///< Lazy hash lookup for symbolic edits; collisions are checked against the pool.
+  std::size_t indexed_constants = 1; ///< First pool slot that has not been indexed by a symbolic edit.
   std::pmr::vector<CpIndex> interface_entries; ///< Direct interface Class references in declaration order.
   std::pmr::vector<Field> field_entries; ///< Allocator-owned field declarations in table order.
   std::pmr::vector<Method> method_entries; ///< Allocator-owned method declarations in table order.

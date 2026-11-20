@@ -122,6 +122,96 @@ std::expected<void, cafe::BlockEditError> insert_push_pop(cafe::MethodCode& code
 
 After editing Code, select a metadata policy before writing.
 
+### Add symbolic field, method, and dynamic instructions
+
+Use `ClassFile::edit_method(index)` to get a `MethodEditor`. Its `append`,
+`insert_before`, `insert_at`, and `replace` accept symbolic operands alongside
+ordinary instructions, branches, and switches. Supply JVM internal owner names and descriptors.
+The editor resolves and reuses constants and derives the `invokeinterface` slot
+count. Use `owner_is_interface = true` for static and special calls to interfaces.
+
+```cpp
+using namespace cafe;
+
+// With an int already on the stack, call Math.abs(int).
+auto call = editor.append(MethodInvocation{Opcode::InvokeStatic, "java/lang/Math", "abs", "(I)I"});
+auto field = editor.append(FieldAccess{Opcode::GetStatic, "java/lang/Integer", "MAX_VALUE", "I"});
+```
+
+A `DynamicInvocation` carries a call-site name and method descriptor. A
+`DynamicConstant` carries a name and field descriptor, and the editor chooses
+`ldc`, `ldc_w`, or `ldc2_w` during construction and serialization. Both take a
+`Bootstrap` with a symbolic method handle and an optional span of static arguments.
+For example, this adds a Java 11+ dynamic constant that resolves to a null String.
+
+```cpp
+const Bootstrap null_bootstrap{{
+    MethodHandleKind::InvokeStatic, "java/lang/invoke/ConstantBootstraps", "nullConstant",
+    "(Ljava/lang/invoke/MethodHandles$Lookup;Ljava/lang/String;Ljava/lang/Class;)Ljava/lang/Object;",
+}};
+auto load = editor.append(DynamicConstant{"value", "Ljava/lang/String;", null_bootstrap});
+```
+
+For a dynamic call site, this example concatenates two values already on the
+stack using the JDK's string concatenation bootstrap. The recipe uses one
+`\x01` placeholder per stack argument.
+
+```cpp
+const std::array args{BootstrapArgument{std::string_view("\x01: \x01")}};
+const Bootstrap concat{{
+    MethodHandleKind::InvokeStatic, "java/lang/invoke/StringConcatFactory", "makeConcatWithConstants",
+    "(Ljava/lang/invoke/MethodHandles$Lookup;Ljava/lang/String;Ljava/lang/invoke/MethodType;"
+    "Ljava/lang/String;[Ljava/lang/Object;)Ljava/lang/invoke/CallSite;",
+}, args};
+auto call_site = editor.append(DynamicInvocation{"concat", "(II)Ljava/lang/String;", concat});
+```
+
+Bootstrap arguments can be Java numeric constants, modified UTF-8 strings, class
+literals, method types, method handles, and nested dynamic constants. The editor
+extends the existing class-level bootstrap table where needed and keeps its
+indices stable. Check each returned `std::expected`. A failed symbolic edit
+leaves the code and class entries unchanged.
+
+Use `editor.erase(id)` to remove an instruction identified by its handle. Retarget
+any labels bound to it first. Erasure keeps existing pool and bootstrap indices
+stable, since other instructions and attributes may refer to them. Supply the
+stack operands and keep the surrounding stack usage valid when editing a method.
+
+### Find and inspect symbolic instructions
+
+`ClassFile::find_invocations(owner, name, descriptor)` and
+`find_field_accesses(owner, name, descriptor)` search decoded method bodies in
+instruction order. Pass a method index as the fourth argument to search one
+method. Matching uses the exact owner, name, and descriptor encoded in the
+class file. Each match contains a method index and an instruction handle for
+`inspect_instruction` or `edit_method`.
+
+```cpp
+auto matches = file.find_invocations("java/lang/Math", "abs", "(I)I");
+if (matches) {
+  for (const auto& location : *matches) {
+    auto result = file.inspect_instruction(location);
+    if (result) {
+      const auto& call = std::get<cafe::MethodInvocation>(result->operand());
+      std::cout << call.owner << '.' << call.name << call.descriptor << '\n';
+    }
+  }
+}
+```
+
+To inspect an `invokedynamic` or dynamic constant load, pass its method index
+and instruction handle to `inspect_instruction({method_index, id})`. The result's
+`operand()` contains a `DynamicInvocation` or `DynamicConstant`, with the
+bootstrap's symbolic `handle` and ordered `arguments`. Each argument's `value`
+is a typed variant, including nested `DynamicConstant` values. The instruction
+handle can come from `MethodCode::instructions()` or `MethodCode::at()`. Ordinary
+loads and other unrelated opcodes return `WrongOperandForm`.
+
+Keep the source class and the inspection result alive while using its operands.
+You can pass `result->operand()` directly to a method editor. Inspection preserves
+shared bootstrap rows and cycles. The editor rejects cyclic arguments on insertion
+or replacement.
+
 ## Select verification metadata policy
 
 | Mode | Behavior |

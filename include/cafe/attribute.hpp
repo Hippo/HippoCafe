@@ -28,6 +28,7 @@ class CodeAttribute;
 namespace detail {
 class ClassReader;
 class ClassWriter;
+class SymbolicEdit;
 } // namespace detail
 
 /**
@@ -266,6 +267,7 @@ private:
   friend class MethodEditor;
   friend class detail::ClassReader;
   friend class detail::ClassWriter;
+  friend class detail::SymbolicEdit;
 
   /**
    * @brief Destroys a CodeAttribute through the same PMR resource that allocated it.

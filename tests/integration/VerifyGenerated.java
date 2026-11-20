@@ -16,5 +16,10 @@ public final class VerifyGenerated {
                 || !(generated.getMethod("initializeWithHandler").invoke(null) instanceof StringBuilder)) {
             throw new AssertionError("generated class changed behavior");
         }
+        Class<?> symbolic = Class.forName("SymbolicInstructions");
+        if (!symbolic.getMethod("concat", int.class).invoke(null, -9).equals("9:2147483647:checked")
+                || !symbolic.getMethod("wide").invoke(null).equals(1234567890123L)) {
+            throw new AssertionError("symbolic instructions returned unexpected values");
+        }
     }
 }

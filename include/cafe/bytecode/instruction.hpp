@@ -33,6 +33,11 @@ enum class CodeEditError {
   LabeledInstruction, ///< Deletion would orphan a bound label; retarget it first.
   InvalidSwitch, ///< Switch handle or payload is invalid.
   HandleLimit, ///< Handle slots, generation space, or revision space is exhausted.
+  NoCode, ///< The method has no decoded Code attribute.
+  UnsupportedClassVersion, ///< The declared version does not support the symbolic operand.
+  ConstantPoolLimit, ///< The symbolic edit would exceed the class's constant-pool capacity.
+  BootstrapLimit, ///< The symbolic edit would exceed a BootstrapMethods count limit.
+  InvalidMethod, ///< The method-table index is out of range.
 };
 
 /**

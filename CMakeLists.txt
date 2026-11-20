@@ -113,6 +113,8 @@ add_library(hippocafe STATIC
   src/model/attribute.cpp
   src/model/class_file.cpp
   src/model/constant_pool.cpp
+  src/model/symbolic_edit.cpp
+  src/model/symbolic_read.cpp
 )
 add_library(hippocafe::hippocafe ALIAS hippocafe)
 target_compile_features(hippocafe PUBLIC cxx_std_23)

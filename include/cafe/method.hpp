@@ -7,14 +7,20 @@
 #pragma once
 
 #include <cstdint>
+#include <expected>
 #include <memory_resource>
 #include <span>
 #include <vector>
 
 #include <cafe/attribute.hpp>
+#include <cafe/bytecode/method_instruction.hpp>
 #include <cafe/ids.hpp>
 
 namespace cafe {
+
+namespace detail {
+struct ClassStorage;
+}
 
 /**
  * @brief Method declaration owned by ClassFile. Code is either decoded, opaque, or absent. Adding
@@ -97,6 +103,12 @@ private:
 /**
  * @brief Borrowed mutable access to one ClassFile method. Acquire a new editor after adding or
  * erasing a method; the owning class must outlive the editor.
+ *
+ * Symbolic edits validate operand structure and version rules. Frame analysis can check stack
+ * usage, and the JVM resolves targets and invokes bootstrap methods at linkage. An allocation
+ * failure may propagate as std::bad_alloc and leaves logical code and class entries unchanged.
+ * Reacquire borrowed class attribute spans, bootstrap row views, and pool entry pointers after
+ * symbolic edits.
  * @ingroup model
  */
 class MethodEditor {
@@ -114,15 +126,51 @@ public:
    */
   [[nodiscard]] CodeAttribute* code() const noexcept;
 
+  /**
+   * @brief Append an instruction, resolving any symbolic operand against the owning class.
+   * @param value Instruction and its operands to copy. Borrowed operands are needed only for this call.
+   * @return The new instruction handle, or an error leaving the logical code and class entries unchanged.
+   */
+  [[nodiscard]] std::expected<InstructionId, CodeEditError> append(const MethodInstruction& value);
+  /**
+   * @brief Insert before an instruction, leaving its existing labels attached to it.
+   * @param at Existing instruction handle in this method.
+   * @param value Instruction and its operands to copy.
+   * @return The new instruction handle, or an error leaving the logical code and class entries unchanged.
+   */
+  [[nodiscard]] std::expected<InstructionId, CodeEditError> insert_before(InstructionId at, const MethodInstruction& value);
+  /**
+   * @brief Insert at a bound label and move that label to the new instruction.
+   * @param at Bound label in this method; the exclusive end is permitted.
+   * @param value Instruction and its operands to copy.
+   * @return The new instruction handle, or an error leaving the logical code and class entries unchanged.
+   */
+  [[nodiscard]] std::expected<InstructionId, CodeEditError> insert_at(LabelId at, const MethodInstruction& value);
+  /**
+   * @brief Replace an instruction while retaining its handle and label bindings.
+   * @param at Existing instruction handle in this method.
+   * @param value Instruction and its operands to copy.
+   * @return Success or an error leaving the logical code and class entries unchanged.
+   */
+  [[nodiscard]] std::expected<void, CodeEditError> replace(InstructionId at, const MethodInstruction& value);
+  /**
+   * @brief Erase an instruction. Retarget any bound labels before erasing their destination.
+   * @param id Existing instruction handle in this method.
+   * @return Success or an edit error. Erasure leaves class constant and bootstrap indices stable.
+   */
+  [[nodiscard]] std::expected<void, CodeEditError> erase(InstructionId id);
+
 private:
   friend class ClassFile;
   /**
    * @brief Borrow mutable access to a live class-owned method.
+   * @param storage Owning class storage.
    * @param method Method belonging to the supplied class.
    */
-  explicit MethodEditor(Method& method) noexcept : member(&method) {
+  MethodEditor(detail::ClassStorage& storage, Method& method) noexcept : storage(&storage), member(&method) {
   }
 
+  detail::ClassStorage* storage; ///< Owning class storage, which stays fixed across ClassFile moves.
   Method* member; ///< Borrowed method; invalidated by adding or erasing methods in its class.
 };
 

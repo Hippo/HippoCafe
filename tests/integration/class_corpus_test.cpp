@@ -90,6 +90,39 @@ TEST(ClassCorpus, dynamic_constant_roundtrips) {
   check_roundtrip(FIXTURES / "generated/DynamicConstant.class");
 }
 
+TEST(ClassCorpus, inspects_symbolic_operands_in_a_compiled_lambda) {
+  using namespace cafe;
+  const auto parsed = read_class(load_file(FIXTURES / "supplied/classes/InvokeDynamicTest.class"), STRICT);
+  ASSERT_TRUE(parsed);
+  const auto& file = parsed->class_file;
+  const auto calls = file.find_invocations("java/lang/Runnable", "run", "()V").value();
+  ASSERT_EQ(calls.size(), 1);
+  const auto invocation = file.inspect_instruction(calls.front());
+  ASSERT_TRUE(invocation);
+  EXPECT_EQ(std::get<MethodInvocation>(invocation->operand()).opcode, Opcode::InvokeInterface);
+  const auto fields = file.find_field_accesses("java/lang/System", "out", "Ljava/io/PrintStream;").value();
+  ASSERT_EQ(fields.size(), 1);
+  const auto lambda_index = fields.front().method_index;
+  const auto& lambda_code = file.methods()[lambda_index].code()->code();
+  EXPECT_EQ(file.inspect_instruction({lambda_index, lambda_code.at(1)}).error(), CodeEditError::WrongOperandForm);
+
+  const auto main = file.find_method("main", "([Ljava/lang/String;)V").value();
+  const auto indy = file.inspect_instruction({main, file.methods()[main].code()->code().at(0)});
+  ASSERT_TRUE(indy);
+  const auto& call = std::get<DynamicInvocation>(indy->operand());
+  EXPECT_EQ(call.name, "run");
+  EXPECT_EQ(call.bootstrap.handle.owner, "java/lang/invoke/LambdaMetafactory");
+  EXPECT_EQ(call.bootstrap.handle.name, "metafactory");
+  const auto arguments = call.bootstrap.arguments;
+  ASSERT_EQ(arguments.size(), 3);
+  EXPECT_EQ(std::get<MethodTypeConstant>(arguments[0].value).descriptor, "()V");
+  const auto& lambda = std::get<MethodHandle>(arguments[1].value);
+  EXPECT_EQ(lambda.kind, MethodHandleKind::InvokeStatic);
+  EXPECT_EQ(lambda.owner, "InvokeDynamicTest");
+  EXPECT_EQ(lambda.name, "lambda$main$0");
+  EXPECT_EQ(std::get<MethodTypeConstant>(arguments[2].value).descriptor, "()V");
+}
+
 TEST(ClassCorpus, dense_switches_and_many_opaque_attributes_roundtrip) {
   check_roundtrip(FIXTURES / "generated/SwitchHeavy.class");
   check_roundtrip(FIXTURES / "generated/ManyOpaqueAttributes.class");

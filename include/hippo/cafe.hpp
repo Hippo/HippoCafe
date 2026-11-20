@@ -12,6 +12,7 @@
 #include <cafe/analysis/max_stack.hpp>
 #include <cafe/archive/archive.hpp>
 #include <cafe/bytecode/builder.hpp>
+#include <cafe/bytecode/method_instruction.hpp>
 #include <cafe/classpath/class_hierarchy.hpp>
 #include <cafe/classpath/class_path.hpp>
 #include <cafe/classpath/class_resolver.hpp>

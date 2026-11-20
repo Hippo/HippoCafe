@@ -258,6 +258,51 @@ void generate(const path& output_dir, analysis::AnalysisContext& context) {
           "constructor handler must receive the catch type and no usable allocation alias");
 }
 
+void generate_symbolic(const path& output_dir, analysis::AnalysisContext& context) {
+  auto owner = ClassFile::create({55, 0}, "SymbolicInstructions").value();
+  const auto code_name = owner.constant_pool().append_utf8("Code").value();
+  constexpr std::string_view CONCAT_DESCRIPTOR = "(I)Ljava/lang/String;";
+  add_method(owner, "concat", CONCAT_DESCRIPTOR, code_name);
+  auto editor = owner.edit_method(owner.find_method("concat", CONCAT_DESCRIPTOR).value()).value();
+  editor.append(Instruction::iload(0)).value();
+  editor.append(MethodInvocation{Opcode::InvokeStatic, "java/lang/Math", "abs", "(I)I"}).value();
+  editor.append(FieldAccess{Opcode::GetStatic, "java/lang/Integer", "MAX_VALUE", "I"}).value();
+  const std::array arguments{
+      BootstrapArgument{std::string_view("\x01:\x01:\x02")},
+      BootstrapArgument{std::string_view("checked")},
+  };
+  const Bootstrap concat{{
+                             MethodHandleKind::InvokeStatic,
+                             "java/lang/invoke/StringConcatFactory",
+                             "makeConcatWithConstants",
+                             "(Ljava/lang/invoke/MethodHandles$Lookup;Ljava/lang/String;Ljava/lang/invoke/MethodType;"
+                             "Ljava/lang/String;[Ljava/lang/Object;)Ljava/lang/invoke/CallSite;",
+                         },
+                         arguments};
+  editor.append(DynamicInvocation{"concat", "(II)Ljava/lang/String;", concat}).value();
+  editor.append(simple(Opcode::AReturn)).value();
+
+  auto& wide_code = add_method(owner, "wide", "()J", code_name);
+  wide_code.append(simple(Opcode::LConst0)).value();
+  wide_code.append(simple(Opcode::LReturn)).value();
+  const auto destination = output_dir / "SymbolicInstructions.class";
+  write(owner, context, destination);
+
+  auto parsed = parse(load(destination));
+  auto wide = parsed.edit_method(parsed.find_method("wide", "()J").value()).value();
+  const std::array value{BootstrapArgument{std::int64_t{1234567890123}}};
+  const Bootstrap cast{{
+                           MethodHandleKind::InvokeStatic,
+                           "java/lang/invoke/ConstantBootstraps",
+                           "explicitCast",
+                           "(Ljava/lang/invoke/MethodHandles$Lookup;Ljava/lang/String;Ljava/lang/Class;"
+                           "Ljava/lang/Object;)Ljava/lang/Object;",
+                       },
+                       value};
+  wide.replace(wide.code()->code().at(0), DynamicConstant{"value", "J", cast}).value();
+  write(parsed, context, destination);
+}
+
 } // namespace
 
 int main(int argc, char** argv) try {
@@ -275,6 +320,7 @@ int main(int argc, char** argv) try {
   std::filesystem::create_directories(output);
   analysis::AnalysisContext context{classpath::ClassHierarchy{classpath::ClassResolver{builder.build()}}};
   generate(output, context);
+  generate_symbolic(output, context);
   if (fixtures != "-")
     rewrite_compiled(fixtures, output, context);
   return 0;

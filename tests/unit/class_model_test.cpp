@@ -1,10 +1,13 @@
 #include <algorithm>
 #include <array>
+#include <bit>
 #include <cstddef>
 #include <cstdint>
 #include <fstream>
 #include <iterator>
 #include <memory_resource>
+#include <new>
+#include <optional>
 #include <string>
 #include <string_view>
 #include <utility>
@@ -43,9 +46,14 @@ CodeAttribute& with_return(ClassFile& file, std::string_view method_name = "run"
 class CountingResource final : public std::pmr::memory_resource {
 public:
   std::size_t live = 0;
+  std::optional<std::size_t> allocations_left;
 
 private:
   void* do_allocate(std::size_t bytes, std::size_t alignment) override {
+    if (allocations_left && *allocations_left == 0)
+      throw std::bad_alloc();
+    if (allocations_left)
+      --*allocations_left;
     auto* value = std::pmr::new_delete_resource()->allocate(bytes, alignment);
     live += bytes;
     return value;
@@ -60,6 +68,335 @@ private:
     return &other == this;
   }
 };
+
+constexpr Bootstrap TEST_BOOTSTRAP{{MethodHandleKind::InvokeStatic, "BootstrapOwner", "link",
+                                    "(Ljava/lang/invoke/MethodHandles$Lookup;Ljava/lang/String;"
+                                    "Ljava/lang/Class;)Ljava/lang/Object;"}};
+
+TEST(SymbolicEdit, InsertsReplacesAndErasesWithScopedHandles) {
+  auto model = fixture({55, 0});
+  auto& code = with_return(model).code();
+  auto editor = model.edit_method(0).value();
+  const auto previous = code.at(0);
+  const auto label = code.make_label().value();
+  ASSERT_TRUE(code.bind_label(label, CodePosition{previous}));
+  for (const auto opcode : {Opcode::GetField, Opcode::PutField, Opcode::GetStatic, Opcode::PutStatic}) {
+    const auto field = editor.insert_before(previous, FieldAccess{opcode, "Owner", "state", "I"}).value();
+    EXPECT_EQ(code.get(field)->opcode(), opcode);
+    EXPECT_TRUE(model.constant_pool().has(*code.get(field)->constant_index(), CpTag::Fieldref));
+    EXPECT_TRUE(editor.erase(field));
+  }
+  for (const auto opcode : {Opcode::InvokeVirtual, Opcode::InvokeSpecial, Opcode::InvokeStatic, Opcode::InvokeInterface}) {
+    const auto call = editor.insert_before(previous, MethodInvocation{opcode, "Owner", "run", "(JD)V"}).value();
+    const auto instruction = code.get(call).value();
+    const bool interface = opcode == Opcode::InvokeInterface;
+    EXPECT_EQ(instruction.opcode(), opcode);
+    EXPECT_TRUE(model.constant_pool().has(*instruction.constant_index(), interface ? CpTag::InterfaceMethodref : CpTag::Methodref));
+    if (interface) {
+      EXPECT_EQ(instruction.interface_count(), 5);
+    }
+    EXPECT_TRUE(editor.erase(call));
+  }
+
+  const auto call = editor.insert_at(label, MethodInvocation{Opcode::InvokeStatic, "Iface", "f", "()V", true}).value();
+  EXPECT_EQ(code.label_position(label)->before, call);
+  EXPECT_TRUE(model.constant_pool().has(*code.get(call)->constant_index(), CpTag::InterfaceMethodref));
+  EXPECT_EQ(editor.erase(call), std::unexpected(CodeEditError::LabeledInstruction));
+  const auto pool_size = model.constant_pool().size();
+  ASSERT_TRUE(editor.replace(call, FieldAccess{Opcode::GetStatic, "Owner", "state", "I"}));
+  EXPECT_EQ(model.constant_pool().size(), pool_size);
+  EXPECT_EQ(code.get(call)->opcode(), Opcode::GetStatic);
+  EXPECT_EQ(code.label_position(label)->before, call);
+  ASSERT_TRUE(code.bind_label(label, CodePosition{previous}));
+  EXPECT_TRUE(editor.erase(call));
+  EXPECT_EQ(editor.erase(call), std::unexpected(CodeEditError::InvalidInstruction));
+}
+
+TEST(SymbolicEdit, ReusesRowsAndResolvesNestedBootstrapArguments) {
+  auto model = fixture({55, 0});
+  auto& code = with_return(model).code();
+  auto editor = model.edit_method(0).value();
+  const auto anchor = code.at(0);
+  const std::array arguments{
+      BootstrapArgument{DynamicConstant{"nested", "I", TEST_BOOTSTRAP}},
+      BootstrapArgument{std::string_view("text")},
+      BootstrapArgument{std::int64_t{42}},
+      BootstrapArgument{ClassConstant{"[I"}},
+      BootstrapArgument{MethodTypeConstant{"(I)V"}},
+      BootstrapArgument{MethodHandle{MethodHandleKind::GetStatic, "Owner", "state", "I"}},
+  };
+  const Bootstrap bootstrap{TEST_BOOTSTRAP.handle, arguments};
+  const DynamicConstant outer{"wide", "J", bootstrap};
+  const auto wide = editor.insert_before(anchor, outer).value();
+  EXPECT_EQ(code.get(wide)->opcode(), Opcode::Ldc2W);
+  const auto size = model.constant_pool().size();
+  const auto duplicate = editor.insert_before(anchor, outer).value();
+  EXPECT_EQ(code.get(wide)->constant_index(), code.get(duplicate)->constant_index());
+  EXPECT_EQ(model.constant_pool().size(), size);
+
+  const auto call = editor.insert_before(anchor, DynamicInvocation{"call", "()V", bootstrap}).value();
+  const auto& pool = model.constant_pool();
+  const auto* table = model.attributes().front().get<BootstrapMethods>();
+  ASSERT_NE(table, nullptr);
+  ASSERT_EQ(table->methods.size(), 2);
+  const auto& row = table->methods.back();
+  const std::array tags{CpTag::Dynamic, CpTag::String, CpTag::Long, CpTag::Class, CpTag::MethodType, CpTag::MethodHandle};
+  ASSERT_EQ(row.arguments.size(), tags.size());
+  for (std::size_t i = 0; i < tags.size(); ++i)
+    EXPECT_TRUE(pool.has(row.arguments[i], tags[i]));
+  EXPECT_EQ(pool.get(*code.get(wide)->constant_index())->first.value, 1);
+  EXPECT_EQ(pool.get(*code.get(call)->constant_index())->first.value, 1);
+  const auto final_size = pool.size();
+  EXPECT_TRUE(editor.erase(wide));
+  EXPECT_TRUE(editor.erase(duplicate));
+  EXPECT_TRUE(editor.erase(call));
+  EXPECT_EQ(pool.size(), final_size);
+  EXPECT_EQ(table->methods.size(), 2);
+}
+
+TEST(SymbolicEdit, FailedEditsLeaveThePoolCodeAndBootstrapTableUnchanged) {
+  auto model = fixture({55, 0});
+  auto& code = with_return(model).code();
+  auto editor = model.edit_method(0).value();
+  const auto pool_size = model.constant_pool().size();
+  const auto revision = code.revision();
+  const DynamicConstant constant{"name", "I", TEST_BOOTSTRAP};
+  EXPECT_EQ(editor.insert_before({}, constant), std::unexpected(CodeEditError::InvalidInstruction));
+  EXPECT_EQ(editor.append(DynamicConstant{"name", "V", TEST_BOOTSTRAP}), std::unexpected(CodeEditError::InvalidOperand));
+  EXPECT_EQ(editor.append(FieldAccess{Opcode::GetField, "OtherOwner", "state", "(I)V"}),
+            std::unexpected(CodeEditError::InvalidOperand));
+
+  std::array<BootstrapArgument, 1> cyclic{};
+  cyclic[0].value = DynamicConstant{"cycle", "I", {TEST_BOOTSTRAP.handle, cyclic}};
+  EXPECT_EQ(editor.append(DynamicInvocation{"call", "()V", {TEST_BOOTSTRAP.handle, cyclic}}),
+            std::unexpected(CodeEditError::InvalidOperand));
+  EXPECT_EQ(model.constant_pool().size(), pool_size);
+  EXPECT_TRUE(model.attributes().empty());
+  EXPECT_EQ(code.revision(), revision);
+
+  const auto anchor = code.at(0);
+  ASSERT_TRUE(editor.insert_before(anchor, constant));
+  ASSERT_EQ(model.attributes().size(), 1);
+  const auto cp_after_success = model.constant_pool().size();
+  const auto revision_after_success = code.revision();
+  const std::array arguments{BootstrapArgument{std::int32_t{3}}};
+  EXPECT_EQ(editor.replace({}, DynamicInvocation{"newCall", "()V", {TEST_BOOTSTRAP.handle, arguments}}),
+            std::unexpected(CodeEditError::InvalidInstruction));
+  EXPECT_EQ(model.constant_pool().size(), cp_after_success);
+  EXPECT_EQ(code.revision(), revision_after_success);
+  EXPECT_EQ(model.attributes().front().get<BootstrapMethods>()->methods.size(), 1);
+}
+
+TEST(SymbolicEdit, RequiresDecodedCodeAndSupportedClassVersions) {
+  auto model = fixture({51, 0});
+  with_return(model);
+  auto editor = model.edit_method(0).value();
+  EXPECT_EQ(editor.append(DynamicConstant{"name", "I", TEST_BOOTSTRAP}),
+            std::unexpected(CodeEditError::UnsupportedClassVersion));
+  EXPECT_EQ(editor.append(MethodInvocation{Opcode::InvokeSpecial, "Iface", "run", "()V", true}),
+            std::unexpected(CodeEditError::UnsupportedClassVersion));
+  const auto native = model.add_method(0x0109, text(model, "nativeMethod"), text(model, "()V")).value();
+  EXPECT_EQ(model.edit_method(native)->append(Instruction::nop()), std::unexpected(CodeEditError::NoCode));
+}
+
+TEST(SymbolicEdit, AllocationFailuresRollBackAndAllowARetry) {
+  for (std::size_t allowance = 0;; ++allowance) {
+    ASSERT_LT(allowance, 128);
+    SCOPED_TRACE(allowance);
+    CountingResource resource;
+    auto model = ClassFile::create({55, 0}, "Fixture", "java/lang/Object", 0x0021, &resource).value();
+    auto& code = with_return(model).code();
+    auto editor = model.edit_method(0).value();
+    const auto anchor = code.at(0);
+    const auto pool_size = model.constant_pool().size();
+    const auto revision = code.revision();
+    const DynamicConstant value{"name", "I", TEST_BOOTSTRAP};
+    resource.allocations_left = allowance;
+    try {
+      ASSERT_TRUE(editor.insert_before(anchor, value));
+      break;
+    } catch (const std::bad_alloc&) {
+      resource.allocations_left.reset();
+      EXPECT_EQ(model.constant_pool().size(), pool_size);
+      EXPECT_EQ(code.revision(), revision);
+      EXPECT_TRUE(model.attributes().empty());
+      ASSERT_TRUE(editor.insert_before(anchor, value));
+      ASSERT_EQ(model.attributes().size(), 1);
+      EXPECT_EQ(model.attributes().front().get<BootstrapMethods>()->methods.size(), 1);
+    }
+  }
+}
+
+TEST(SymbolicRead, FindsExactReferencesAndReturnsEditableLocations) {
+  auto model = fixture({55, 0});
+  with_return(model, "first");
+  with_return(model, "second");
+  const MethodInvocation target{Opcode::InvokeStatic, "api/Tools", "run", "()V", true};
+  const FieldAccess field{Opcode::GetStatic, "api/Tools", "state", "I"};
+  for (const auto index : {0u, 1u}) {
+    auto editor = model.edit_method(index).value();
+    const auto anchor = editor.code()->code().at(0);
+    ASSERT_TRUE(editor.insert_before(anchor, target));
+    ASSERT_TRUE(editor.insert_before(anchor, field));
+    ASSERT_TRUE(editor.insert_before(anchor, Instruction::pop()));
+    editor.code()->supply_metadata(1, 0, {});
+  }
+  auto first = model.edit_method(0).value();
+  const auto end = first.code()->code().at(3);
+  ASSERT_TRUE(first.insert_before(end, Instruction::bipush(7)));
+  ASSERT_TRUE(first.insert_before(end, MethodInvocation{Opcode::InvokeStatic, "api/Tools", "run", "(I)V", true}));
+  first.code()->supply_metadata(1, 0, {});
+
+  const auto output = write_class(model, SUPPLIED);
+  ASSERT_TRUE(output);
+  auto parsed = read_class(output->bytes, STRICT);
+  ASSERT_TRUE(parsed);
+  auto& file = parsed->class_file;
+  const auto calls = file.find_invocations("api/Tools", "run", "()V").value();
+  ASSERT_EQ(calls.size(), 2);
+  EXPECT_EQ(calls[0], (InstructionLocation{0, file.methods()[0].code()->code().at(0)}));
+  EXPECT_EQ(calls[1], (InstructionLocation{1, file.methods()[1].code()->code().at(0)}));
+  EXPECT_EQ(file.find_invocations("api/Tools", "run", "()V", 1).value(), (std::vector{calls[1]}));
+  EXPECT_EQ(file.find_invocations("api/Tools", "run", "(I)V")->size(), 1);
+  EXPECT_TRUE(file.find_invocations("other/Tools", "run", "()V")->empty());
+  EXPECT_TRUE(file.find_invocations("api/Tools", "missing", "()V")->empty());
+
+  const auto call_read = file.inspect_instruction(calls[0]);
+  ASSERT_TRUE(call_read);
+  const auto& call = std::get<MethodInvocation>(call_read->operand());
+  EXPECT_EQ(call.opcode, Opcode::InvokeStatic);
+  EXPECT_EQ(call.owner, "api/Tools");
+  EXPECT_EQ(call.name, "run");
+  EXPECT_EQ(call.descriptor, "()V");
+  EXPECT_TRUE(call.owner_is_interface);
+  const auto accesses = file.find_field_accesses("api/Tools", "state", "I").value();
+  ASSERT_EQ(accesses.size(), 2);
+  EXPECT_TRUE(file.find_field_accesses("api/Tools", "state", "J")->empty());
+  const auto field_read = file.inspect_instruction(accesses[0]);
+  ASSERT_TRUE(field_read);
+  const auto& access = std::get<FieldAccess>(field_read->operand());
+  EXPECT_EQ(access.opcode, Opcode::GetStatic);
+  EXPECT_EQ(access.owner, "api/Tools");
+  EXPECT_EQ(access.name, "state");
+  EXPECT_EQ(access.descriptor, "I");
+
+  auto editor = file.edit_method(accesses[1].method_index).value();
+  ASSERT_TRUE(editor.replace(calls[1].id, call_read->operand()));
+  ASSERT_TRUE(editor.erase(calls[1].id));
+  EXPECT_EQ(file.find_invocations("api/Tools", "run", "()V").value(), (std::vector{calls[0]}));
+  EXPECT_EQ(file.inspect_instruction(calls[1]).error(), CodeEditError::InvalidInstruction);
+}
+
+TEST(SymbolicRead, DecodesTypedNestedBootstrapArgumentsAndKeepsViewsAcrossEdits) {
+  auto model = fixture({55, 0});
+  auto& code = with_return(model);
+  auto editor = model.edit_method(0).value();
+  const auto anchor = code.code().at(0);
+  constexpr std::string_view STRING = "embedded\xc0\x80";
+  const std::array leaves{
+      BootstrapArgument{std::int32_t{-12}},
+      BootstrapArgument{std::bit_cast<float>(std::uint32_t{0x8000'0000})},
+      BootstrapArgument{std::int64_t{-42}},
+      BootstrapArgument{3.5},
+      BootstrapArgument{STRING},
+      BootstrapArgument{ClassConstant{"[I"}},
+      BootstrapArgument{MethodTypeConstant{"(I)V"}},
+      BootstrapArgument{MethodHandle{MethodHandleKind::InvokeStatic, "api/Tools", "run", "()V", true}},
+  };
+  const Bootstrap shared{TEST_BOOTSTRAP.handle, leaves};
+  const std::array children{
+      BootstrapArgument{DynamicConstant{"left", "I", shared}},
+      BootstrapArgument{DynamicConstant{"right", "J", shared}},
+  };
+  const Bootstrap root{TEST_BOOTSTRAP.handle, children};
+  ASSERT_TRUE(editor.insert_before(anchor, DynamicInvocation{"call", "()V", root}));
+  ASSERT_TRUE(editor.insert_before(anchor, DynamicConstant{"root", "J", root}));
+  ASSERT_TRUE(editor.insert_before(anchor, Instruction::pop2()));
+  code.supply_metadata(2, 0, {});
+
+  const auto output = write_class(model, SUPPLIED);
+  ASSERT_TRUE(output);
+  auto parsed = read_class(output->bytes, STRICT);
+  ASSERT_TRUE(parsed);
+  auto& file = parsed->class_file;
+  const auto& body = file.methods()[0].code()->code();
+  auto call_read = file.inspect_instruction({0, body.at(0)});
+  ASSERT_TRUE(call_read);
+  auto moved = std::move(*call_read);
+  const auto& call = std::get<DynamicInvocation>(moved.operand());
+  EXPECT_EQ(call.name, "call");
+  EXPECT_EQ(call.descriptor, "()V");
+  EXPECT_EQ(call.bootstrap.handle.owner, TEST_BOOTSTRAP.handle.owner);
+  EXPECT_EQ(call.bootstrap.handle.name, TEST_BOOTSTRAP.handle.name);
+  EXPECT_EQ(call.bootstrap.handle.descriptor, TEST_BOOTSTRAP.handle.descriptor);
+  ASSERT_EQ(call.bootstrap.arguments.size(), 2);
+  const auto& left = std::get<DynamicConstant>(call.bootstrap.arguments[0].value);
+  const auto& right = std::get<DynamicConstant>(call.bootstrap.arguments[1].value);
+  EXPECT_EQ(left.name, "left");
+  EXPECT_EQ(right.name, "right");
+  EXPECT_EQ(right.descriptor, "J");
+  auto args = left.bootstrap.arguments;
+  ASSERT_EQ(args.size(), leaves.size());
+  EXPECT_EQ(args.data(), right.bootstrap.arguments.data());
+  EXPECT_EQ(std::get<std::int32_t>(args[0].value), -12);
+  EXPECT_EQ(std::bit_cast<std::uint32_t>(std::get<float>(args[1].value)), 0x8000'0000u);
+  EXPECT_EQ(std::get<std::int64_t>(args[2].value), -42);
+  EXPECT_EQ(std::get<double>(args[3].value), 3.5);
+  EXPECT_EQ(std::get<std::string_view>(args[4].value), STRING);
+  EXPECT_EQ(std::get<ClassConstant>(args[5].value).name, "[I");
+  EXPECT_EQ(std::get<MethodTypeConstant>(args[6].value).descriptor, "(I)V");
+  const auto& handle = std::get<MethodHandle>(args[7].value);
+  EXPECT_EQ(handle.kind, MethodHandleKind::InvokeStatic);
+  EXPECT_TRUE(handle.owner_is_interface);
+
+  const auto literal = file.inspect_instruction({0, body.at(1)});
+  ASSERT_TRUE(literal);
+  EXPECT_EQ(std::get<DynamicConstant>(literal->operand()).name, "root");
+  auto parsed_editor = file.edit_method(0).value();
+  ASSERT_TRUE(parsed_editor.insert_before(body.at(1), DynamicInvocation{"extra", "()V", TEST_BOOTSTRAP}));
+  EXPECT_EQ(std::get<std::string_view>(args[4].value), STRING);
+  ASSERT_TRUE(parsed_editor.replace(body.at(0), moved.operand()));
+}
+
+TEST(SymbolicRead, InspectsCyclesAndRejectsUnrelatedOrInvalidOperands) {
+  auto model = fixture({55, 0});
+  auto& code = with_return(model);
+  auto& pool = model.constant_pool();
+  const auto owner = pool.append({CpTag::Class, 0, text(model, "Owner"), {}}).value();
+  const auto signature = pool.append({CpTag::NameAndType, 0, text(model, "bootstrap"), text(model, "()I")}).value();
+  const auto reference = pool.append({CpTag::Methodref, 0, owner, signature}).value();
+  const auto handle = pool.append({CpTag::MethodHandle, 6, reference, {}}).value();
+  const auto constant_signature = pool.append({CpTag::NameAndType, 0, text(model, "cycle"), text(model, "I")}).value();
+  const auto cycle = pool.append({CpTag::Dynamic, 0, {}, constant_signature}).value();
+  const std::array rows{BootstrapMethod{handle, {cycle}}};
+  ASSERT_TRUE(model.add_attribute(Attribute::bootstrap_methods(text(model, "BootstrapMethods"), rows)));
+  const auto anchor = code.code().at(0);
+  ASSERT_TRUE(code.code().insert_before(anchor, Instruction::constant(Opcode::Ldc, cycle).value()));
+  ASSERT_TRUE(code.code().insert_before(anchor, Instruction::pop()));
+  code.supply_metadata(1, 0, {});
+
+  const auto output = write_class(model, SUPPLIED);
+  ASSERT_TRUE(output);
+  auto parsed = read_class(output->bytes, STRICT);
+  ASSERT_TRUE(parsed);
+  auto& file = parsed->class_file;
+  const auto& body = file.methods()[0].code()->code();
+  const auto inspected = file.inspect_instruction({0, body.at(0)});
+  ASSERT_TRUE(inspected);
+  const auto& condy = std::get<DynamicConstant>(inspected->operand());
+  ASSERT_EQ(condy.bootstrap.arguments.size(), 1);
+  const auto& nested = std::get<DynamicConstant>(condy.bootstrap.arguments.front().value);
+  EXPECT_EQ(nested.name, condy.name);
+  EXPECT_EQ(nested.bootstrap.arguments.data(), condy.bootstrap.arguments.data());
+
+  EXPECT_EQ(file.inspect_instruction({1, {}}).error(), CodeEditError::InvalidMethod);
+  EXPECT_EQ(file.inspect_instruction({0, body.at(1)}).error(), CodeEditError::WrongOperandForm);
+  EXPECT_EQ(file.find_invocations("Owner", "bootstrap", "()I", 1).error(), CodeEditError::InvalidMethod);
+  auto editor = file.edit_method(0).value();
+  const auto malformed = editor.append(Instruction::constant(Opcode::GetStatic, cycle).value()).value();
+  EXPECT_EQ(file.inspect_instruction({0, malformed}).error(), CodeEditError::InvalidOperand);
+  EXPECT_EQ(file.find_field_accesses("Owner", "state", "I").error(), CodeEditError::InvalidOperand);
+}
 
 TEST(ConstantPool, PreservesDuplicateIndicesAndBitsAndDecodesModifiedUtf8) {
   auto model = fixture();
