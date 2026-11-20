@@ -14,7 +14,7 @@ and uppercase compile-time constants. JVM wire names retain their specified spel
 | I/O | Bounded parsing, format validation, recovery, encoding selection, and serialization |
 | Archives | Validated ZIP/JMOD indexing, retained payload access, staged edits, and publication |
 | Classpath | Explicit class-source registration, metadata-only scanning, and hierarchy caches |
-| Analysis | CFG construction, local/stack maxima, verifier states, and reference joins |
+| Analysis | CFG construction, verifier states, optional editable SSA, and method lowering |
 
 Reading produces an owning class and diagnostics. Editing changes that model through
 its APIs. Writing validates the model, chooses preservation or computed metadata,
@@ -125,3 +125,24 @@ ambiguous interface joins use bounded deterministic alternatives, with downstrea
 instructions rechecked against each candidate. Work and allocation budgets cover
 retries. Converged frames are checked again before materialization and StackMapTable
 encoding. The target JVM still performs linkage and loader/module access checks.
+
+## Method-scoped SSA
+
+Each SSA graph owns a snapshot of one method. Blocks contain typed definitions,
+explicit phis and ordered operations. Edges identify individual control transfers.
+An exceptional input takes its locals from the state immediately before the
+protected operation, with the JVM exception as an edge-defined value.
+A successful constructor call defines the initialized view of its receiver.
+Uninitialized values retain their allocation-site identity.
+
+The lifter reuses the verifier's instruction transfer rules to record operands,
+results and stack permutations. Declared stack maps provide verifier inputs
+for disconnected modern code. Method-entry parameters, declared root inputs,
+and edge-defined exceptions have distinct definitions in the graph.
+
+Lowering resolves phi copies on individual transfers, assigns JVM local slots,
+and maps protected instruction intervals to ordered catch clauses. Emission
+stages the new instructions, class dependencies and relocated Code attributes.
+It verifies final layout before publishing the method. A library-prepared body
+can then be written under the default preservation policy. Subsequent bytecode
+edits follow the same metadata invalidation rules as other code edits.

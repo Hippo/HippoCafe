@@ -16,9 +16,11 @@ jobs:
           - preset: debug
             c: gcc-15
             cxx: g++-15
+            java: '17'
           - preset: sanitized
             c: clang-22
             cxx: clang++-22
+            java: '25'
           - preset: fuzz
             c: clang-22
             cxx: clang++-22
@@ -31,6 +33,12 @@ jobs:
       - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5.0.1
         with:
           persist-credentials: false
+      - name: Select JVM for verification
+        if: matrix.preset != 'fuzz'
+        uses: actions/setup-java@dded0888837ed1f317902acf8a20df0ad188d165 # v5.0.0
+        with:
+          distribution: temurin
+          java-version: ${{ matrix.java }}
       - name: Configure and build
         run: |
           cmake --preset "$HIPPOCAFE_PRESET" \

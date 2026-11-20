@@ -38,7 +38,7 @@ Instrumented sanitizer/fuzz builds intentionally omit install/export rules.
 | Option | Purpose | Default |
 |---|---|---|
 | `BUILD_TESTING` | Unit, corpus, checksum, header, and available JVM checks | On for top-level CTest builds |
-| `HIPPOCAFE_BUILD_EXAMPLES` | Inspection, round-trip, quickstart, and edit/frame examples | On at top level |
+| `HIPPOCAFE_BUILD_EXAMPLES` | Inspection, round-trip, bytecode editing, and SSA examples | On at top level |
 | `HIPPOCAFE_BUILD_BENCHMARKS` | Release measurement executable | Off |
 | `HIPPOCAFE_BUILD_FUZZERS` | FuzzTest and libFuzzer targets; requires Clang C/C++ | Off |
 | `HIPPOCAFE_ENABLE_SANITIZERS` | ASan and UBSan instrumentation; requires GCC/Clang | Off |
@@ -112,6 +112,11 @@ example is also executed and its output verified by the JVM; its invalid-argumen
 and I/O error paths are checked. Tests can extract a runtime image into a temporary
 JMOD fixture when the installed JDK supplies no runtime archives.
 
+The SSA integration test launches the original and rewritten classes in separate
+`java -Xverify:all` processes. It compares execution traces and checks the
+expected results of an SSA edit and an SSA-authored method. CI runs the GCC
+debug suite on Java 17 and the Clang sanitizer suite on Java 25.
+
 ```sh
 cmake --preset sanitized
 cmake --build --preset sanitized
@@ -132,13 +137,16 @@ mkdir -p build/fuzz/fuzz/mutated
 build/fuzz/fuzz/hippocafe_libfuzzer -seed=314159 -runs=5000 -max_len=524288 build/fuzz/fuzz/mutated build/fuzz/fuzz/seeds build/fuzz/fuzz/archive-seeds
 ```
 
-The two engines exercise parsing, preservation/re-encoding, bytecode analysis, and
-archive/classpath boundaries. Keep mutations and failure artifacts in the build tree;
-reduce reproducible failures before adding fixtures or regression cases.
+The two engines exercise parsing, preservation/re-encoding, bytecode analysis,
+SSA construction, edited emission and re-lifting, and archive/classpath boundaries.
+Keep mutations and failure artifacts in the build tree. Reduce reproducible
+failures before adding fixtures or regression cases.
 
 The `release-benchmarks` preset builds `hippocafe_benchmarks`. Its arguments select a
 fixture directory, iteration count, and optional Java home. Measurements cover parsing,
 writing, memory, CFG/frame work, and optional runtime indexing/hierarchy resolution.
+The SSA cases report lift and lower times, class size, instruction count, and
+local slots for a straight-line arithmetic chain and a loop with two carried values.
 Compare identical fixtures and toolchain settings when changing allocation or hot paths.
 
 ## Documentation conventions

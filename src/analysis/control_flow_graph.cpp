@@ -14,6 +14,7 @@
 #include "bytecode/code_access.hpp"
 #include "cafe/class_version.hpp"
 #include "model/budget_resource.hpp"
+#include "ssa_frames.hpp"
 
 namespace cafe::analysis {
 namespace {
@@ -211,6 +212,12 @@ bool ControlFlowGraph::is_current(const MethodCode& code, std::span<const Except
 
 std::expected<ControlFlowGraph, AnalysisError> build_cfg(
     const MethodCode& code, std::span<const ExceptionHandler> handlers,
+    std::pmr::memory_resource* resource, const AnalysisLimits& limits) {
+  return ssa_cfg(code, handlers, {}, resource, limits);
+}
+
+std::expected<ControlFlowGraph, AnalysisError> ssa_cfg(
+    const MethodCode& code, std::span<const ExceptionHandler> handlers, std::span<const StackMapFrame> seeds,
     std::pmr::memory_resource* resource, const AnalysisLimits& limits) try {
   const auto count = code.size();
   if (limits.cancellation.stop_requested())
@@ -251,6 +258,16 @@ std::expected<ControlFlowGraph, AnalysisError> build_cfg(
   std::pmr::vector<unsigned> leaders(count + 1, 0, &data.budget);
   leaders.front() = LEADER;
   leaders.back() = LEADER;
+  if (seeds.size() > limits.max_frames || seeds.size() > limits.max_work)
+    return graph_error(AnalysisErrorKind::ResourceLimitExceeded, "declared frame count exceeds analysis limits");
+  for (const auto& seed : seeds) {
+    const auto index = data.position(seed.instruction);
+    if (!index)
+      return graph_error(AnalysisErrorKind::InvalidLabelOrRange, "declared frame has an invalid instruction", seed.instruction);
+    if ((leaders[*index] & FRAME_BOUNDARY) != 0)
+      return graph_error(AnalysisErrorKind::UnrepresentableFrame, "duplicate declared frame", seed.instruction);
+    leaders[*index] |= LEADER | FRAME_BOUNDARY;
+  }
   std::pmr::vector<PlannedEdge> planned_edges(&data.budget);
   const auto plan_target = [&](std::uint32_t from, InstructionId at, LabelId label,
                                EdgeKind kind, std::optional<std::int32_t> case_key = {})

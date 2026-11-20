@@ -12,12 +12,50 @@
 #include <string_view>
 #include <unordered_set>
 
+#include "cafe/access_flags.hpp"
 #include "cafe/analysis/analysis_error.hpp"
 #include "cafe/analysis/frame.hpp"
 #include "cafe/class_file.hpp"
+#include "cafe/classpath/class_hierarchy.hpp"
 #include "io/class_format.hpp"
 
 namespace cafe::analysis {
+
+/**
+ * @brief Test verifier assignment of two initialized, structurally valid reference types.
+ *
+ * JVMS 4.10.1.2 permits a class or interface to widen to any interface. Reference arrays
+ * inherit that rule through covariance. Array-to-class and primitive-array checks still use
+ * the normal hierarchy relationship.
+ * @param hierarchy Target runtime and application hierarchy.
+ * @param source Internal class name or array descriptor of the incoming value.
+ * @param target Internal class name or array descriptor of the destination.
+ * @return Assignment compatibility, or the underlying hierarchy resolution failure.
+ */
+[[nodiscard]] inline std::expected<bool, classpath::ResolutionError> verifier_reference_assignable(
+    const classpath::ClassHierarchy& hierarchy, std::string_view source, std::string_view target) {
+  if (source == target)
+    return true;
+  auto from = source;
+  auto to = target;
+  while (from.starts_with('[') && to.starts_with('[')) {
+    from.remove_prefix(1);
+    to.remove_prefix(1);
+  }
+  if (from.size() != source.size()) {
+    if (!from.starts_with('L') || !to.starts_with('L') || !from.ends_with(';') || !to.ends_with(';'))
+      return hierarchy.is_assignable(source, target);
+    to = to.substr(1, to.size() - 2);
+  } else if (from.starts_with('[') || to.starts_with('[')) {
+    return hierarchy.is_assignable(source, target);
+  }
+  const auto destination = hierarchy.resolve(to);
+  if (!destination)
+    return std::unexpected(destination.error());
+  if (has_flag((*destination)->access_flags, AccessFlag::Interface))
+    return true;
+  return hierarchy.is_assignable(source, target);
+}
 
 /**
  * @brief Borrowed class/method identity views used to attach context to analysis errors. The

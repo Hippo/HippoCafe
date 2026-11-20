@@ -50,6 +50,14 @@ public:
   }
 
   /**
+   * @brief Inspect the current charged live size, including retained external storage.
+   * @return The live byte count for this resource.
+   */
+  [[nodiscard]] std::size_t live_bytes() const noexcept {
+    return used;
+  }
+
+  /**
    * @brief Remove the read-time allocation ceiling while retaining accounting for owned containers.
    */
   void disarm() noexcept {

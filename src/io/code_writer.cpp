@@ -61,10 +61,11 @@ std::expected<void, WriteError> ClassWriter::write_code(
 
   if (rewritten) {
     const auto& metadata = code.supplied_metadata;
-    if (options.code_policy != CodeWritePolicy::CallerSuppliedMetadata ||
-        !metadata || metadata->revision != code.instructions.revision() ||
+    if (!metadata || (!metadata->verified && options.code_policy != CodeWritePolicy::CallerSuppliedMetadata) ||
+        metadata->revision != code.instructions.revision() ||
         metadata->preserve_original_encodings != options.preserve_original_encodings)
-      return write_error(original ? WriteErrorKind::StaleCodeMetadata : WriteErrorKind::NeedsCodeMetadata,
+      return write_error((original || code.owned_origin_code_size) ? WriteErrorKind::StaleCodeMetadata
+                                                                   : WriteErrorKind::NeedsCodeMetadata,
                          path, "supply metadata for the current instructions and output encoding");
   }
   const auto parameter_slots = *method_parameter_slots(location.descriptor) + (location.is_static ? 0u : 1u); // NOLINT(bugprone-unchecked-optional-access)

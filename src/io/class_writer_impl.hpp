@@ -10,7 +10,9 @@
 #include <span>
 #include <string_view>
 
+#include <cafe/analysis/analysis_error.hpp>
 #include <cafe/analysis/context.hpp>
+#include <cafe/analysis/frame.hpp>
 #include <cafe/io/class_writer.hpp>
 
 #include "binary_writer.hpp"
@@ -21,6 +23,33 @@
 namespace cafe::detail {
 
 class EncodedCode;
+
+/// Attach the owning method, instruction offset and resolution path to a verifier failure.
+[[nodiscard]] std::unexpected<WriteError> analysis_error(
+    const analysis::AnalysisError& error, std::string_view path, bool has_context,
+    const MethodCode& code, std::span<const std::uint32_t> offsets = {});
+
+/// Re-decode the widened stream and transfer its handlers, offsets and verifier roots to fresh IDs.
+/// @param expanded Empty method receiving the final instruction stream.
+/// @param original Method whose conditional branches were widened.
+/// @param encoded Final wire layout indexed by original instruction order.
+/// @param version Class-file version of the instruction stream.
+/// @param pool Constant-pool context for decoding and verification.
+/// @param max_locals Declared bound for physical local operands.
+/// @param handlers Exception clauses using original labels.
+/// @param seeds Verifier entry states for disconnected regions of the original method.
+/// @param expanded_handlers Output exception clauses using final labels.
+/// @param expanded_offsets Output byte offsets in final instruction order.
+/// @param expanded_seeds Output verifier roots using final instruction and allocation identities.
+/// @param scratch Allocator for intermediate offsets, decoded boundaries and frame contents.
+/// @param path Diagnostic path of the Code attribute.
+/// @return Success or a failure to decode or map a boundary.
+[[nodiscard]] std::expected<void, WriteError> materialize_expanded_code(
+    MethodCode& expanded, const MethodCode& original, const EncodedCode& encoded, ClassVersion version,
+    const ConstantPool& pool, std::uint16_t max_locals, std::span<const ExceptionHandler> handlers,
+    std::span<const analysis::StackMapFrame> seeds, std::pmr::vector<ExceptionHandler>& expanded_handlers,
+    std::pmr::vector<std::uint32_t>& expanded_offsets, std::pmr::vector<analysis::StackMapFrame>& expanded_seeds,
+    std::pmr::memory_resource* scratch, std::string_view path);
 
 /**
  * @brief Attribute emission context with its owning declaration, diagnostic path, and optional

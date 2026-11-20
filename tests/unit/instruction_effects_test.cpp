@@ -12,7 +12,10 @@
 
 #include <gtest/gtest.h>
 
+#include <cafe/analysis/ssa.hpp>
 #include <cafe/classpath/class_hierarchy.hpp>
+#include <cafe/io/class_reader.hpp>
+#include <cafe/io/class_writer.hpp>
 
 #include "analysis/instruction_effects.hpp"
 
@@ -109,40 +112,11 @@ struct TestMethod {
   MethodCode code;
 };
 
-TEST(InstructionEffects, AllLogicalOpcodesHaveAnExplicitOutcome) {
-  TestMethod test;
-  std::array<bool, 256> sampled{};
-  std::pmr::unsynchronized_pool_resource scratch;
-  const auto& method = test.method();
-  InstructionEffects effects(test.owner, method, &test.hierarchy, &scratch);
+template<typename Check>
+void sample_opcode_shapes(TestMethod& test, const Check& check) {
   const auto branch_target = test.code.make_label().value();
   const auto branch = [branch_target](Opcode opcode) {
     return Instruction::branch(opcode, branch_target).value();
-  };
-  const auto check = [&](const InstructionBuilder& builder, std::initializer_list<V> before,
-                         std::initializer_list<V> after, std::optional<V> argument_local = std::nullopt) {
-    const auto at = test.code.append(builder).value();
-    const auto instruction = test.code.get(at).value();
-    const auto opcode = instruction.opcode();
-    SCOPED_TRACE(static_cast<unsigned>(opcode));
-    sampled[static_cast<unsigned>(opcode)] = true;
-    Frame frame(&scratch);
-    ASSERT_TRUE(effects.initialize(frame, LOCAL_COUNT));
-    if (argument_local) {
-      frame.locals[3] = *argument_local;
-      if (argument_local->width() == 2)
-        frame.locals[4] = WIDE_CONTINUATION;
-    }
-    give_stack(frame, before);
-    const auto prepared = effects.prepare(at, instruction, LOCAL_COUNT);
-    ASSERT_TRUE(prepared) << prepared.error().detail;
-    const auto applied = effects.apply(frame, at, instruction);
-    ASSERT_TRUE(applied) << applied.error().detail;
-    EXPECT_TRUE(std::ranges::equal(frame.stack, after));
-    unsigned words = 0;
-    for (auto item : after)
-      words += item.width();
-    EXPECT_EQ(frame.stack_slots, words);
   };
   const auto sample = [&](Opcode opcode, std::initializer_list<V> before, std::initializer_list<V> after) {
     check(simple(opcode), before, after);
@@ -273,17 +247,6 @@ TEST(InstructionEffects, AllLogicalOpcodesHaveAnExplicitOutcome) {
   const auto dynamic_call = test.member(CpTag::InvokeDynamic, "method", "(JD)I");
   check(test.constant(Opcode::InvokeDynamic, dynamic_call), {LONG, DOUBLE}, {INT});
 
-  const auto allocation = test.constant(Opcode::New, test.owner.this_class());
-  const auto site = test.code.append(allocation).value();
-  sampled[static_cast<unsigned>(Opcode::New)] = true;
-  {
-    Frame frame(&scratch);
-    ASSERT_TRUE(effects.initialize(frame, LOCAL_COUNT));
-    ASSERT_TRUE(effects.prepare(site, allocation, LOCAL_COUNT));
-    ASSERT_TRUE(effects.apply(frame, site, allocation));
-    ASSERT_EQ(frame.stack.size(), 1u);
-    EXPECT_EQ(frame.stack.back(), (V{K::Uninitialized, SELF.reference, site}));
-  }
   check(Instruction::new_array(ArrayType::Int).value(), {INT}, {INT_ARRAY});
   const auto string_class = test.class_index("java/lang/String");
   check(test.constant(Opcode::ANewArray, string_class), {INT}, {STRING_ARRAY});
@@ -295,7 +258,68 @@ TEST(InstructionEffects, AllLogicalOpcodesHaveAnExplicitOutcome) {
   check(test.constant(Opcode::InstanceOf, string_class), {ROOT}, {INT});
   sample(Opcode::MonitorEnter, {SELF}, {});
   sample(Opcode::MonitorExit, {SELF}, {});
+}
 
+TEST(InstructionEffects, AllLogicalOpcodesHaveAnExplicitOutcome) {
+  TestMethod test;
+  std::array<bool, 256> sampled{};
+  std::pmr::unsynchronized_pool_resource scratch;
+  const auto& method = test.method();
+  InstructionEffects effects(test.owner, method, &test.hierarchy, &scratch);
+  const auto branch_target = test.code.make_label().value();
+  const auto branch = [branch_target](Opcode opcode) {
+    return Instruction::branch(opcode, branch_target).value();
+  };
+  const auto check = [&](const InstructionBuilder& builder, std::initializer_list<V> before,
+                         std::initializer_list<V> after, std::optional<V> argument_local = std::nullopt) {
+    const auto at = test.code.append(builder).value();
+    const auto instruction = test.code.get(at).value();
+    const auto opcode = instruction.opcode();
+    SCOPED_TRACE(static_cast<unsigned>(opcode));
+    sampled[static_cast<unsigned>(opcode)] = true;
+    Frame frame(&scratch);
+    ASSERT_TRUE(effects.initialize(frame, LOCAL_COUNT));
+    if (argument_local) {
+      frame.locals[3] = *argument_local;
+      if (argument_local->width() == 2)
+        frame.locals[4] = WIDE_CONTINUATION;
+    }
+    give_stack(frame, before);
+    const auto prepared = effects.prepare(at, instruction, LOCAL_COUNT);
+    ASSERT_TRUE(prepared) << prepared.error().detail;
+    InstructionTransfer transfer;
+    const auto applied = effects.apply(frame, at, instruction, &transfer);
+    ASSERT_TRUE(applied) << applied.error().detail;
+    EXPECT_TRUE(std::ranges::equal(frame.stack, after));
+    EXPECT_EQ(transfer.popped, opcode == Opcode::Return ? 0u : before.size());
+    if (opcode >= Opcode::Pop && opcode <= Opcode::Swap) {
+      ASSERT_TRUE(transfer.reordered);
+      ASSERT_EQ(transfer.stack_map_size, after.size());
+      for (std::size_t i = 0; i < after.size(); ++i) {
+        ASSERT_LT(transfer.stack_map[i], before.size());
+        EXPECT_EQ(before.begin()[transfer.stack_map[i]], after.begin()[i]);
+      }
+    } else {
+      EXPECT_FALSE(transfer.reordered);
+      EXPECT_EQ(transfer.produced, after.size() == 1);
+    }
+    unsigned words = 0;
+    for (auto item : after)
+      words += item.width();
+    EXPECT_EQ(frame.stack_slots, words);
+  };
+  sample_opcode_shapes(test, check);
+  const auto allocation = test.constant(Opcode::New, test.owner.this_class());
+  const auto site = test.code.append(allocation).value();
+  sampled[static_cast<unsigned>(Opcode::New)] = true;
+  {
+    Frame frame(&scratch);
+    ASSERT_TRUE(effects.initialize(frame, LOCAL_COUNT));
+    ASSERT_TRUE(effects.prepare(site, allocation, LOCAL_COUNT));
+    ASSERT_TRUE(effects.apply(frame, site, allocation));
+    ASSERT_EQ(frame.stack.size(), 1u);
+    EXPECT_EQ(frame.stack.back(), (V{K::Uninitialized, SELF.reference, site}));
+  }
   for (const auto& builder : {InstructionBuilder{branch(Opcode::Jsr)},
                               InstructionBuilder{Instruction::local(Opcode::Ret, 1).value()}}) {
     const auto at = test.code.append(builder).value();
@@ -331,6 +355,210 @@ TEST(InstructionEffects, AllLogicalOpcodesHaveAnExplicitOutcome) {
     if (metadata.form != OperandForm::Illegal && metadata.form != OperandForm::WidePrefix &&
         metadata.logical_opcode == opcode) {
       EXPECT_TRUE(sampled[code]) << "logical opcode " << code;
+    }
+  }
+}
+
+std::string descriptor_of(V type) {
+  switch (type.kind) {
+    case K::Integer:
+      return "I";
+    case K::Long:
+      return "J";
+    case K::Float:
+      return "F";
+    case K::Double:
+      return "D";
+    case K::Null:
+      return "Ljava/lang/Object;";
+    case K::Object:
+    case K::Uninitialized:
+      return type.reference.starts_with('[') ? std::string(type.reference) : "L" + std::string(type.reference) + ";";
+    default:
+      throw std::logic_error("unusable test parameter type");
+  }
+}
+
+Instruction load_value(V type, std::uint16_t slot) {
+  switch (type.kind) {
+    case K::Integer:
+      return Instruction::iload(slot);
+    case K::Long:
+      return Instruction::lload(slot);
+    case K::Float:
+      return Instruction::fload(slot);
+    case K::Double:
+      return Instruction::dload(slot);
+    default:
+      return Instruction::aload(slot);
+  }
+}
+
+// Drive the concrete SSA API and ordinary class writer with the same registry of *independent*
+// operand shapes as the verifier test. A method parameter supplies each input with a different
+// SSA identity, including when multiple operands have exactly the same verification type.
+TEST(SsaLift, RegistryOperandsSurviveLoweringAndStrictReparse) {
+  TestMethod test;
+  auto& pool = test.owner.constant_pool();
+  const auto code_name = pool.append_utf8("Code").value();
+  const auto bootstrap = test.member(CpTag::Methodref, "bootstrap",
+                                     "(Ljava/lang/invoke/MethodHandles$Lookup;Ljava/lang/String;Ljava/lang/invoke/MethodType;)Ljava/lang/invoke/CallSite;",
+                                     test.owner.super_class());
+  const auto handle = pool.append({CpTag::MethodHandle, 6, bootstrap, {}}).value();
+  test.owner.add_attribute(Attribute::bootstrap_methods(pool.append_utf8("BootstrapMethods").value(),
+                                                        std::array{BootstrapMethod{handle, {}}}))
+      .value();
+  AnalysisContext context(test.hierarchy);
+  std::array<bool, 256> exercised{};
+
+  const auto check = [&](const InstructionBuilder& builder, std::initializer_list<V> before,
+                         std::initializer_list<V> after, std::optional<V> local = {}) {
+    const auto spec = test.code.get(test.code.append(builder).value()).value();
+    const auto opcode = spec.opcode();
+    SCOPED_TRACE(static_cast<unsigned>(opcode));
+    const auto kind = opcode_info(opcode).control_flow;
+    const bool load = opcode >= Opcode::ILoad && opcode <= Opcode::ALoad;
+    const bool store = opcode >= Opcode::IStore && opcode <= Opcode::AStore;
+    const bool shuffle = opcode >= Opcode::Pop && opcode <= Opcode::Swap;
+    const bool typed_return = kind == ControlFlow::Return && opcode != Opcode::Return;
+    std::vector<V> args(before);
+    if (local)
+      args.push_back(*local);
+    std::string signature = "(";
+    for (const auto type : args)
+      signature += descriptor_of(type);
+    signature += ")";
+    signature += typed_return ? descriptor_of(*(before.end() - 1)) : "V";
+    const auto index = test.owner.methods().size();
+    test.method(signature, "op" + std::to_string(static_cast<unsigned>(opcode)));
+    auto& code = test.owner.add_code(index, code_name).value().get().code();
+    std::uint16_t slot = 0;
+    for (const auto type : before) {
+      code.append(load_value(type, slot)).value();
+      slot = static_cast<std::uint16_t>(slot + type.width());
+    }
+
+    if (load || opcode == Opcode::IInc) {
+      code.append(load ? Instruction::local(opcode, slot).value() : Instruction::increment(slot, spec.increment_value()->amount)).value();
+    } else if (kind == ControlFlow::Jump || kind == ControlFlow::ConditionalBranch || kind == ControlFlow::Switch) {
+      auto target = code.make_label().value();
+      if (kind == ControlFlow::Switch) {
+        if (opcode == Opcode::TableSwitch)
+          code.append(TableSwitch{0, target, std::array{target}}).value();
+        else
+          code.append(LookupSwitch{target, {}}).value();
+      } else {
+        code.append(Branch{opcode, target}).value();
+      }
+      if (kind == ControlFlow::ConditionalBranch)
+        code.append(Instruction::return_void()).value();
+      const auto end = code.append(Instruction::return_void()).value();
+      code.bind_label(target, {end}).value();
+    } else {
+      code.append(spec).value();
+    }
+
+    std::vector<V> observed(after);
+    if (store || opcode == Opcode::IInc) {
+      const auto type = store ? *before.begin() : *local;
+      code.append(load_value(type, store ? *spec.local_index() : slot)).value();
+      observed = {type};
+    }
+    CpIndex observer{};
+    if (opcode == Opcode::New) {
+      code.append(Instruction::pop()).value();
+    } else if (kind == ControlFlow::Next && !observed.empty()) {
+      std::string consume = "(";
+      for (auto type : observed)
+        consume += descriptor_of(type);
+      consume += ")V";
+      observer = test.member(CpTag::Methodref, "observe", consume, test.owner.super_class());
+      code.append(Instruction::constant(Opcode::InvokeStatic, observer).value()).value();
+    }
+    if (kind == ControlFlow::Next)
+      code.append(Instruction::return_void()).value();
+
+    const auto inspect = [&](const SsaMethod& graph, bool relifted) {
+      const auto expected_opcode = relifted && opcode == Opcode::IInc ? Opcode::IAdd : opcode;
+      const SsaOperation* tested = nullptr;
+      const SsaOperation* sink = nullptr;
+      for (const auto& block : graph.blocks())
+        for (const auto id : block.operations) {
+          const auto* op = graph.operation(id);
+          if (observer && op->instruction.constant_index() == observer)
+            sink = op;
+          else if (op->opcode == expected_opcode && !op->anchor)
+            tested = op;
+        }
+      const auto params = graph.parameters();
+      if (!(load || store || shuffle || (relifted && opcode == Opcode::Goto))) {
+        ASSERT_NE(tested, nullptr);
+        if (typed_return) {
+          ASSERT_EQ(tested->inputs.size(), 1u);
+          EXPECT_EQ(tested->inputs.front(), params.back());
+        } else if (opcode == Opcode::Return) {
+          EXPECT_TRUE(tested->inputs.empty());
+        } else if (opcode == Opcode::IInc) {
+          ASSERT_EQ(tested->inputs.size(), relifted ? 2u : 1u);
+          EXPECT_EQ(tested->inputs.front(), params.front());
+          if (relifted) {
+            const auto* immediate = graph.value(tested->inputs.back());
+            ASSERT_NE(immediate, nullptr);
+            const auto* op = graph.operation(immediate->operation);
+            ASSERT_NE(op, nullptr);
+            EXPECT_EQ(op->instruction.immediate_value(), spec.increment_value()->amount);
+          }
+        } else {
+          EXPECT_TRUE(std::ranges::equal(tested->inputs, params));
+        }
+        if (spec.constant_index()) {
+          EXPECT_EQ(tested->instruction.constant_index(), spec.constant_index());
+        }
+      }
+      if (observer) {
+        ASSERT_NE(sink, nullptr);
+        ASSERT_EQ(sink->inputs.size(), observed.size());
+        for (std::size_t i = 0; i < observed.size(); ++i) {
+          if (load || store) {
+            EXPECT_EQ(sink->inputs[i], params.front());
+          } else if (shuffle) {
+            // Inputs of each registry shuffle case have distinct types; the exhaustive shape
+            // test also exercises same-typed inputs in every JVM category permutation.
+            const auto source = std::ranges::find(args, observed[i]);
+            ASSERT_NE(source, args.end());
+            EXPECT_EQ(sink->inputs[i], params[static_cast<std::size_t>(source - args.begin())]);
+          } else {
+            ASSERT_NE(tested, nullptr);
+            EXPECT_EQ(sink->inputs[i], tested->result);
+          }
+        }
+      }
+    };
+    auto graph = lift_ssa(test.owner, index, context);
+    ASSERT_TRUE(graph) << graph.error().detail;
+    ASSERT_NO_FATAL_FAILURE(inspect(*graph, false));
+    const auto lowered = lower_ssa(test.owner, *graph, context);
+    ASSERT_TRUE(lowered) << lowered.error().detail;
+    const auto emitted = write_class(test.owner);
+    ASSERT_TRUE(emitted) << emitted.error().detail;
+    const auto parsed = read_class(emitted->bytes, {.mode = ParseMode::Strict});
+    ASSERT_TRUE(parsed) << parsed.error().detail;
+    auto again = lift_ssa(parsed->class_file, index, context);
+    ASSERT_TRUE(again) << again.error().detail;
+    ASSERT_NO_FATAL_FAILURE(inspect(*again, true));
+    exercised[static_cast<unsigned>(opcode)] = true;
+  };
+  sample_opcode_shapes(test, check);
+  check(test.constant(Opcode::New, test.owner.this_class()), {}, {V{K::Uninitialized, SELF.reference}});
+  for (const auto [opcode, type] : std::array{std::pair{Opcode::IReturn, INT}, std::pair{Opcode::LReturn, LONG},
+                                              std::pair{Opcode::FReturn, FLOAT}, std::pair{Opcode::DReturn, DOUBLE}, std::pair{Opcode::AReturn, ROOT}})
+    check(simple(opcode), {DOUBLE, type}, {});
+  for (unsigned byte = 0; byte < exercised.size(); ++byte) {
+    const auto op = static_cast<Opcode>(byte);
+    const auto& info = opcode_info(op);
+    if (info.form != OperandForm::Illegal && info.form != OperandForm::WidePrefix &&
+        info.logical_opcode == op && op != Opcode::Jsr && op != Opcode::Ret) {
+      EXPECT_TRUE(exercised[byte]) << "missing SSA pipeline coverage for logical opcode " << byte;
     }
   }
 }

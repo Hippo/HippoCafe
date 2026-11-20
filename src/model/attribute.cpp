@@ -13,6 +13,8 @@
 
 #include <cafe/class_file.hpp>
 
+#include "class_storage.hpp"
+
 namespace cafe {
 
 RawAttribute::RawAttribute(SourceSlice slice) noexcept : storage(slice) {
@@ -108,6 +110,7 @@ void CodeAttribute::set_exception_handlers(std::span<const ExceptionHandler> new
     original_handlers.emplace(handlers, handlers.get_allocator());
   handlers.swap(replacement);
   supplied_metadata.reset();
+  metadata_revision = detail::next_declaration_revision();
 }
 
 void CodeAttribute::supply_metadata(std::uint16_t max_stack, std::uint16_t max_locals,
@@ -124,10 +127,12 @@ void CodeAttribute::supply_metadata(std::uint16_t max_stack, std::uint16_t max_l
   handlers.swap(updated_handlers);
   nested_attributes.swap(updated_attributes);
   original_boundaries.clear();
+  owned_origin_code_size.reset();
   original_handlers.reset();
   stack_limit = max_stack;
   locals_limit = max_locals;
   supplied_metadata = SuppliedMetadata{instructions.revision(), preserve_original_encodings};
+  metadata_revision = detail::next_declaration_revision();
 }
 
 const CodeAttribute* Method::code() const noexcept {

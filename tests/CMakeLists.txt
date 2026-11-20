@@ -25,6 +25,9 @@ add_test(NAME hippocafe.tests COMMAND hippocafe_tests)
 if(TARGET hippocafe_quickstart)
   add_test(NAME hippocafe.quickstart COMMAND hippocafe_quickstart)
 endif()
+if(TARGET hippocafe_edit_ssa)
+  add_test(NAME hippocafe.edit_ssa COMMAND hippocafe_edit_ssa)
+endif()
 find_package(Python3 QUIET COMPONENTS Interpreter)
 if(Python3_Interpreter_FOUND)
   add_test(NAME hippocafe.documentation COMMAND "${Python3_EXECUTABLE}"
@@ -134,6 +137,21 @@ if(Java_FOUND)
       "-DFIXTURE_DIR=${analysis_fixtures}"
       "-DOUTPUT_DIR=${CMAKE_CURRENT_BINARY_DIR}/jvm-analysis"
       -P "${CMAKE_CURRENT_SOURCE_DIR}/integration/run_java_analysis.cmake"
+    )
+    add_executable(hippocafe_rewrite_ssa integration/tools/rewrite_ssa.cpp)
+    target_link_libraries(hippocafe_rewrite_ssa PRIVATE hippocafe::hippocafe)
+    target_include_directories(hippocafe_rewrite_ssa PRIVATE "${PROJECT_SOURCE_DIR}/examples" "${PROJECT_SOURCE_DIR}/src")
+    hippocafe_configure_target(hippocafe_rewrite_ssa)
+    add_dependencies(hippocafe_rewrite_ssa hippocafe_analysis_fixtures)
+    add_test(NAME hippocafe.jvm_ssa COMMAND "${CMAKE_COMMAND}"
+      "-DREWRITE=$<TARGET_FILE:hippocafe_rewrite_ssa>"
+      "-DJAVAC=${Java_JAVAC_EXECUTABLE}"
+      "-DJAVA=${Java_JAVA_EXECUTABLE}"
+      "-DJAVA_HOME=${java_home}"
+      "-DJIMAGE=${hippocafe_jimage}"
+      "-DANALYSIS_DIR=${analysis_fixtures}"
+      "-DOUTPUT_DIR=${CMAKE_CURRENT_BINARY_DIR}/jvm-ssa"
+      -P "${CMAKE_CURRENT_SOURCE_DIR}/integration/run_java_ssa.cmake"
     )
     if(TARGET hippocafe_edit_and_compute AND
        (EXISTS "${java_home}/jmods/java.base.jmod" OR

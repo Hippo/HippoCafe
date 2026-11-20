@@ -81,6 +81,7 @@ def check_html(directory: Path) -> list[str]:
         "classcafe_1_1MethodCode.html",
         "classcafe_1_1archive_1_1Archive.html",
         "classcafe_1_1analysis_1_1FrameAnalysis.html",
+        "classcafe_1_1analysis_1_1SsaMethod.html",
         "classcafe_1_1detail_1_1ClassReader.html",
         *[f"group__{name}.html" for name in
           ("model", "bytecode", "io", "archive", "classpath", "analysis", "implementation")],

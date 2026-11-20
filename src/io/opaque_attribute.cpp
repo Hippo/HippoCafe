@@ -541,6 +541,7 @@ private:
    * @ingroup implementation
    */
   Validation type_annotation(AttributeContext context) {
+    const auto begin = reader.position();
     if (auto target = annotation_target(context); !target) {
       return target;
     }
@@ -556,7 +557,10 @@ private:
         !path_result) {
       return path_result;
     }
-    return annotation();
+    auto checked = annotation();
+    if (checked && offsets.type_annotation)
+      offsets.type_annotation(offsets.state, begin, reader.position());
+    return checked;
   }
 
   /**

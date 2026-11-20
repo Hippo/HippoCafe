@@ -18,6 +18,7 @@
 #include <sys/resource.h>
 #endif
 
+#include <cafe/analysis/ssa.hpp>
 #include <hippo/cafe.hpp>
 
 namespace {
@@ -272,6 +273,84 @@ void benchmark_hierarchy(const std::filesystem::path& java_home) {
   time_queries(10'000);
 }
 
+cafe::ClassFile ssa_workload(bool loop) {
+  using namespace cafe;
+  auto owner = ClassFile::create({65, 0}, "SsaBenchmark").value();
+  auto method = add_method(owner, "compute", "(II)I", owner.constant_pool().append_utf8("Code").value());
+  auto& code = owner.edit_code(method)->code();
+  code.append(Instruction::iload(0)).value();
+  if (loop) {
+    code.append(Instruction::istore(2)).value();
+    const auto head = code.make_label().value();
+    const auto exit = code.make_label().value();
+    code.bind_label(head, CodePosition{code.append(Instruction::iload(1)).value()}).value();
+    code.append(Instruction::branch(Opcode::IfLe, exit).value()).value();
+    code.append(Instruction::iload(2)).value();
+    code.append(Instruction::iload(1)).value();
+    code.append(Instruction::simple(Opcode::IAdd).value()).value();
+    code.append(Instruction::istore(2)).value();
+    code.append(Instruction::increment(1, -1)).value();
+    code.append(Instruction::branch(Opcode::Goto, head).value()).value();
+    code.bind_label(exit, CodePosition{code.append(Instruction::iload(2)).value()}).value();
+  } else {
+    for (std::size_t i = 0; i < 64; ++i) {
+      code.append(Instruction::iload(1)).value();
+      code.append(Instruction::simple(Opcode::IAdd).value()).value();
+    }
+  }
+  code.append(Instruction::simple(Opcode::IReturn).value()).value();
+  return owner;
+}
+
+void benchmark_ssa(bool loop, std::size_t rounds) {
+  using namespace cafe;
+  analysis::AnalysisContext context;
+  const auto original = write_class(ssa_workload(loop), {.code_analysis = CodeAnalysisMode::ComputeFrames}, context).value();
+  Clock::duration lifting{}, lowering{};
+  std::size_t original_instructions = 0, output_instructions = 0;
+  std::size_t output_bytes = 0;
+  std::uint16_t original_locals = 0, output_locals = 0;
+  for (std::size_t round = 0; round < rounds; ++round) {
+    auto parsed = read_class(original.bytes, {.mode = ParseMode::Strict}).value();
+    auto& owner = parsed.class_file;
+    original_instructions = owner.methods()[0].code()->code().size();
+    original_locals = owner.methods()[0].code()->max_locals();
+    auto start = Clock::now();
+    auto graph = analysis::lift_ssa(owner, 0, context).value();
+    lifting += Clock::now() - start;
+    // Force a real operand edit, including on implementations that preserve pristine bytecode.
+    bool edited = false;
+    for (const auto& block : graph.blocks()) {
+      for (const auto id : block.operations) {
+        if (graph.operation(id)->opcode == Opcode::IAdd) {
+          graph.set_input(id, 1, graph.parameters()[0]).value();
+          edited = true;
+          break;
+        }
+      }
+      if (edited)
+        break;
+    }
+    if (!edited)
+      throw std::runtime_error("SSA benchmark failed to find the addition");
+    start = Clock::now();
+    auto result = analysis::lower_ssa(owner, graph, context);
+    lowering += Clock::now() - start;
+    if (!result)
+      throw std::runtime_error("SSA benchmark lowering failed: " + result.error().detail);
+    const auto written = write_class(owner).value();
+    const auto reopened = read_class(written.bytes, {.mode = ParseMode::Strict}).value();
+    output_bytes = written.bytes.size();
+    output_instructions = reopened.class_file.methods()[0].code()->code().size();
+    output_locals = reopened.class_file.methods()[0].code()->max_locals();
+  }
+  std::cout << "SSA " << (loop ? "loop with two carried locals" : "straight line with 64 additions")
+            << ", " << rounds << " rounds, lift " << seconds(lifting) * 1'000 << " ms, lower "
+            << seconds(lowering) * 1'000 << " ms, class bytes " << original.bytes.size() << " -> " << output_bytes
+            << ", instructions " << original_instructions << " -> " << output_instructions
+            << ", max_locals " << original_locals << " -> " << output_locals << '\n';
+}
+
 } // namespace
 
 int main(int argc, char** argv) try {
@@ -297,6 +376,8 @@ int main(int argc, char** argv) try {
   benchmark_edits(32768);
   benchmark_analysis(200, 32, rounds);
   benchmark_analysis(2'000, 800, rounds);
+  benchmark_ssa(false, rounds);
+  benchmark_ssa(true, rounds);
   if (argc == 4)
     benchmark_hierarchy(argv[3]);
 #if defined(__linux__) || defined(__APPLE__)

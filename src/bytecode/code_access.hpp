@@ -64,6 +64,13 @@ struct BytecodeAccess {
    */
   static void mark_clean(MethodCode& code);
 
+  /// Publish a fully staged instruction owner while preserving the target object's address.
+  /// @param target Canonical instruction owner receiving the new scope.
+  /// @param staged Detached instruction owner; receives the previous storage.
+  static void swap_storage(MethodCode& target, MethodCode& staged) noexcept {
+    target.storage.swap(staged.storage);
+  }
+
   /**
    * @brief Retain original permitted switch padding bytes without recording a user edit.
    * @param code Decoded instruction sequence or associated Code attribute.

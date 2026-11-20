@@ -14,6 +14,11 @@
  */
 
 /**
+ * @example edit_ssa.cpp
+ * Lift integer bytecode into SSA, swap two operands, and install and serialize the edited body.
+ */
+
+/**
  * @example inspect_class.cpp
  * Inspect class declarations and decoded instructions from the command line.
  */

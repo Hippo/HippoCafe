@@ -13,6 +13,7 @@
 
 #include <cafe/classpath/class_hierarchy.hpp>
 
+#include "analysis_detail.hpp"
 #include "detail/descriptor.hpp"
 #include "detail/member_signature.hpp"
 #include "io/class_format.hpp"
@@ -160,30 +161,36 @@ std::unexpected<AnalysisError> type_mismatch(VerificationType expected, Verifica
 
 /**
  * @brief Remove the top operand value and update slot accounting.
- * @param frame Mutable verifier locals, operand values, and constructor state.
+ * @param state Mutable verifier state and optional value-flow recorder.
  * @return The removed value, or StackUnderflow.
  * @ingroup implementation
  */
-ValueResult pop(Frame& frame) {
+ValueResult pop(InstructionState state) {
+  auto& frame = state.frame;
   if (frame.stack.empty())
     return fail(AnalysisErrorKind::StackUnderflow, "operand stack is empty");
   const auto type = frame.stack.back();
   frame.stack.pop_back();
+  if (state.trace)
+    ++state.trace->popped;
   frame.stack_slots -= type.width();
   return type;
 }
 
 /**
  * @brief Append one verification value while maintaining slot accounting.
- * @param frame Mutable verifier locals, operand values, and constructor state.
+ * @param state Mutable verifier state and optional value-flow recorder.
  * @param value Verification value to append to the operand stack.
  * @return Success or a stack-size/invalid-value failure.
  * @ingroup implementation
  */
-Status push(Frame& frame, VerificationType value) {
+Status push(InstructionState state, VerificationType value) {
+  auto& frame = state.frame;
   if (frame.stack_slots + value.width() > std::numeric_limits<std::uint16_t>::max())
     return fail(AnalysisErrorKind::StackOverflow, "operand stack exceeds 65535 slots");
   frame.stack.push_back(value);
+  if (state.trace)
+    state.trace->produced = true;
   frame.stack_slots += value.width();
   return {};
 }
@@ -248,6 +255,11 @@ std::expected<std::size_t, AnalysisError> group_size(const Frame& frame, std::si
     return 0;
   if (end == 0)
     return fail(AnalysisErrorKind::StackUnderflow, "stack manipulation needs another operand");
+  const auto unusable = [](VerificationType value) {
+    return value.kind == Kind::Top || value.kind == Kind::WideContinuation;
+  };
+  if (unusable(frame.stack[end - 1]))
+    return fail(AnalysisErrorKind::InvalidCategoryOperation, "stack manipulation uses an unusable operand");
   const auto width = frame.stack[end - 1].width();
   if (width == words)
     return 1;
@@ -255,6 +267,8 @@ std::expected<std::size_t, AnalysisError> group_size(const Frame& frame, std::si
     return fail(AnalysisErrorKind::InvalidCategoryOperation, "stack manipulation would split a category-two operand");
   if (end < 2)
     return fail(AnalysisErrorKind::StackUnderflow, "stack manipulation needs two category-one operands");
+  if (unusable(frame.stack[end - 2]))
+    return fail(AnalysisErrorKind::InvalidCategoryOperation, "stack manipulation uses an unusable operand");
   if (frame.stack[end - 2].width() != 1)
     return fail(AnalysisErrorKind::InvalidCategoryOperation, "stack manipulation would split a category-two operand");
   return 2;
@@ -262,12 +276,13 @@ std::expected<std::size_t, AnalysisError> group_size(const Frame& frame, std::si
 
 /**
  * @brief Apply JVM pop/dup/swap forms with category-aware grouping.
- * @param frame Mutable verifier locals, operand values, and constructor state.
+ * @param state Mutable verifier state and optional value-flow recorder.
  * @param opcode Opcode whose operand form or metadata is requested.
  * @return Success or an invalid category/underflow error.
  * @ingroup implementation
  */
-Status manipulate_stack(Frame& frame, Opcode opcode) {
+Status manipulate_stack(InstructionState state, Opcode opcode) {
+  auto& frame = state.frame;
   struct Shape {
     unsigned top_words;
     unsigned insertion_words;
@@ -293,6 +308,20 @@ Status manipulate_stack(Frame& frame, Opcode opcode) {
   auto below = group_size(frame, frame.stack.size() - *top, shape.insertion_words);
   if (!below)
     return std::unexpected(std::move(below.error()));
+  if (auto* trace = state.trace) {
+    trace->reordered = true;
+    trace->popped = *top + *below;
+    if (shape.duplicate || *below != 0) {
+      const auto append_group = [&](std::size_t begin, std::size_t count) {
+        for (std::size_t i = 0; i < count; ++i)
+          trace->stack_map[trace->stack_map_size++] = begin + i;
+      };
+      append_group(*below, *top);
+      append_group(0, *below);
+      if (shape.duplicate)
+        append_group(*below, *top);
+    }
+  }
   if (!shape.duplicate && *below == 0) {
     frame.stack.resize(frame.stack.size() - *top);
     frame.stack_slots -= shape.top_words;
@@ -351,8 +380,9 @@ constexpr bool static_access(Opcode opcode) {
 } // namespace
 
 InstructionEffects::InstructionEffects(const ClassFile& owner, const Method& method, const classpath::ClassHierarchy* hierarchy,
-                                       std::pmr::memory_resource* scratch) :
-    owner(owner), method(method), hierarchy(hierarchy), scratch(scratch), array_names(scratch), method_descriptors(scratch),
+                                       std::pmr::memory_resource* scratch, const ConstantPool* operand_pool, bool jvm_verifier_rules) :
+    owner(owner), method(method), operands(operand_pool ? *operand_pool : owner.constant_pool()),
+    hierarchy(hierarchy), jvm_verifier_rules(jvm_verifier_rules), scratch(scratch), array_names(scratch), method_descriptors(scratch),
     constants(scratch) {
 }
 
@@ -417,7 +447,7 @@ Status InstructionEffects::prepare(InstructionId at, Instruction instruction, st
       return {};
     }
   }
-  if (const auto error = detail::validate_instruction(instruction, owner.version(), owner.constant_pool(), max_locals))
+  if (const auto error = detail::validate_instruction(instruction, owner.version(), operands, max_locals))
     return invalid(error->constant_pool ? AnalysisErrorKind::InvalidConstantPoolReference : AnalysisErrorKind::InvalidCode,
                    error->reason);
   if (index) {
@@ -447,7 +477,7 @@ std::string_view InstructionEffects::array_of(std::string_view component) {
 
 // prepare validates the instruction and constant cross-references before this opcode-specific lookup.
 std::expected<InstructionEffects::ConstantEffect, AnalysisError> InstructionEffects::read_constant(Instruction instruction) {
-  const auto& pool = owner.constant_pool();
+  const auto& pool = operands;
   const auto version = owner.version();
   const auto opcode = instruction.opcode();
   const auto* entry = pool.get(*instruction.constant_index()); // NOLINT(bugprone-unchecked-optional-access)
@@ -521,7 +551,8 @@ std::expected<InstructionEffects::ConstantEffect, AnalysisError> InstructionEffe
     const auto declaration = is_field ? owner.find_field(name, descriptor) : owner.find_method(name, descriptor);
     if (declaration) {
       const auto flags = is_field ? owner.fields()[*declaration].access_flags() : owner.methods()[*declaration].access_flags();
-      if (has_flag(flags, AccessFlag::Static) != static_access(opcode))
+      // The JVM checks staticness during linkage. A verified method can catch IncompatibleClassChangeError.
+      if (!jvm_verifier_rules && has_flag(flags, AccessFlag::Static) != static_access(opcode))
         return fail(AnalysisErrorKind::InvalidCode, "static or instance opcode disagrees with the member declaration");
       effect.declared_here = true;
     }
@@ -600,7 +631,8 @@ Status InstructionEffects::match(VerificationType value, VerificationType expect
     return type_mismatch(expected, value);
   if (!hierarchy || expected.reference.empty() || value.reference == expected.reference)
     return {};
-  auto assignable = hierarchy->is_assignable(value.reference, expected.reference);
+  auto assignable = jvm_verifier_rules ? verifier_reference_assignable(*hierarchy, value.reference, expected.reference)
+                                       : hierarchy->is_assignable(value.reference, expected.reference);
   if (!assignable)
     return resolution_failure(std::move(assignable.error()));
   if (!*assignable)
@@ -608,8 +640,8 @@ Status InstructionEffects::match(VerificationType value, VerificationType expect
   return {};
 }
 
-ValueResult InstructionEffects::pop_matching(Frame& frame, VerificationType expected, bool allow_uninitialized) {
-  auto value = pop(frame);
+ValueResult InstructionEffects::pop_matching(InstructionState state, VerificationType expected, bool allow_uninitialized) {
+  auto value = pop(state);
   if (!value)
     return value;
   if (auto valid = match(*value, expected, allow_uninitialized); !valid)
@@ -617,13 +649,13 @@ ValueResult InstructionEffects::pop_matching(Frame& frame, VerificationType expe
   return value;
 }
 
-Status InstructionEffects::transition(Frame& frame, std::initializer_list<VerificationType> popped,
+Status InstructionEffects::transition(InstructionState state, std::initializer_list<VerificationType> popped,
                                       std::optional<VerificationType> pushed) {
   for (auto type : popped) {
-    if (auto value = pop_matching(frame, type); !value)
+    if (auto value = pop_matching(state, type); !value)
       return std::unexpected(std::move(value.error()));
   }
-  return pushed ? push(frame, *pushed) : Status{};
+  return pushed ? push(state, *pushed) : Status{};
 }
 
 std::expected<bool, AnalysisError> InstructionEffects::requires_protected_receiver(
@@ -686,14 +718,14 @@ Status InstructionEffects::check_protected_receiver(VerificationType receiver, C
   return {};
 }
 
-Status InstructionEffects::execute_field(Frame& frame, Opcode opcode, ConstantEffect& effect) {
+Status InstructionEffects::execute_field(InstructionState state, Opcode opcode, ConstantEffect& effect) {
   const bool write = opcode == Opcode::PutField || opcode == Opcode::PutStatic;
   if (write) {
-    if (auto field_value = pop_matching(frame, effect.value); !field_value)
+    if (auto field_value = pop_matching(state, effect.value); !field_value)
       return std::unexpected(std::move(field_value.error()));
   }
   if (!static_access(opcode)) {
-    auto receiver = pop(frame);
+    auto receiver = pop(state);
     if (!receiver)
       return std::unexpected(std::move(receiver.error()));
     // Before a this()/super() call, only fields declared in this class may
@@ -707,12 +739,13 @@ Status InstructionEffects::execute_field(Frame& frame, Opcode opcode, ConstantEf
         return valid;
     }
   }
-  return write ? Status{} : push(frame, effect.value);
+  return write ? Status{} : push(state, effect.value);
 }
 
-Status InstructionEffects::initialize_receiver(Frame& frame, ConstantEffect& effect,
+Status InstructionEffects::initialize_receiver(InstructionState state, ConstantEffect& effect,
                                                std::optional<VerificationType>& initialized) {
-  auto receiver = pop(frame);
+  auto& frame = state.frame;
+  auto receiver = pop(state);
   if (!receiver)
     return std::unexpected(std::move(receiver.error()));
   const bool this_receiver = receiver->kind == Kind::UninitializedThis;
@@ -732,17 +765,17 @@ Status InstructionEffects::initialize_receiver(Frame& frame, ConstantEffect& eff
   return {};
 }
 
-Status InstructionEffects::execute_invoke(Frame& frame, Opcode opcode, ConstantEffect& effect,
+Status InstructionEffects::execute_invoke(InstructionState state, Opcode opcode, ConstantEffect& effect,
                                           std::optional<VerificationType>& initialized) {
   for (auto argument = effect.arguments.rbegin(); argument != effect.arguments.rend(); ++argument) {
-    if (auto value = pop_matching(frame, *argument); !value)
+    if (auto value = pop_matching(state, *argument); !value)
       return std::unexpected(std::move(value.error()));
   }
   if (effect.constructor)
-    return initialize_receiver(frame, effect, initialized);
+    return initialize_receiver(state, effect, initialized);
   if (!static_access(opcode)) {
     const auto expected = object(opcode == Opcode::InvokeSpecial ? self : effect.member_class);
-    auto receiver = pop_matching(frame, expected);
+    auto receiver = pop_matching(state, expected);
     if (!receiver)
       return std::unexpected(std::move(receiver.error()));
     if (opcode == Opcode::InvokeVirtual) {
@@ -750,10 +783,10 @@ Status InstructionEffects::execute_invoke(Frame& frame, Opcode opcode, ConstantE
         return valid;
     }
   }
-  return effect.value.kind == Kind::Top ? Status{} : push(frame, effect.value);
+  return effect.value.kind == Kind::Top ? Status{} : push(state, effect.value);
 }
 
-Status InstructionEffects::execute_array_access(Frame& frame, Opcode opcode) {
+Status InstructionEffects::execute_array_access(InstructionState state, Opcode opcode) {
   struct ArrayAccess {
     VerificationType value;
     std::string_view primitive_array;
@@ -772,12 +805,12 @@ Status InstructionEffects::execute_array_access(Frame& frame, Opcode opcode) {
   const auto first = store ? Opcode::IAStore : Opcode::IALoad;
   const auto access = TYPES[static_cast<unsigned>(opcode) - static_cast<unsigned>(first)];
   if (store) {
-    if (auto value = pop_matching(frame, access.value); !value)
+    if (auto value = pop_matching(state, access.value); !value)
       return std::unexpected(std::move(value.error()));
   }
-  if (auto index = pop_matching(frame, INT); !index)
+  if (auto index = pop_matching(state, INT); !index)
     return std::unexpected(std::move(index.error()));
-  auto array = pop_matching(frame, REFERENCE);
+  auto array = pop_matching(state, REFERENCE);
   if (!array)
     return std::unexpected(std::move(array.error()));
 
@@ -800,10 +833,11 @@ Status InstructionEffects::execute_array_access(Frame& frame, Opcode opcode) {
   }
   // aastore verifies the array and value are reference types. The JVM
   // checks the actual value against the actual component type at run time.
-  return store ? Status{} : push(frame, result);
+  return store ? Status{} : push(state, result);
 }
 
-Status InstructionEffects::execute_return(Frame& frame, Opcode opcode) {
+Status InstructionEffects::execute_return(InstructionState state, Opcode opcode) {
+  auto& frame = state.frame;
   if (frame.constructor_uninitialized)
     return fail(AnalysisErrorKind::InvalidConstructorState, "constructor returns before this is initialized");
   if (opcode == Opcode::Return) {
@@ -813,7 +847,7 @@ Status InstructionEffects::execute_return(Frame& frame, Opcode opcode) {
     const auto opcode_type = LOCAL_TYPES[static_cast<unsigned>(opcode) - static_cast<unsigned>(Opcode::IReturn)];
     if (opcode_type.kind != return_type.kind)
       return type_mismatch(return_type, opcode_type);
-    if (auto result = pop_matching(frame, return_type); !result)
+    if (auto result = pop_matching(state, return_type); !result)
       return std::unexpected(std::move(result.error()));
   }
   // A return consumes the result and discards the rest of the stack.
@@ -822,57 +856,59 @@ Status InstructionEffects::execute_return(Frame& frame, Opcode opcode) {
 }
 
 // prepare caches validated constant and invocation operands before worklist execution.
-Status InstructionEffects::execute_constant(Frame& frame, InstructionId at, Instruction instruction,
+Status InstructionEffects::execute_constant(InstructionState state, InstructionId at, Instruction instruction,
                                             ConstantEffect& effect, std::optional<VerificationType>& initialized) {
+  auto& frame = state.frame;
   const auto opcode = instruction.opcode();
   switch (opcode) {
     case Opcode::Ldc:
     case Opcode::Ldc2W:
-      return push(frame, effect.value);
+      return push(state, effect.value);
     case Opcode::GetStatic:
     case Opcode::PutStatic:
     case Opcode::GetField:
     case Opcode::PutField:
-      return execute_field(frame, opcode, effect);
+      return execute_field(state, opcode, effect);
     case Opcode::InvokeVirtual:
     case Opcode::InvokeSpecial:
     case Opcode::InvokeStatic:
     case Opcode::InvokeInterface:
     case Opcode::InvokeDynamic:
-      return execute_invoke(frame, opcode, effect, initialized);
+      return execute_invoke(state, opcode, effect, initialized);
     case Opcode::New: {
       const VerificationType allocated{Kind::Uninitialized, effect.value.reference, at};
       if (std::ranges::find(frame.stack, allocated) != frame.stack.end())
         return fail(AnalysisErrorKind::UninitializedUse, "new reuses an allocation site still present on the operand stack");
       std::ranges::replace(frame.locals, allocated, VerificationType{});
-      return push(frame, allocated);
+      return push(state, allocated);
     }
     case Opcode::ANewArray:
-      return transition(frame, {INT}, effect.value);
+      return transition(state, {INT}, effect.value);
     case Opcode::MultiANewArray:
       for (unsigned dimension = 0; dimension < *instruction.dimensions(); ++dimension) { // NOLINT(bugprone-unchecked-optional-access)
-        if (auto length = pop_matching(frame, INT); !length)
+        if (auto length = pop_matching(state, INT); !length)
           return std::unexpected(std::move(length.error()));
       }
-      return push(frame, effect.value);
+      return push(state, effect.value);
     case Opcode::CheckCast:
-      return transition(frame, {REFERENCE}, effect.value);
+      return transition(state, {REFERENCE}, effect.value);
     case Opcode::InstanceOf:
-      return transition(frame, {REFERENCE}, INT);
+      return transition(state, {REFERENCE}, INT);
     default:
       return fail(AnalysisErrorKind::InvalidCode, "unsupported constant operand instruction");
   }
 }
 
 // prepare validates opcode-specific operands before execution; immutable instructions retain those operand forms.
-Status InstructionEffects::execute(Frame& frame, InstructionId at, Instruction instruction,
+Status InstructionEffects::execute(InstructionState state, InstructionId at, Instruction instruction,
                                    std::optional<VerificationType>& initialized) {
+  auto& frame = state.frame;
   const auto opcode = instruction.opcode();
   if (const auto index = instruction.constant_index()) {
     const auto effect = constants.find(effect_key(opcode, *index));
     if (effect == constants.end())
       return fail(AnalysisErrorKind::InvalidCode, "missing validated constant operand");
-    return execute_constant(frame, at, instruction, effect->second, initialized);
+    return execute_constant(state, at, instruction, effect->second, initialized);
   }
 
   switch (opcode) {
@@ -880,7 +916,7 @@ Status InstructionEffects::execute(Frame& frame, InstructionId at, Instruction i
     case Opcode::Goto:
       return {};
     case Opcode::AConstNull:
-      return push(frame, NULL_VALUE);
+      return push(state, NULL_VALUE);
     case Opcode::IConstM1:
     case Opcode::IConst0:
     case Opcode::IConst1:
@@ -890,17 +926,17 @@ Status InstructionEffects::execute(Frame& frame, InstructionId at, Instruction i
     case Opcode::IConst5:
     case Opcode::Bipush:
     case Opcode::Sipush:
-      return push(frame, INT);
+      return push(state, INT);
     case Opcode::LConst0:
     case Opcode::LConst1:
-      return push(frame, LONG);
+      return push(state, LONG);
     case Opcode::FConst0:
     case Opcode::FConst1:
     case Opcode::FConst2:
-      return push(frame, FLOAT);
+      return push(state, FLOAT);
     case Opcode::DConst0:
     case Opcode::DConst1:
-      return push(frame, DOUBLE);
+      return push(state, DOUBLE);
     case Opcode::ILoad:
     case Opcode::LLoad:
     case Opcode::FLoad:
@@ -913,7 +949,7 @@ Status InstructionEffects::execute(Frame& frame, InstructionId at, Instruction i
         return valid;
       if (type.width() == 2 && frame.locals[index + 1].kind != Kind::WideContinuation)
         return fail(AnalysisErrorKind::TypeMismatch, "category-two local is missing its second slot");
-      return push(frame, value);
+      return push(state, value);
     }
     case Opcode::IStore:
     case Opcode::LStore:
@@ -921,7 +957,7 @@ Status InstructionEffects::execute(Frame& frame, InstructionId at, Instruction i
     case Opcode::DStore:
     case Opcode::AStore: {
       const auto type = LOCAL_TYPES[static_cast<unsigned>(opcode) - static_cast<unsigned>(Opcode::IStore)];
-      auto value = pop_matching(frame, type, opcode == Opcode::AStore);
+      auto value = pop_matching(state, type, opcode == Opcode::AStore);
       if (!value)
         return std::unexpected(std::move(value.error()));
       store_local(frame, *instruction.local_index(), *value); // NOLINT(bugprone-unchecked-optional-access)
@@ -945,7 +981,7 @@ Status InstructionEffects::execute(Frame& frame, InstructionId at, Instruction i
     case Opcode::BAStore:
     case Opcode::CAStore:
     case Opcode::SAStore:
-      return execute_array_access(frame, opcode);
+      return execute_array_access(state, opcode);
     case Opcode::Pop:
     case Opcode::Pop2:
     case Opcode::Dup:
@@ -955,7 +991,7 @@ Status InstructionEffects::execute(Frame& frame, InstructionId at, Instruction i
     case Opcode::Dup2X1:
     case Opcode::Dup2X2:
     case Opcode::Swap:
-      return manipulate_stack(frame, opcode);
+      return manipulate_stack(state, opcode);
     case Opcode::IAdd:
     case Opcode::LAdd:
     case Opcode::FAdd:
@@ -977,14 +1013,14 @@ Status InstructionEffects::execute(Frame& frame, InstructionId at, Instruction i
     case Opcode::FRem:
     case Opcode::DRem: {
       const auto type = NUMERIC_TYPES[(static_cast<unsigned>(opcode) - static_cast<unsigned>(Opcode::IAdd)) % NUMERIC_TYPES.size()];
-      return transition(frame, {type, type}, type);
+      return transition(state, {type, type}, type);
     }
     case Opcode::INeg:
     case Opcode::LNeg:
     case Opcode::FNeg:
     case Opcode::DNeg: {
       const auto type = NUMERIC_TYPES[static_cast<unsigned>(opcode) - static_cast<unsigned>(Opcode::INeg)];
-      return transition(frame, {type}, type);
+      return transition(state, {type}, type);
     }
     case Opcode::IShl:
     case Opcode::IShr:
@@ -992,51 +1028,51 @@ Status InstructionEffects::execute(Frame& frame, InstructionId at, Instruction i
     case Opcode::IAnd:
     case Opcode::IOr:
     case Opcode::IXor:
-      return transition(frame, {INT, INT}, INT);
+      return transition(state, {INT, INT}, INT);
     case Opcode::LShl:
     case Opcode::LShr:
     case Opcode::LUShr:
-      return transition(frame, {INT, LONG}, LONG);
+      return transition(state, {INT, LONG}, LONG);
     case Opcode::LAnd:
     case Opcode::LOr:
     case Opcode::LXor:
-      return transition(frame, {LONG, LONG}, LONG);
+      return transition(state, {LONG, LONG}, LONG);
     case Opcode::I2L:
-      return transition(frame, {INT}, LONG);
+      return transition(state, {INT}, LONG);
     case Opcode::I2F:
-      return transition(frame, {INT}, FLOAT);
+      return transition(state, {INT}, FLOAT);
     case Opcode::I2D:
-      return transition(frame, {INT}, DOUBLE);
+      return transition(state, {INT}, DOUBLE);
     case Opcode::L2I:
-      return transition(frame, {LONG}, INT);
+      return transition(state, {LONG}, INT);
     case Opcode::L2F:
-      return transition(frame, {LONG}, FLOAT);
+      return transition(state, {LONG}, FLOAT);
     case Opcode::L2D:
-      return transition(frame, {LONG}, DOUBLE);
+      return transition(state, {LONG}, DOUBLE);
     case Opcode::F2I:
-      return transition(frame, {FLOAT}, INT);
+      return transition(state, {FLOAT}, INT);
     case Opcode::F2L:
-      return transition(frame, {FLOAT}, LONG);
+      return transition(state, {FLOAT}, LONG);
     case Opcode::F2D:
-      return transition(frame, {FLOAT}, DOUBLE);
+      return transition(state, {FLOAT}, DOUBLE);
     case Opcode::D2I:
-      return transition(frame, {DOUBLE}, INT);
+      return transition(state, {DOUBLE}, INT);
     case Opcode::D2L:
-      return transition(frame, {DOUBLE}, LONG);
+      return transition(state, {DOUBLE}, LONG);
     case Opcode::D2F:
-      return transition(frame, {DOUBLE}, FLOAT);
+      return transition(state, {DOUBLE}, FLOAT);
     case Opcode::I2B:
     case Opcode::I2C:
     case Opcode::I2S:
-      return transition(frame, {INT}, INT);
+      return transition(state, {INT}, INT);
     case Opcode::LCmp:
-      return transition(frame, {LONG, LONG}, INT);
+      return transition(state, {LONG, LONG}, INT);
     case Opcode::FCmpL:
     case Opcode::FCmpG:
-      return transition(frame, {FLOAT, FLOAT}, INT);
+      return transition(state, {FLOAT, FLOAT}, INT);
     case Opcode::DCmpL:
     case Opcode::DCmpG:
-      return transition(frame, {DOUBLE, DOUBLE}, INT);
+      return transition(state, {DOUBLE, DOUBLE}, INT);
     case Opcode::IfEq:
     case Opcode::IfNe:
     case Opcode::IfLt:
@@ -1045,24 +1081,24 @@ Status InstructionEffects::execute(Frame& frame, InstructionId at, Instruction i
     case Opcode::IfLe:
     case Opcode::TableSwitch:
     case Opcode::LookupSwitch:
-      return transition(frame, {INT});
+      return transition(state, {INT});
     case Opcode::IfICmpEq:
     case Opcode::IfICmpNe:
     case Opcode::IfICmpLt:
     case Opcode::IfICmpGe:
     case Opcode::IfICmpGt:
     case Opcode::IfICmpLe:
-      return transition(frame, {INT, INT});
+      return transition(state, {INT, INT});
     case Opcode::IfACmpEq:
     case Opcode::IfACmpNe:
-      if (auto value = pop_matching(frame, REFERENCE, true); !value)
+      if (auto value = pop_matching(state, REFERENCE, true); !value)
         return std::unexpected(std::move(value.error()));
       [[fallthrough]];
     case Opcode::IfNull:
     case Opcode::IfNonNull:
     case Opcode::MonitorEnter:
     case Opcode::MonitorExit: {
-      auto value = pop_matching(frame, REFERENCE, true);
+      auto value = pop_matching(state, REFERENCE, true);
       return value ? Status{} : std::unexpected(std::move(value.error()));
     }
     case Opcode::IReturn:
@@ -1071,24 +1107,24 @@ Status InstructionEffects::execute(Frame& frame, InstructionId at, Instruction i
     case Opcode::DReturn:
     case Opcode::AReturn:
     case Opcode::Return:
-      return execute_return(frame, opcode);
+      return execute_return(state, opcode);
     case Opcode::NewArray: {
       constexpr std::array PRIMITIVE_ARRAYS{"[Z", "[C", "[F", "[D", "[B", "[S", "[I", "[J"};
       const auto atype = static_cast<unsigned>(*instruction.array_type()); // NOLINT(bugprone-unchecked-optional-access)
       if (atype < 4 || atype > 11)
         return fail(AnalysisErrorKind::InvalidCode, "invalid newarray component type");
-      return transition(frame, {INT}, object(PRIMITIVE_ARRAYS[atype - 4]));
+      return transition(state, {INT}, object(PRIMITIVE_ARRAYS[atype - 4]));
     }
     case Opcode::ArrayLength: {
-      auto array = pop_matching(frame, REFERENCE);
+      auto array = pop_matching(state, REFERENCE);
       if (!array)
         return std::unexpected(std::move(array.error()));
       if (hierarchy && array->kind != Kind::Null && !array->reference.starts_with('['))
         return fail(AnalysisErrorKind::TypeMismatch, "arraylength requires an array, found " + type_name(*array));
-      return push(frame, INT);
+      return push(state, INT);
     }
     case Opcode::AThrow:
-      if (auto exception = pop_matching(frame, THROWABLE); !exception)
+      if (auto exception = pop_matching(state, THROWABLE); !exception)
         return std::unexpected(std::move(exception.error()));
       clear_stack(frame);
       return {};
@@ -1101,9 +1137,11 @@ Status InstructionEffects::execute(Frame& frame, InstructionId at, Instruction i
 }
 
 std::expected<std::optional<VerificationType>, AnalysisError>
-InstructionEffects::apply(Frame& frame, InstructionId at, Instruction instruction) {
+InstructionEffects::apply(Frame& frame, InstructionId at, Instruction instruction, InstructionTransfer* trace) {
+  if (trace)
+    *trace = {};
   std::optional<VerificationType> initialized;
-  if (auto status = execute(frame, at, instruction, initialized); !status) {
+  if (auto status = execute({frame, trace}, at, instruction, initialized); !status) {
     status.error().instruction = at;
     return std::unexpected(std::move(status.error()));
   }

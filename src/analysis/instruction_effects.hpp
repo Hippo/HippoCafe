@@ -6,6 +6,8 @@
 
 #pragma once
 
+#include <array>
+#include <cstddef>
 #include <expected>
 #include <initializer_list>
 #include <memory>
@@ -29,6 +31,30 @@ class ClassHierarchy;
 namespace cafe::analysis {
 
 /**
+ * @brief Value movement performed by one successful JVM instruction.
+ * A shuffle replaces a suffix of popped values with the indicated permutation.
+ * Other instructions consume their explicit operands and push at most one value.
+ * Implicit discards below the operand of a return or throw are excluded.
+ * @ingroup implementation
+ */
+struct InstructionTransfer {
+  std::size_t popped = 0; ///< Number of input values, counting a category-two value once.
+  bool produced = false; ///< An ordinary operation pushed a result, including a local load.
+  bool reordered = false; ///< The output suffix is a permutation of the input suffix.
+  std::array<std::size_t, 6> stack_map{}; ///< Bottom-to-top indexes relative to the consumed suffix.
+  std::size_t stack_map_size = 0; ///< Number of elements in the replacement suffix.
+};
+
+/**
+ * @brief Verifier state and optional value-flow recorder for a single instruction.
+ * @ingroup implementation
+ */
+struct InstructionState {
+  Frame& frame; ///< Mutable normal path state.
+  InstructionTransfer* trace; ///< Optional caller-owned recorder valid for this apply call.
+};
+
+/**
  * @brief Per-method JVM instruction simulator and prepared constant-effect cache. Owner and
  * scratch storage must outlive it; initialize the entry frame and prepare all instructions before
  * applying effects.
@@ -47,9 +73,11 @@ public:
    * @param hierarchy Reference-resolution hierarchy; a null internal pointer selects category-only
    *   analysis.
    * @param scratch Temporary allocator that must outlive any returned allocator-backed views.
+   * @param jvm_verifier_rules Apply JVM verifier assignability and defer member staticness checks to linkage.
+   * @param operand_pool Optional separate pool used to resolve staged instruction operands.
    */
   InstructionEffects(const ClassFile& owner, const Method& method, const classpath::ClassHierarchy* hierarchy,
-                     std::pmr::memory_resource* scratch);
+                     std::pmr::memory_resource* scratch, const ConstantPool* operand_pool = nullptr, bool jvm_verifier_rules = false);
 
   /**
    * @brief Validate method identity/signature and create its entry locals, stack, and constructor
@@ -78,6 +106,7 @@ public:
    * @param frame Mutable verifier locals, operand values, and constructor state.
    * @param at Stable instruction handle belonging to the supplied method.
    * @param instruction Logical instruction value; scoped operands require the owning method.
+   * @param trace Optional output receiving operand identity movement on success.
    * @return The pre-initialization receiver when a constructor succeeds, an empty optional
    *   otherwise, or an analysis error.
    *
@@ -85,7 +114,7 @@ public:
    * the pre-instruction receiver identity for the exceptional transfer.
    */
   [[nodiscard]] std::expected<std::optional<VerificationType>, AnalysisError>
-  apply(Frame& frame, InstructionId at, Instruction instruction);
+  apply(Frame& frame, InstructionId at, Instruction instruction, InstructionTransfer* trace = nullptr);
 
 private:
   /**
@@ -146,7 +175,7 @@ private:
   [[nodiscard]] std::expected<ConstantEffect, AnalysisError> read_constant(Instruction instruction);
   /**
    * @brief Apply a prepared instruction's stack/local/type transition.
-   * @param frame Mutable verifier locals, operand values, and constructor state.
+   * @param state Mutable verifier state and optional value-flow recorder.
    * @param at Stable instruction handle belonging to the supplied method.
    * @param instruction Logical instruction value; scoped operands require the owning method.
    * @param initialized Output receiver identity successfully initialized by this instruction, when
@@ -154,11 +183,11 @@ private:
    * @return Success or a verification failure; initialized identifies constructor effects for
    *   exceptional edges.
    */
-  [[nodiscard]] Status execute(Frame& frame, InstructionId at, Instruction instruction,
+  [[nodiscard]] Status execute(InstructionState state, InstructionId at, Instruction instruction,
                                std::optional<VerificationType>& initialized);
   /**
    * @brief Apply a constant-bearing instruction using its prepared effect.
-   * @param frame Mutable verifier locals, operand values, and constructor state.
+   * @param state Mutable verifier state and optional value-flow recorder.
    * @param at Stable instruction handle belonging to the supplied method.
    * @param instruction Logical instruction value; scoped operands require the owning method.
    * @param effect Prepared constant/member/invocation behavior for the instruction.
@@ -166,39 +195,39 @@ private:
    *   applicable.
    * @return Success or a verification/type/access failure.
    */
-  [[nodiscard]] Status execute_constant(Frame& frame, InstructionId at, Instruction instruction,
+  [[nodiscard]] Status execute_constant(InstructionState state, InstructionId at, Instruction instruction,
                                         ConstantEffect& effect, std::optional<VerificationType>& initialized);
   /**
    * @brief Check field access and update operand-stack state.
-   * @param frame Mutable verifier locals, operand values, and constructor state.
+   * @param state Mutable verifier state and optional value-flow recorder.
    * @param opcode Opcode whose operand form or metadata is requested.
    * @param effect Prepared constant/member/invocation behavior for the instruction.
    * @return Success or a receiver/value/access verification error.
    */
-  [[nodiscard]] Status execute_field(Frame& frame, Opcode opcode, ConstantEffect& effect);
+  [[nodiscard]] Status execute_field(InstructionState state, Opcode opcode, ConstantEffect& effect);
   /**
    * @brief Pop invocation arguments and receiver, enforce constructor/access rules, and push any
    * result.
-   * @param frame Mutable verifier locals, operand values, and constructor state.
+   * @param state Mutable verifier state and optional value-flow recorder.
    * @param opcode Opcode whose operand form or metadata is requested.
    * @param effect Prepared constant/member/invocation behavior for the instruction.
    * @param initialized Output receiver identity successfully initialized by this instruction, when
    *   applicable.
    * @return Success or an invocation verification error.
    */
-  [[nodiscard]] Status execute_invoke(Frame& frame, Opcode opcode, ConstantEffect& effect,
+  [[nodiscard]] Status execute_invoke(InstructionState state, Opcode opcode, ConstantEffect& effect,
                                       std::optional<VerificationType>& initialized);
   /**
    * @brief Validate a constructor receiver and replace all normal-path aliases by its initialized
    * type.
-   * @param frame Mutable verifier locals, operand values, and constructor state.
+   * @param state Mutable verifier state and optional value-flow recorder.
    * @param effect Prepared constant/member/invocation behavior for the instruction.
    * @param initialized Output receiver identity successfully initialized by this instruction, when
    *   applicable.
    * @return Success or an invalid constructor-state error; returns the old identity through
    *   initialized.
    */
-  [[nodiscard]] Status initialize_receiver(Frame& frame, ConstantEffect& effect,
+  [[nodiscard]] Status initialize_receiver(InstructionState state, ConstantEffect& effect,
                                            std::optional<VerificationType>& initialized);
   /**
    * @brief Determine whether protected member access requires a receiver subtype restriction.
@@ -224,19 +253,19 @@ private:
   [[nodiscard]] Status validate_special_owner(CpTag tag, std::string_view target);
   /**
    * @brief Check array/index/value categories for array loads and stores.
-   * @param frame Mutable verifier locals, operand values, and constructor state.
+   * @param state Mutable verifier state and optional value-flow recorder.
    * @param opcode Opcode whose operand form or metadata is requested.
    * @return Success or a stack/type error; aastore's concrete component check remains a JVM runtime
    *   responsibility.
    */
-  [[nodiscard]] Status execute_array_access(Frame& frame, Opcode opcode);
+  [[nodiscard]] Status execute_array_access(InstructionState state, Opcode opcode);
   /**
    * @brief Check the method return category and constructor initialization state.
-   * @param frame Mutable verifier locals, operand values, and constructor state.
+   * @param state Mutable verifier state and optional value-flow recorder.
    * @param opcode Opcode whose operand form or metadata is requested.
    * @return Success or a return/type/constructor error; remaining operand values are discarded.
    */
-  [[nodiscard]] Status execute_return(Frame& frame, Opcode opcode);
+  [[nodiscard]] Status execute_return(InstructionState state, Opcode opcode);
   /**
    * @brief Check one verification value against an expected category/reference type.
    * @param value Actual verification type to check against the required type.
@@ -249,21 +278,21 @@ private:
                              bool allow_uninitialized = false);
   /**
    * @brief Pop one operand and check it against an expected verification type.
-   * @param frame Mutable verifier locals, operand values, and constructor state.
+   * @param state Mutable verifier state and optional value-flow recorder.
    * @param expected Required verification type or selected declaration identity.
    * @param allow_uninitialized Whether an uninitialized reference is permitted by this specific
    *   operation.
    * @return The checked value, or an underflow/type error.
    */
-  [[nodiscard]] ValueResult pop_matching(Frame& frame, VerificationType expected, bool allow_uninitialized = false);
+  [[nodiscard]] ValueResult pop_matching(InstructionState state, VerificationType expected, bool allow_uninitialized = false);
   /**
    * @brief Apply a fixed sequence of expected pops and an optional push.
-   * @param frame Mutable verifier locals, operand values, and constructor state.
+   * @param state Mutable verifier state and optional value-flow recorder.
    * @param popped Expected top-first operand types to remove.
    * @param pushed Optional verification value to append after successful pops.
    * @return Success or a stack/type failure.
    */
-  [[nodiscard]] Status transition(Frame& frame, std::initializer_list<VerificationType> popped,
+  [[nodiscard]] Status transition(InstructionState state, std::initializer_list<VerificationType> popped,
                                   std::optional<VerificationType> pushed = std::nullopt);
   /**
    * @brief Intern the array type produced by allocating reference elements.
@@ -274,7 +303,9 @@ private:
 
   const ClassFile& owner; ///< Borrowed class owning the analyzed method and constant pool.
   const Method& method; ///< Borrowed owning method declaration.
+  const ConstantPool& operands; ///< Pool naming instruction operands, including temporarily resolved SSA operands.
   const classpath::ClassHierarchy* hierarchy; ///< Optional borrowed reference hierarchy; null selects category-only checking.
+  bool jvm_verifier_rules; ///< Use JVM verifier rules for SSA and declared frame constraints.
   std::pmr::memory_resource* scratch; ///< Borrowed temporary allocator for work buffers and interned names.
   std::string_view self; ///< Borrowed internal name of the analyzed class.
   std::string_view superclass; ///< Borrowed internal name of the direct superclass, if any.

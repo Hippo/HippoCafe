@@ -13,6 +13,7 @@
 #include <type_traits>
 #include <utility>
 
+#include "analysis/ssa_commit.hpp"
 #include "class_storage.hpp"
 #include "detail/descriptor.hpp"
 #include "io/class_format.hpp"
@@ -108,6 +109,8 @@ std::optional<std::size_t> pool_hash(const ConstantPool& pool, CpIndex index) no
  * @ingroup implementation
  */
 class SymbolicEdit {
+  friend class SsaCommit;
+
 public:
   /**
    * @brief Record the class state before resolving any operands.
@@ -562,6 +565,43 @@ private:
   std::size_t old_bootstrap_count = 0; ///< Original row count when reusing a table.
   bool committed = false; ///< True after the method accepts the edit.
 };
+
+SsaCommit::SsaCommit(ClassFile& owner, std::size_t method_index) :
+    owner(owner), method_index(method_index), staged(&owner.storage->budget),
+    transaction(std::make_unique<SymbolicEdit>(*owner.storage)) {
+}
+
+SsaCommit::~SsaCommit() = default;
+
+void SsaCommit::accept_constants() noexcept {
+  transaction->commit();
+}
+
+std::expected<CpIndex, CodeEditError> SsaCommit::utf8(std::string_view value) {
+  return transaction->utf8(value);
+}
+
+std::expected<InstructionBuilder, CodeEditError> SsaCommit::resolve(const MethodInstruction& value) {
+  return std::visit([&]<typename T>(const T& operand) -> EditResult<InstructionBuilder> {
+    if constexpr (std::is_convertible_v<T, InstructionBuilder>)
+      return InstructionBuilder{operand};
+    else
+      return transaction->build(operand).transform([](Instruction op) { return InstructionBuilder{op}; });
+  },
+                    value);
+}
+
+std::expected<CpIndex, CodeEditError> SsaCommit::resolve(const BootstrapArgument& value) {
+  return std::visit([&]<typename T>(const T& operand) -> EditResult<CpIndex> {
+    if constexpr (std::is_same_v<T, DynamicConstant>)
+      return transaction->build(operand).transform([](Instruction instruction) {
+        return *instruction.constant_index();
+      });
+    else
+      return transaction->argument(operand);
+  },
+                    value.value);
+}
 
 namespace {
 

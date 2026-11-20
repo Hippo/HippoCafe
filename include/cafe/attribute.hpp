@@ -25,9 +25,15 @@ namespace cafe {
 class ClassFile;
 class CodeAttribute;
 
+namespace analysis {
+struct DeclaredFrameAccess;
+}
+
 namespace detail {
 class ClassReader;
 class ClassWriter;
+class SsaCommit;
+struct SsaRelocationAccess;
 class SymbolicEdit;
 } // namespace detail
 
@@ -268,6 +274,8 @@ private:
   friend class detail::ClassReader;
   friend class detail::ClassWriter;
   friend class detail::SymbolicEdit;
+  friend class detail::SsaCommit;
+  friend struct detail::SsaRelocationAccess;
 
   /**
    * @brief Destroys a CodeAttribute through the same PMR resource that allocated it.
@@ -433,6 +441,9 @@ private:
   friend class Attribute;
   friend class detail::ClassReader;
   friend class detail::ClassWriter;
+  friend class detail::SsaCommit;
+  friend struct detail::SsaRelocationAccess;
+  friend struct analysis::DeclaredFrameAccess;
 
   /**
    * @brief Source slices retained for unchanged Code emission and bounded recovery.
@@ -454,6 +465,7 @@ private:
   struct SuppliedMetadata {
     std::uint64_t revision; ///< Instruction revision captured when this metadata was supplied.
     bool preserve_original_encodings; ///< Whether layout should honor retained wire-encoding hints.
+    bool verified = false; ///< Whole-body verification and final layout completed before installation.
   };
 
   /**
@@ -481,6 +493,8 @@ private:
   std::optional<std::pmr::vector<ExceptionHandler>> original_handlers; ///< Original handler table retained after the first handler edit.
   std::optional<OriginalCode> original; ///< Original wire metadata, absent for newly constructed content.
   std::optional<SuppliedMetadata> supplied_metadata; ///< Caller-supplied revision/encoding stamp, if present.
+  std::optional<std::uint16_t> owned_origin_code_size; ///< Original layout of relocated, independently owned attributes.
+  std::uint64_t metadata_revision = 0; ///< Advances when handlers or derived attributes are replaced.
 };
 
 } // namespace cafe

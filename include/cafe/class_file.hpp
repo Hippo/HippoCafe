@@ -307,6 +307,7 @@ public:
 
 private:
   friend class detail::ClassReader;
+  friend class detail::SsaCommit;
   /**
    * @brief Take ownership of already validated class storage.
    * @param storage Owned implementation storage transferred into this object.

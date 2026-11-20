@@ -11,7 +11,7 @@ Legacy `jsr`/`ret` instructions are supported for preservation through major 50.
 The historical fixture name `OakTest.class` does not establish support for every
 experimental Oak dialect; see the [fixture manifest](../tests/fixtures/README.md).
 
-Analysis accepts majors 45 through 69 and applies version-aware verifier rules.
+Frame analysis accepts majors 45 through 69 and applies version-aware verifier rules.
 It reports unsupported subroutine analysis for `jsr`/`ret`. Unreachable modern code
 that requires an inferable entry frame also returns a structured error. The reader's
 preservation support is deliberately broader than the analysis profile. Future
@@ -20,6 +20,27 @@ versions are not a promise of support for unknown encodings or verification rule
 The implementation follows the [JVM class-file specification](https://docs.oracle.com/javase/specs/jvms/se25/html/jvms-4.html)
 and [instruction specification](https://docs.oracle.com/javase/specs/jvms/se25/html/jvms-6.html).
 The source format/opcode registries and fixture tests determine the supported profile.
+
+## SSA profile
+
+SSA lifting accepts decoded concrete methods in class-file majors 45 through 69.
+The lowering semantics target Java 17 and later on a runtime that supports the
+class version. This matters for older non-strict floating-point methods, where
+historical JVMs could round an intermediate result when storing it to a local.
+Legacy subroutines require return-address analysis and produce a structured error.
+
+A current StackMapTable can supply the types for disconnected modern bytecode.
+The lifter checks these frames against transfers within and out of the disconnected
+region. A disconnected component without a usable entry state produces an error.
+Ordinary class reading, bytecode editing, and preservation use their existing paths.
+
+SSA lowering can change instruction layout, local slot assignments, and the
+physical number of exception-table rows. Existing constant-pool operands retain their
+indices. The lowerer rebuilds verification metadata and relocates known debug
+tables and code type annotations when their destinations are representable.
+Unmappable metadata fails lowering unless dropping is explicitly enabled.
+A lowered method must fit the original class version's code, local, stack,
+constant-pool, and exception-table limits.
 
 ## Attribute representation
 

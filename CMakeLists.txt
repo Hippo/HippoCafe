@@ -81,10 +81,16 @@ hippocafe_archive_dependencies()
 
 add_library(hippocafe STATIC
   src/analysis/control_flow_graph.cpp
+  src/analysis/declared_frames.cpp
   src/analysis/frame_analyzer.cpp
   src/analysis/frame_merge.cpp
   src/analysis/instruction_effects.cpp
   src/analysis/max_locals.cpp
+  src/analysis/ssa_graph.cpp
+  src/analysis/ssa_lift.cpp
+  src/analysis/ssa_lower.cpp
+  src/analysis/ssa_slots.cpp
+  src/analysis/ssa_verify.cpp
   src/archive/archive.cpp
   src/archive/archive_file.cpp
   src/archive/zip_archive.cpp
@@ -109,6 +115,8 @@ add_library(hippocafe STATIC
   src/io/code_writer.cpp
   src/io/constant_pool_reader.cpp
   src/io/opaque_attribute.cpp
+  src/io/ssa_commit.cpp
+  src/io/ssa_relocation.cpp
   src/io/stack_map_encoder.cpp
   src/model/attribute.cpp
   src/model/class_file.cpp
@@ -134,7 +142,7 @@ if(HIPPOCAFE_BUILD_FUZZERS)
 endif()
 
 if(HIPPOCAFE_BUILD_EXAMPLES)
-  foreach(example IN ITEMS inspect_class roundtrip quickstart edit_and_compute)
+  foreach(example IN ITEMS inspect_class roundtrip quickstart edit_and_compute edit_ssa)
     add_executable(hippocafe_${example} examples/${example}.cpp)
     target_link_libraries(hippocafe_${example} PRIVATE hippocafe::hippocafe)
     hippocafe_configure_target(hippocafe_${example})

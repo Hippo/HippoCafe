@@ -169,14 +169,15 @@ std::expected<bool, AnalysisError> FrameMerger::assignable(VerificationType from
     return false;
   if (!hierarchy)
     return true;
-  auto matches = hierarchy->is_assignable(from.reference, to.reference);
+  auto matches = verifier_interfaces ? verifier_reference_assignable(*hierarchy, from.reference, to.reference)
+                                     : hierarchy->is_assignable(from.reference, to.reference);
   if (!matches)
     return unresolved(std::move(matches.error()));
   return *matches;
 }
 
 std::expected<void, AnalysisError> FrameMerger::check(const Frame& target, const Frame& incoming) const {
-  if (!same_stack_shape(target, incoming))
+  if (target.stack_slots != incoming.stack_slots)
     return incompatible("incoming operand stack does not fit the declared frame");
   if (incoming.constructor_uninitialized && !target.constructor_uninitialized)
     return incompatible("uninitialized constructor state cannot enter an initialized frame");
@@ -192,8 +193,35 @@ std::expected<void, AnalysisError> FrameMerger::check(const Frame& target, const
     }
     return {};
   };
-  if (auto checked = check_values(target.stack, incoming.stack, "operand type does not fit the declared frame"); !checked)
-    return checked;
+  if (same_stack_shape(target, incoming)) {
+    if (auto checked = check_values(target.stack, incoming.stack, "operand type does not fit the declared frame"); !checked)
+      return checked;
+  } else {
+    // A declared stack may forget both halves of a category-two value as two
+    // explicit Top slots. Compare actual verifier slots on that uncommon path.
+    struct Slots {
+      std::span<const VerificationType> values;
+      bool continuation = false;
+      VerificationType next() {
+        if (continuation) {
+          continuation = false;
+          return {WideContinuation};
+        }
+        const auto value = values.front();
+        values = values.subspan(1);
+        continuation = value.width() == 2;
+        return value;
+      }
+    };
+    Slots expected{target.stack}, actual{incoming.stack};
+    for (unsigned i = 0; i < target.stack_slots; ++i) {
+      auto ok = assignable(actual.next(), expected.next());
+      if (!ok)
+        return std::unexpected(std::move(ok.error()));
+      if (!*ok)
+        return incompatible("operand slots do not fit the declared stack");
+    }
+  }
   return check_values(target.locals, incoming.locals, "local variable type does not fit the declared frame");
 }
 

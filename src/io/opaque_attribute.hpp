@@ -73,6 +73,7 @@ struct CodeOffsetField {
 struct CodeOffsetVisitor {
   void* state = nullptr; ///< Borrowed opaque callback state valid for the validation call.
   bool (*visit)(void*, CodeOffsetField&) = nullptr; ///< Borrowed offset visitor callback; false rejects relocation/validation.
+  void (*type_annotation)(void*, std::size_t, std::size_t) = nullptr; ///< Receives the bounded byte interval of each validated type annotation.
 };
 
 /**

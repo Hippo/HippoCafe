@@ -6,6 +6,7 @@
 
 #include <gtest/gtest.h>
 
+#include "analysis/ssa_frames.hpp"
 #include "cafe/analysis/control_flow_graph.hpp"
 #include "cafe/analysis/frame_analyzer.hpp"
 #include "cafe/analysis/max_locals.hpp"
@@ -43,6 +44,149 @@ LabelId label_at(MethodCode& code, std::optional<InstructionId> id) {
   const auto label = code.make_label().value();
   code.bind_label(label, {id}).value();
   return label;
+}
+
+void supply_stack_map(ClassFile& owner, std::size_t method, std::uint16_t stack, std::uint16_t locals,
+                      std::initializer_list<unsigned char> payload) {
+  std::vector<std::byte> bytes;
+  for (auto number : payload)
+    bytes.push_back(static_cast<std::byte>(number));
+  const auto name = owner.constant_pool().append_utf8("StackMapTable").value();
+  std::vector<Attribute> attributes;
+  attributes.push_back(Attribute::raw(name, std::move(bytes)));
+  owner.edit_code(method)->supply_metadata(stack, locals, {}, std::move(attributes));
+}
+
+TEST(SsaFrames, ChecksDisconnectedEdgesAgainstDeclaredLiveTargets) {
+  auto owner = ClassFile::create(MODERN, "Disconnected").value();
+  auto index = add_method(owner, "(I)V");
+  auto& code = owner.edit_code(index)->code();
+  const auto target = code.make_label().value();
+  const auto ids = code.append(std::array<InstructionBuilder, 6>{
+                                   Instruction::branch(Opcode::Goto, target).value(), simple(Opcode::AConstNull), Instruction::astore(0),
+                                   Instruction::iload(0), Instruction::pop(), Instruction::return_void()})
+                       .value();
+  code.bind_label(target, {ids[3]}).value();
+  supply_stack_map(owner, index, 1, 1, {0, 2, 3, 1});
+  const auto& method = owner.methods()[index];
+  AnalysisContext context;
+  auto declared = decode_ssa_frames(owner, method, context.limits());
+  ASSERT_TRUE(declared) << declared.error().detail;
+  ASSERT_EQ(declared->entries.size(), 2);
+  EXPECT_EQ(declared->entries[0].instruction, ids[1]);
+  EXPECT_EQ(declared->entries[1].instruction, ids[3]);
+  auto rejected = ssa_frames(owner, method, code, {}, context, declared->entries);
+  ASSERT_FALSE(rejected);
+  EXPECT_EQ(rejected.error().kind, AnalysisErrorKind::IncompatibleJoin);
+  code.replace(ids[1], simple(Opcode::IConst1)).value();
+  code.replace(ids[2], Instruction::istore(0)).value();
+  EXPECT_TRUE(decode_ssa_frames(owner, method, context.limits()).value().entries.empty());
+  supply_stack_map(owner, index, 1, 1, {0, 2, 3, 1});
+  declared = decode_ssa_frames(owner, method, context.limits());
+  ASSERT_TRUE(declared);
+  auto verified = ssa_frames(owner, method, code, {}, context, declared->entries);
+  ASSERT_TRUE(verified) << verified.error().detail;
+  ASSERT_EQ(verified->entries.size(), 3);
+  EXPECT_EQ(verified->entries.front().instruction, ids.front());
+  EXPECT_EQ(verified->max_locals, 1);
+  EXPECT_EQ(verified->max_stack, 1);
+  EXPECT_EQ(compute_frames(owner, method, context).error().kind, AnalysisErrorKind::UnreachableCode);
+  supply_stack_map(owner, index, 1, 1, {0, 1, 5});
+  auto missing = decode_ssa_frames(owner, method, context.limits());
+  ASSERT_FALSE(missing);
+  EXPECT_EQ(missing.error().instruction, ids[1]);
+}
+
+TEST(SsaFrames, ExpandsCompactFramesRelativeToPreviousDeclaration) {
+  auto owner = ClassFile::create(MODERN, "Compact").value();
+  const auto index = add_method(owner, "(JD)V");
+  auto& code = owner.edit_code(index)->code();
+  for (int i = 0; i < 7; ++i)
+    code.append(Instruction::return_void()).value();
+  // Each instruction after the initial return starts a separate verifier region.
+  supply_stack_map(owner, index, 2, 4, {0, 6, 250, 0, 1, 252, 0, 0, 3, 64, 4, 247, 0, 0, 1, 251, 0, 0, 255, 0, 0, 0, 0, 0, 1, 5});
+  const auto& method = owner.methods()[index];
+  AnalysisContext context;
+  auto declared = decode_ssa_frames(owner, method, context.limits());
+  ASSERT_TRUE(declared) << declared.error().detail;
+  ASSERT_EQ(declared->entries.size(), 6);
+  ASSERT_EQ(declared->entries[0].frame.locals.size(), 2);
+  EXPECT_EQ(declared->entries[0].frame.locals.back().kind, VerificationKind::WideContinuation);
+  ASSERT_EQ(declared->entries[1].frame.locals.size(), 4);
+  EXPECT_EQ(declared->entries[1].frame.locals[2].kind, VerificationKind::Double);
+  EXPECT_EQ(declared->entries[2].frame.stack_slots, 2);
+  EXPECT_EQ(declared->entries[3].frame.stack_slots, 1);
+  EXPECT_EQ(declared->entries[4].frame.stack_slots, 0);
+  EXPECT_EQ(declared->entries[5].frame.stack.front().kind, VerificationKind::Null);
+  auto verified = ssa_frames(owner, method, code, {}, context, declared->entries);
+  ASSERT_TRUE(verified) << verified.error().detail;
+  EXPECT_EQ(verified->entries.size(), 7);
+  EXPECT_EQ(verified->max_stack, 2);
+  supply_stack_map(owner, index, 2, 4, {0, 1, 248, 0, 1});
+  EXPECT_FALSE(decode_ssa_frames(owner, method, context.limits()));
+}
+
+TEST(SsaFrames, VerifiesInteriorConstraintThatForgetsAWideOperand) {
+  auto owner = ClassFile::create(MODERN, "Forgotten").value();
+  const auto index = add_method(owner, "()V");
+  auto& code = owner.edit_code(index)->code();
+  code.append(simple(Opcode::LConst0)).value();
+  const auto end = code.append(Instruction::return_void()).value();
+  // Full frame at byte one with two explicit unusable stack slots.
+  supply_stack_map(owner, index, 2, 0, {0, 1, 255, 0, 1, 0, 0, 0, 2, 0, 0});
+  AnalysisContext context;
+  const auto& method = owner.methods()[index];
+  auto declared = decode_ssa_frames(owner, method, context.limits());
+  ASSERT_TRUE(declared) << declared.error().detail;
+  auto verified = ssa_frames(owner, method, code, {}, context, declared->entries);
+  ASSERT_TRUE(verified) << verified.error().detail;
+  ASSERT_EQ(verified->entries.size(), 2);
+  EXPECT_EQ(verified->entries.back().instruction, end);
+  EXPECT_EQ(verified->entries.back().frame.stack_slots, 2);
+}
+
+TEST(SsaFrames, RejectsFallthroughPastEndInDisconnectedRegion) {
+  auto owner = ClassFile::create(MODERN, "DeadFallthrough").value();
+  const auto index = add_method(owner, "()V");
+  auto& code = owner.edit_code(index)->code();
+  code.append(Instruction::return_void()).value();
+  const auto dead = code.append(Instruction::nop()).value();
+  supply_stack_map(owner, index, 0, 0, {0, 1, 1});
+  AnalysisContext context;
+  const auto& method = owner.methods()[index];
+  auto declared = decode_ssa_frames(owner, method, context.limits());
+  ASSERT_TRUE(declared) << declared.error().detail;
+  auto checked = ssa_frames(owner, method, code, {}, context, declared->entries);
+  ASSERT_FALSE(checked);
+  EXPECT_EQ(checked.error().kind, AnalysisErrorKind::InvalidCode);
+  EXPECT_EQ(checked.error().instruction, dead);
+}
+
+TEST(SsaFrames, RetainsOwnedDeclaredTypesAndUnusedLocalWidths) {
+  const auto analyze = [] {
+    auto owner = ClassFile::create(MODERN, "AllocationSite").value();
+    const auto index = add_method(owner, "()V");
+    auto& code = owner.edit_code(index)->code();
+    code.append(Instruction::constant(Opcode::New, owner.this_class()).value()).value();
+    code.append(Instruction::pop()).value();
+    code.append(Instruction::return_void()).value();
+    code.append(Instruction::return_void()).value();
+    // A declared, unused long occupies two locals. The stack value names the new at offset zero.
+    supply_stack_map(owner, index, 1, 2, {0, 1, 255, 0, 5, 0, 1, 4, 0, 1, 8, 0, 0});
+    AnalysisContext context;
+    const auto& method = owner.methods()[index];
+    auto declared = decode_ssa_frames(owner, method, context.limits()).value();
+    return ssa_frames(owner, method, code, {}, context, declared.entries);
+  };
+  auto verified = analyze();
+  ASSERT_TRUE(verified) << verified.error().detail;
+  ASSERT_EQ(verified->entries.size(), 2);
+  EXPECT_EQ(verified->max_locals, 2);
+  ASSERT_EQ(verified->entries.back().frame.stack.size(), 1);
+  const auto value = verified->entries.back().frame.stack.front();
+  EXPECT_EQ(value.kind, VerificationKind::Uninitialized);
+  EXPECT_EQ(value.reference, "AllocationSite");
+  EXPECT_EQ(value.allocation, verified->entries.front().instruction);
 }
 
 TEST(ControlFlowGraph, RetainsSwitchKeysAndBackEdgesWithStableInstructionHandles) {
@@ -313,6 +457,15 @@ TEST(FrameAnalysis, RetriesCommonInterfacesAndVerifiesTheirDownstreamUses) {
   ASSERT_FALSE(frames);
   EXPECT_EQ(frames.error().kind, AnalysisErrorKind::AmbiguousTypeJoin) << frames.error().detail;
 
+  // A javac-produced map may use one interface as the receiver of an unrelated
+  // invokeinterface. The JVM checks the implementation at the invocation site.
+  StackMapFrame declaration{ids[5], Frame{}};
+  declaration.frame.stack.emplace_back(VerificationKind::Object, "api/First");
+  declaration.frame.stack_slots = 1;
+  auto declared = ssa_frames(owner, owner.methods()[method], code, {}, context, std::span(&declaration, 1));
+  ASSERT_TRUE(declared) << declared.error().detail;
+  EXPECT_EQ(declared->entries.back().frame.stack.front().reference, "api/First");
+
   // The first ordered candidate still cannot satisfy this use.
   code.replace(ids[7], Instruction::pop()).value();
   frames = compute_frames(owner, owner.methods()[method], context);
@@ -321,6 +474,13 @@ TEST(FrameAnalysis, RetriesCommonInterfacesAndVerifiesTheirDownstreamUses) {
   ASSERT_EQ(entries.back().instruction, ids[5]);
   ASSERT_EQ(entries.back().frame.stack.size(), 1);
   EXPECT_EQ(entries.back().frame.stack.front().reference, "api/Second");
+
+  const auto array_method = add_method(owner, "([Lapi/First;)[Lapi/Second;", STATIC_PUBLIC, "covariant");
+  auto& array_code = owner.edit_code(array_method)->code();
+  array_code.append(Instruction::aload(0)).value();
+  array_code.append(simple(Opcode::AReturn)).value();
+  auto covariant = ssa_frames(owner, owner.methods()[array_method], array_code, {}, context);
+  ASSERT_TRUE(covariant) << covariant.error().detail;
 
   // Both joins see the same incoming references but need different
   // candidates. The first joins a local and the second joins the stack.

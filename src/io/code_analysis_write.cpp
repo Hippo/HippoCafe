@@ -18,6 +18,7 @@
 #include <cafe/analysis/max_stack.hpp>
 #include <cafe/read_options.hpp>
 
+#include "analysis/ssa_frames.hpp"
 #include "binary_reader.hpp"
 #include "class_format.hpp"
 #include "code_decoder.hpp"
@@ -79,6 +80,8 @@ WriteErrorKind analysis_error_kind(const analysis::AnalysisError& error, bool ha
   return WriteErrorKind::InvalidVerificationFrame;
 }
 
+} // namespace
+
 /**
  * @brief Attach writer location and byte offsets to an analysis failure.
  * @param error Underlying structured failure to translate or enrich.
@@ -91,7 +94,7 @@ WriteErrorKind analysis_error_kind(const analysis::AnalysisError& error, bool ha
  */
 std::unexpected<WriteError> analysis_error(
     const analysis::AnalysisError& error, std::string_view path, bool has_context,
-    const MethodCode& code, std::span<const std::uint32_t> offsets = {}) {
+    const MethodCode& code, std::span<const std::uint32_t> offsets) {
   std::string detail = error.class_name + "." + error.method_name + error.descriptor;
   if (error.instruction) {
     std::size_t index = 0;
@@ -116,6 +119,8 @@ std::unexpected<WriteError> analysis_error(
   }
   return std::unexpected(WriteError{analysis_error_kind(error, has_context), std::string(path), std::move(detail)});
 }
+
+namespace {
 
 /**
  * @brief Check whether decoded Code has control-flow boundaries requiring modern frames.
@@ -199,6 +204,68 @@ std::pmr::vector<std::uint32_t> remap_handlers(
 
 } // namespace
 
+std::expected<void, WriteError> materialize_expanded_code(
+    MethodCode& expanded, const MethodCode& original, const EncodedCode& encoded, ClassVersion version,
+    const ConstantPool& pool, std::uint16_t max_locals, std::span<const ExceptionHandler> handlers,
+    std::span<const analysis::StackMapFrame> seeds, std::pmr::vector<ExceptionHandler>& expanded_handlers,
+    std::pmr::vector<std::uint32_t>& expanded_offsets, std::pmr::vector<analysis::StackMapFrame>& expanded_seeds,
+    std::pmr::memory_resource* scratch, std::string_view path) {
+  auto decoded = decode_code(expanded, encoded.bytes(), 0, version, pool, max_locals, {}, scratch, path);
+  if (!decoded)
+    return write_error(WriteErrorKind::InvalidCodeLayout, path, decoded.error().detail);
+  expanded_offsets.reserve(expanded.size());
+  for (std::uint32_t offset = 0; offset < encoded.bytes().size(); ++offset)
+    if (decoded->is_instruction_start(offset))
+      expanded_offsets.push_back(offset);
+  if (handlers.size() > MAX_COUNT)
+    return write_error(WriteErrorKind::InvalidCodeLayout, path, "exception table count does not fit u2");
+  expanded_handlers.reserve(handlers.size());
+  for (const auto& handler : handlers) {
+    const auto label = [&](LabelId source) -> std::expected<LabelId, CodeEditError> {
+      const auto offset = encoded.offset_of(source);
+      if (offset)
+        return decoded->label_at(expanded, *offset);
+      return std::unexpected(CodeEditError::InvalidLabel);
+    };
+    const auto start = label(handler.start), end = label(handler.end), target = label(handler.handler);
+    if (!start || !end || !target)
+      return write_error(WriteErrorKind::InvalidLabel, path, "could not remap handler to expanded code");
+    expanded_handlers.push_back({*start, *end, *target, handler.catch_type});
+  }
+  if (seeds.empty())
+    return {};
+  const InstructionOffsets old_offsets(original, encoded.instruction_offsets(), scratch);
+  const auto remap = [&](InstructionId source) -> std::optional<InstructionId> {
+    const auto offset = old_offsets.offset_of(source);
+    if (!offset)
+      return {};
+    const auto match = std::ranges::lower_bound(expanded_offsets, *offset);
+    if (match == expanded_offsets.end() || *match != *offset)
+      return {};
+    return expanded.at(static_cast<std::size_t>(match - expanded_offsets.begin()));
+  };
+  expanded_seeds.reserve(seeds.size());
+  for (const auto& seed : seeds) {
+    const auto target = remap(seed.instruction);
+    if (!target)
+      return write_error(WriteErrorKind::UnrepresentableFrame, path, "verifier root lost its instruction");
+    auto& frame = expanded_seeds.emplace_back(analysis::StackMapFrame{*target, analysis::Frame(scratch)}).frame;
+    frame.stack_slots = seed.frame.stack_slots;
+    frame.constructor_uninitialized = seed.frame.constructor_uninitialized;
+    frame.locals = seed.frame.locals;
+    frame.stack = seed.frame.stack;
+    for (auto* values : {&frame.locals, &frame.stack})
+      for (auto& value : *values)
+        if (value.kind == analysis::VerificationKind::Uninitialized) {
+          const auto mapped = remap(value.allocation);
+          if (!mapped)
+            return write_error(WriteErrorKind::UnrepresentableFrame, path, "verifier root lost its new instruction");
+          value.allocation = *mapped;
+        }
+  }
+  return {};
+}
+
 std::expected<void, WriteError> ClassWriter::write_analyzed_code(
     const CodeAttribute& code, const Method& method, std::string_view path) {
   const bool has_context = analysis_context != nullptr;
@@ -253,44 +320,41 @@ std::expected<void, WriteError> ClassWriter::write_analyzed_code(
     std::optional<MethodCode> expanded;
     std::pmr::vector<ExceptionHandler> expanded_handlers(&scratch);
     std::pmr::vector<std::uint32_t> expanded_offsets(&scratch);
+    std::pmr::vector<analysis::StackMapFrame> expanded_seeds(&scratch);
+    analysis::DeclaredFrames declared;
+    if (code.supplied_metadata && code.supplied_metadata->verified &&
+        code.supplied_metadata->revision == instructions.revision()) {
+      auto decoded = analysis::decode_ssa_frames(model, method, limits);
+      if (!decoded)
+        return analysis_error(decoded.error(), path, has_context, instructions);
+      declared = std::move(*decoded);
+    }
+    auto seeds = declared.entries;
     std::span<const std::uint32_t> offsets = encoded->instruction_offsets();
     auto handlers = code.exception_handlers();
     if (encoded->has_expanded_conditionals()) {
       expanded.emplace(&scratch);
-      auto decoded = decode_code(*expanded, encoded->bytes(), 0, version, pool, max_locals, {}, &scratch, path);
-      if (!decoded)
-        return write_error(WriteErrorKind::InvalidCodeLayout, path, decoded.error().detail);
-      if (handlers.size() > MAX_COUNT)
-        return write_error(WriteErrorKind::InvalidCodeLayout, path, "exception table count does not fit u2");
-      expanded_handlers.reserve(handlers.size());
-      for (const auto& handler : handlers) {
-        auto wire = resolve_handler(handler, *encoded, path);
-        if (!wire)
-          return std::unexpected(std::move(wire.error()));
-        const auto start = decoded->label_at(*expanded, wire->start);
-        const auto end = decoded->label_at(*expanded, wire->end);
-        const auto target = decoded->label_at(*expanded, wire->handler);
-        if (!start || !end || !target)
-          return write_error(WriteErrorKind::InvalidLabel, path, "could not represent exception range in expanded code");
-        expanded_handlers.push_back({*start, *end, *target, wire->catch_type});
-      }
-      expanded_offsets.reserve(expanded->size());
-      for (std::uint32_t offset = 0; offset < encoded->bytes().size(); ++offset) {
-        if (decoded->is_instruction_start(offset))
-          expanded_offsets.push_back(offset);
-      }
+      if (auto result = materialize_expanded_code(*expanded, instructions, *encoded, version, pool, max_locals,
+                                                  handlers, seeds, expanded_handlers, expanded_offsets, expanded_seeds,
+                                                  &scratch, path);
+          !result)
+        return result;
       offsets = expanded_offsets;
       handlers = expanded_handlers;
+      seeds = expanded_seeds;
     }
 
     const auto& emitted = expanded ? *expanded : instructions;
-    const auto computed = analysis::compute_frames(model, method, context, emitted, handlers);
+    const auto computed = seeds.empty() ? analysis::compute_frames(model, method, context, emitted, handlers)
+                                        : analysis::emission_frames(model, method, emitted, handlers, context, seeds);
     if (!computed)
       return analysis_error(computed.error(), path, has_context, emitted, offsets);
     if (!computed->is_current(emitted, handlers))
       return write_error(WriteErrorKind::StaleAnalysisResult, path, "computed frames do not describe the emitted method");
     max_stack = computed->max_stack();
     max_locals = computed->max_locals();
+    if (code.owned_origin_code_size)
+      max_locals = std::max(max_locals, code.max_locals());
     if (version.major >= 50 && !computed->frames().empty()) {
       const InstructionOffsets instruction_offsets(emitted, offsets, &scratch);
       auto table = encode_stack_map(*computed, emitted, instruction_offsets, stack_map_constants, &scratch, path);
@@ -322,7 +386,7 @@ std::expected<void, WriteError> ClassWriter::write_analyzed_code_attributes(
   std::optional<InstructionOffsets> instruction_offsets;
   if (rewritten && !code.original_boundaries.empty())
     instruction_offsets.emplace(code.instructions, encoded.instruction_offsets(), scratch);
-  const auto original_size = code.original ? code.original->code.length : 0;
+  const auto original_size = code.original ? code.original->code.length : code.owned_origin_code_size.value_or(0);
   auto handler_offsets = code.original_handlers ? remap_handlers(*code.original_handlers, code.handlers, scratch)
                                                 : std::pmr::vector<std::uint32_t>(scratch);
   const bool supplied = code.supplied_metadata && code.supplied_metadata->revision == code.instructions.revision() &&
@@ -437,7 +501,8 @@ std::expected<void, WriteError> ClassWriter::write_analyzed_code_attributes(
                                     output.size(), attribute_path, std::string(reason), RecoveryAction::Dropped});
       return {};
     };
-    if (rewritten && (!spec || (!raw->source_slice() && !supplied))) {
+    const bool anchored = raw->source_slice() || code.owned_origin_code_size.has_value();
+    if (rewritten && (!spec || (!anchored && !supplied))) {
       if (auto handled = unsafe(WriteErrorKind::UnsafeOpaqueAttribute,
                                 "code attribute may depend on stale offsets or handler indices");
           !handled)
@@ -451,7 +516,7 @@ std::expected<void, WriteError> ClassWriter::write_analyzed_code_attributes(
       BinaryReader reader(*bytes);
       CodeOffsetVisitor visitor;
       Relocation relocation{code, encoded, instruction_offsets, handler_offsets, {}, original_size};
-      if (rewritten && raw->source_slice()) {
+      if (rewritten && anchored) {
         relocated.assign(bytes->begin(), bytes->end());
         relocation.output = relocated;
         visitor = {&relocation, [](void* state, CodeOffsetField& field) {
@@ -462,7 +527,7 @@ std::expected<void, WriteError> ClassWriter::write_analyzed_code_attributes(
       if (const auto checked = validate_opaque_attribute(reader, *spec, AttributeContext::Code, pool, ReadLimits{},
                                                          attribute_path, &context, &attribute_scratch, visitor);
           !checked) {
-        if (!raw->source_slice())
+        if (!anchored)
           return write_error(WriteErrorKind::InvalidClassModel, attribute_path, checked.error().detail);
         if (auto handled = unsafe(WriteErrorKind::UnmappedCodeOffset, checked.error().detail); !handled)
           return handled;

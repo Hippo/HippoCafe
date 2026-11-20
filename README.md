@@ -88,6 +88,14 @@ includes `jmods/`. Register any application dependencies with `add_directory`,
 diagnostics and save its bytes just as you would for a round trip.
 See the runnable example in the [usage guide](docs/usage.md).
 
+## Work with SSA
+
+Lift an individual method with `cafe::analysis::lift_ssa`, or use `create_ssa` to
+build a body for a concrete declaration. The graph exposes typed operands, phis,
+and control-flow edges. `lower_ssa` installs verified bytecode for the ordinary
+class writer. The [usage guide](docs/usage.md) walks through the compiled
+`examples/edit_ssa.cpp` example.
+
 ## Documentation
 
 - [Guide and API reference](docs/README.md)

@@ -21,6 +21,8 @@
 
 namespace cafe::analysis {
 
+struct StackMapFrame;
+
 /**
  * @brief Zero-based block index scoped to one ControlFlowGraph; block zero is the method entry.
  * @ingroup analysis
@@ -181,6 +183,9 @@ private:
   /** @cond duplicate_friend_declarations */
   friend std::expected<ControlFlowGraph, AnalysisError> build_cfg(
       const MethodCode&, std::span<const ExceptionHandler>, std::pmr::memory_resource*, const AnalysisLimits&);
+  friend std::expected<ControlFlowGraph, AnalysisError> ssa_cfg(
+      const MethodCode&, std::span<const ExceptionHandler>, std::span<const StackMapFrame>,
+      std::pmr::memory_resource*, const AnalysisLimits&);
   /** @endcond */
 };
 

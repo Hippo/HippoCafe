@@ -10,6 +10,7 @@
 #include <cafe/analysis/frame_analyzer.hpp>
 #include <cafe/analysis/max_locals.hpp>
 #include <cafe/analysis/max_stack.hpp>
+#include <cafe/analysis/ssa.hpp>
 #include <cafe/archive/archive.hpp>
 #include <cafe/bytecode/builder.hpp>
 #include <cafe/bytecode/method_instruction.hpp>

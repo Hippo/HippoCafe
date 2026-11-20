@@ -124,10 +124,11 @@ public:
    *   analysis.
    * @param search Deterministic reference-join candidate selection state shared across attempts.
    * @param scratch Temporary allocator that must outlive any returned allocator-backed views.
+   * @param verifier_interfaces Enable JVM interface assignability when checking declared states.
    */
   FrameMerger(const classpath::ClassHierarchy* hierarchy, JoinSearch& search,
-              std::pmr::memory_resource* scratch) :
-      hierarchy(hierarchy), search(search), names(scratch) {
+              std::pmr::memory_resource* scratch, bool verifier_interfaces = false) :
+      hierarchy(hierarchy), search(search), names(scratch), verifier_interfaces(verifier_interfaces) {
   }
 
   /**
@@ -170,6 +171,7 @@ private:
   const classpath::ClassHierarchy* hierarchy; ///< Optional borrowed reference hierarchy; null selects category-only checking.
   JoinSearch& search; ///< Shared deterministic candidate-selection state across verifier attempts.
   NameSet names; ///< Stable owned reference-name intern set.
+  bool verifier_interfaces; ///< Apply JVM interface assignment when checking an explicit frame.
 };
 
 } // namespace cafe::analysis

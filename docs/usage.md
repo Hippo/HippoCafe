@@ -307,6 +307,62 @@ uses it. Check `is_current()` before reusing results after edits. The frame chec
 that takes the class, method, and context also checks the declaration and hierarchy
 identities. See [compatibility](compatibility.md) for analysis limits.
 
+## Edit a method in SSA
+
+Call `cafe::analysis::lift_ssa` with a method index and the same hierarchy context
+used for frame analysis. The returned graph owns its instructions, types and phi
+inputs. Inspect `blocks()`, `operation()`, `value()`, and `uses()`. An operation's
+inputs are in JVM evaluation order, with the receiver first for an instance call.
+Saved IDs survive unrelated graph edits. Reacquire borrowed spans and pointers
+after each edit. The context's upstream memory resource must outlive the graph.
+
+The example swaps the two operands of the first integer subtraction. It edits
+the graph, installs the verified method, then uses the ordinary class writer.
+
+<!-- snippet: examples/edit_ssa.cpp:edit-ssa -->
+```cpp
+std::expected<cafe::WriteResult, std::string> reverse_difference(
+    cafe::ClassFile& owner, std::size_t method, cafe::analysis::AnalysisContext& context) {
+  auto graph = cafe::analysis::lift_ssa(owner, method, context);
+  if (!graph)
+    return std::unexpected(std::move(graph.error().detail));
+  for (const auto& block : graph->blocks()) {
+    for (const auto id : block.operations) {
+      const auto* op = graph->operation(id);
+      if (op->opcode != cafe::Opcode::ISub)
+        continue;
+      const auto left = op->inputs[0];
+      const auto right = op->inputs[1];
+      if (auto edit = graph->set_input(id, 0, right); !edit)
+        return std::unexpected(std::move(edit.error().detail));
+      if (auto edit = graph->set_input(id, 1, left); !edit)
+        return std::unexpected(std::move(edit.error().detail));
+      if (auto lowered = cafe::analysis::lower_ssa(owner, *graph, context); !lowered)
+        return std::unexpected(std::move(lowered.error().detail));
+      return cafe::write_class(owner).transform_error([](cafe::WriteError error) {
+        return std::move(error.detail);
+      });
+    }
+  }
+  return std::unexpected("method contains no integer subtraction");
+}
+```
+<!-- end snippet -->
+
+For a new body, first add a concrete method declaration to the class and call
+`create_ssa`. Its entry block and descriptor-derived parameters are ready for use.
+Append operations, terminate each block, and define its outgoing edges. A phi
+takes one value per incoming edge, including distinct switch arms with the same
+destination. `verify_ssa` checks the graph while leaving both it and the class
+available for further editing.
+
+`lower_ssa` replaces the selected method's instruction identities and prepares
+metadata for `write_class(owner)`. Reacquire the code and instruction handles after
+success. A failed lower preserves the previous body and class dependencies. Treat
+a stale-source diagnostic as a request to lift the current method before applying
+the edit again. Set `SsaLowerOptions::drop_unsafe_code_attributes` to permit an
+unrelocatable Code attribute to be dropped and inspect the returned diagnostics.
+
 ## Edit JARs and JMODs
 
 Use `Archive::open(path, Format::Jar)` or its owned-vector overload to index an archive.

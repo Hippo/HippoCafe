@@ -215,8 +215,6 @@ std::expected<std::pmr::vector<std::byte>, WriteError> encode_stack_map(
     writer.u2(static_cast<std::uint16_t>(frame.stack.size()));
     unsigned slots = 0;
     for (const auto& type : frame.stack) {
-      if (type.kind == Top)
-        return write_error(WriteErrorKind::UnrepresentableFrame, path, "operand stack contains an unusable type");
       slots += type.width();
       if (auto written = write_type(writer, type, code, offsets, constants, path); !written)
         return std::unexpected(std::move(written.error()));

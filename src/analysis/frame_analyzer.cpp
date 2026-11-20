@@ -20,6 +20,7 @@
 #include "frame_merge.hpp"
 #include "instruction_effects.hpp"
 #include "model/budget_resource.hpp"
+#include "ssa_frames.hpp"
 
 namespace cafe::analysis {
 namespace {
@@ -175,6 +176,12 @@ bool FrameAnalysis::is_current(const ClassFile& owner, const Method& method,
  */
 class FrameEngine {
 public:
+  /// Select frame collection and assignment rules for the analysis caller.
+  enum class Purpose {
+    ComputedEmission, ///< Preserve the existing frame inference and metadata contract.
+    SymbolicSimulation, ///< Materialize every typed block entry for the SSA lifter.
+    LoweredEmission, ///< Verify the final SSA output and collect only the required wire frames.
+  };
   /**
    * @brief Initialize nonmutating method verifier driver
    * @param owner Class owning the method, constants, or source slices being inspected.
@@ -185,11 +192,16 @@ public:
    * @param hierarchy Reference-resolution hierarchy; a null internal pointer selects category-only
    *   analysis.
    * @param additional Additional required frame-entry instruction identities.
+   * @param seeds Fixed verifier constraints at instruction boundaries.
+   * @param purpose Frame selection and assignment rules for this caller.
    */
   FrameEngine(const ClassFile& owner, const Method& method, const MethodCode& code,
               std::span<const ExceptionHandler> handlers, const AnalysisLimits& limits,
-              const classpath::ClassHierarchy* hierarchy, std::span<const InstructionId> additional) : owner(owner), method(method), code(code), handlers(handlers), limits(limits), hierarchy(hierarchy),
-                                                                                                       additional(additional), site(method_site(owner, method)) {
+              const classpath::ClassHierarchy* hierarchy, std::span<const InstructionId> additional,
+              std::span<const StackMapFrame> seeds = {}, Purpose purpose = Purpose::ComputedEmission) :
+      owner(owner), method(method), code(code), handlers(handlers), limits(limits), hierarchy(hierarchy),
+      additional(additional), seeds(seeds), all_entries(purpose == Purpose::SymbolicSimulation),
+      verifier_interfaces(purpose != Purpose::ComputedEmission), site(method_site(owner, method)) {
   }
 
   /**
@@ -228,9 +240,16 @@ private:
    * @param result Output/result storage populated by this operation.
    * @param state Converged frame copied into result-owned storage.
    * @param instruction Stable instruction handle belonging to the supplied method.
+   * @param wire_frame Whether constructor state must be encodable at this boundary.
    * @return Success or an unrepresentable-frame error.
    */
-  [[nodiscard]] Status materialize(FrameAnalysis::Storage& result, const Frame& state, InstructionId instruction) const;
+  [[nodiscard]] Status materialize(FrameAnalysis::Storage& result, const Frame& state, InstructionId instruction,
+                                   bool wire_frame) const;
+
+  /// Check verifier-only inputs before exposing their state to instruction transfer.
+  /// @param seed Declaration containing verifier slots and a current instruction identity.
+  /// @return Success or an invalid declaration or analysis limit error.
+  [[nodiscard]] Status validate_seed(const StackMapFrame& seed) const;
 
   const ClassFile& owner; ///< Borrowed class owning the analyzed method and constant pool.
   const Method& method; ///< Borrowed owning method declaration.
@@ -239,6 +258,9 @@ private:
   const AnalysisLimits& limits; ///< Configured resource ceilings.
   const classpath::ClassHierarchy* hierarchy; ///< Optional borrowed reference hierarchy; null selects category-only checking.
   std::span<const InstructionId> additional; ///< Extra instruction identities requiring frames in an emission plan.
+  std::span<const StackMapFrame> seeds; ///< Fixed entry constraints, including disconnected roots.
+  bool all_entries; ///< Collect symbolically usable frames at all blocks and all supported versions.
+  bool verifier_interfaces; ///< Apply JVM interface assignment for SSA and its emitted code.
   MethodSite site; ///< Borrowed method identity used to attach error context.
 };
 
@@ -267,16 +289,17 @@ std::expected<VerificationType, AnalysisError> FrameEngine::handler_type(
   return VerificationType{.kind = Object, .reference = *name};
 }
 
-Status FrameEngine::materialize(FrameAnalysis::Storage& result, const Frame& state, InstructionId instruction) const {
+Status FrameEngine::materialize(FrameAnalysis::Storage& result, const Frame& state, InstructionId instruction,
+                                bool wire_frame) const {
   const auto has_uninitialized_this = std::ranges::any_of(
       state.locals, [](VerificationType value) { return value.kind == UninitializedThis; });
-  if (has_uninitialized_this != state.constructor_uninitialized)
+  if (wire_frame && has_uninitialized_this != state.constructor_uninitialized)
     return site.fail(AnalysisErrorKind::UnrepresentableFrame,
                      "constructor initialization flag cannot be encoded at this frame", instruction);
 
   auto& entry = result.entries.emplace_back(StackMapFrame{instruction, Frame{&result.budget}});
   auto locals = std::span<const VerificationType>(state.locals);
-  while (!locals.empty() && locals.back().kind == Top)
+  while (!all_entries && !locals.empty() && locals.back().kind == Top)
     locals = locals.first(locals.size() - 1);
   const auto values = [&](auto& destination, std::span<const VerificationType> source) -> Status {
     destination.reserve(source.size());
@@ -308,6 +331,62 @@ Status FrameEngine::materialize(FrameAnalysis::Storage& result, const Frame& sta
   return {};
 }
 
+Status FrameEngine::validate_seed(const StackMapFrame& seed) const {
+  const auto invalid = [&](std::string_view reason) {
+    return site.fail(AnalysisErrorKind::UnrepresentableFrame, reason, seed.instruction);
+  };
+  if (owner.version().major < STACK_MAP_MAJOR)
+    return invalid("declared frames require class-file major version 50 or later");
+  const auto& frame = seed.frame;
+  if (frame.locals.size() > UINT16_MAX || frame.locals.size() > limits.max_local_slots ||
+      frame.stack.size() > UINT16_MAX || frame.stack_slots > limits.max_stack_slots)
+    return site.fail(AnalysisErrorKind::ResourceLimitExceeded, "declared verifier frame exceeds slot limits", seed.instruction);
+  const auto valid_value = [&](VerificationType value) {
+    switch (value.kind) {
+      case Object:
+        return value.reference.starts_with('[') ? detail::valid_field_descriptor(value.reference)
+                                                : detail::valid_class_name(value.reference);
+      case Uninitialized: {
+        const auto allocation = code.get(value.allocation);
+        if (!allocation || allocation->opcode() != Opcode::New)
+          return false;
+        return detail::class_name(owner.constant_pool(), allocation->constant_index().value_or(CpIndex{})) == value.reference;
+      }
+      case UninitializedThis:
+        return site.name == "<init>" && site.class_name != "java/lang/Object";
+      case Top:
+      case Integer:
+      case Float:
+      case Long:
+      case Double:
+      case Null:
+      case WideContinuation:
+        return true;
+    }
+    return false;
+  };
+  bool has_receiver = false;
+  for (std::size_t i = 0; i < frame.locals.size(); ++i) {
+    const auto value = frame.locals[i];
+    if (!valid_value(value) || value.kind == WideContinuation)
+      return invalid("invalid declared local verification type");
+    has_receiver |= value.kind == UninitializedThis;
+    if (value.width() == 2 && (++i == frame.locals.size() || frame.locals[i].kind != WideContinuation))
+      return invalid("declared category-two local lacks a continuation");
+  }
+  if (has_receiver != frame.constructor_uninitialized)
+    return invalid("declared frame has an inconsistent constructor state");
+  unsigned slots = 0;
+  for (const auto value : frame.stack) {
+    if (!valid_value(value) || value.kind == WideContinuation)
+      return invalid("invalid declared operand verification type");
+    slots += value.width();
+  }
+  if (slots != frame.stack_slots || slots > UINT16_MAX)
+    return invalid("declared operand width differs from its stack slot count");
+  return {};
+}
+
 std::expected<FrameAnalysis, AnalysisError> FrameEngine::run() const try {
   auto local_limit = compute_max_locals(method, owner, code, limits);
   if (!local_limit)
@@ -327,15 +406,22 @@ std::expected<FrameAnalysis, AnalysisError> FrameEngine::run() const try {
   auto result = std::make_unique<FrameAnalysis::Storage>(
       code, limits, owner.declaration_revision(), hierarchy ? hierarchy->snapshot_id() : 0);
   result->maximum_locals = *local_limit;
+  for (const auto& seed : seeds) {
+    if (auto spent = work.spend(frame_cost(seed.frame), seed.instruction); !spent)
+      return std::unexpected(std::move(spent.error()));
+    if (auto valid = validate_seed(seed); !valid)
+      return std::unexpected(std::move(valid.error()));
+    result->maximum_locals = std::max(result->maximum_locals, static_cast<std::uint16_t>(seed.frame.locals.size()));
+  }
 
-  auto cfg = build_cfg(code, handlers, &result->budget, limits);
+  auto cfg = ssa_cfg(code, handlers, seeds, &result->budget, limits);
   if (!cfg)
     return std::unexpected(site.error(std::move(cfg.error())));
   if (auto spent = work.spend(handlers.size(), code.at(0)); !spent)
     return std::unexpected(std::move(spent.error()));
   if (!handlers.empty())
     result->handlers.assign(handlers.begin(), handlers.end());
-  if (resolved_hierarchy && owner.version().major >= STACK_MAP_MAJOR) {
+  if (seeds.empty() && resolved_hierarchy && (owner.version().major >= STACK_MAP_MAJOR || all_entries)) {
     const auto blocks = cfg->blocks();
     const auto dead = std::ranges::find(blocks, false, &BasicBlock::reachable);
     if (dead != blocks.end())
@@ -377,8 +463,8 @@ Status FrameEngine::run_attempt(FrameAnalysis::Storage& result, const ControlFlo
   const auto blocks = cfg.blocks();
   const auto local_limit = result.maximum_locals;
   std::pmr::unsynchronized_pool_resource scratch(&result.budget);
-  FrameMerger merger(resolved_hierarchy, search, &scratch);
-  InstructionEffects simulator(owner, method, resolved_hierarchy, &scratch);
+  FrameMerger merger(resolved_hierarchy, search, &scratch, verifier_interfaces);
+  InstructionEffects simulator(owner, method, resolved_hierarchy, &scratch, nullptr, verifier_interfaces);
   Frame initial(&scratch);
   if (auto initialized = simulator.initialize(initial, local_limit); !initialized)
     return std::unexpected(site.error(std::move(initialized.error())));
@@ -401,6 +487,7 @@ Status FrameEngine::run_attempt(FrameAnalysis::Storage& result, const ControlFlo
   }
 
   std::pmr::vector<std::optional<Frame>> entries(blocks.size(), &scratch);
+  std::pmr::vector<bool> fixed(blocks.size(), false, &scratch);
   std::pmr::vector<bool> queued(blocks.size(), false, &scratch);
   std::pmr::vector<BlockId> pending(&scratch);
   pending.reserve(blocks.size());
@@ -412,12 +499,24 @@ Status FrameEngine::run_attempt(FrameAnalysis::Storage& result, const ControlFlo
   };
   copy_frame(entries.front().emplace(&scratch), initial);
   enqueue(BlockId{0});
+  for (const auto& seed : seeds) {
+    const auto id = cfg.block_of(seed.instruction);
+    if (!id)
+      return site.fail(AnalysisErrorKind::InvalidLabelOrRange, "declared frame has no block", seed.instruction);
+    auto& frame = entries[id->value].emplace(&scratch);
+    if (auto spent = work.spend(1 + local_limit + seed.frame.stack.size(), seed.instruction); !spent)
+      return spent;
+    copy_frame(frame, seed.frame);
+    frame.locals.resize(local_limit);
+    fixed[id->value] = true;
+    enqueue(*id);
+  }
 
   const auto propagate = [&](BlockId target, const Frame& incoming, InstructionId at, bool replay) -> Status {
     if (auto spent = work.spend(frame_cost(incoming), at); !spent)
       return spent;
     auto& entry = entries[target.value];
-    if (replay) {
+    if (replay || fixed[target.value]) {
       auto checked = merger.check(*entry, incoming);
       if (!checked)
         return std::unexpected(site.error(std::move(checked.error()), at));
@@ -454,6 +553,11 @@ Status FrameEngine::run_attempt(FrameAnalysis::Storage& result, const ControlFlo
 
   const auto transfer = [&](BlockId id, bool replay) -> Status {
     const auto& block = blocks[id.value];
+    if (!block.reachable && block.end == code.size()) {
+      const auto flow = opcode_info(code.get(block.last)->opcode()).control_flow;
+      if (flow == ControlFlow::Next || flow == ControlFlow::ConditionalBranch)
+        return site.fail(AnalysisErrorKind::InvalidCode, "frame-seeded code falls off the end of Code", block.last);
+    }
     if (auto spent = work.spend(frame_cost(*entries[id.value]), block.first); !spent)
       return spent;
     copy_frame(state, *entries[id.value]);
@@ -514,6 +618,13 @@ Status FrameEngine::run_attempt(FrameAnalysis::Storage& result, const ControlFlo
       return std::unexpected(std::move(done.error()));
   }
 
+  if (all_entries || !seeds.empty()) {
+    for (std::size_t i = 0; i < blocks.size(); ++i)
+      if (!entries[i])
+        return site.fail(AnalysisErrorKind::UnreachableCode,
+                         "unreachable instruction has no declared verifier entry state", blocks[i].first);
+  }
+
   if (resolved_hierarchy) {
     if (auto checked = merger.check(*entries.front(), initial); !checked) // NOLINT(bugprone-unchecked-optional-access)
       return std::unexpected(site.error(std::move(checked.error()), blocks.front().first));
@@ -524,10 +635,10 @@ Status FrameEngine::run_attempt(FrameAnalysis::Storage& result, const ControlFlo
         if (auto checked = transfer(BlockId{i}, true); !checked)
           return std::unexpected(std::move(checked.error()));
   }
-  if (resolved_hierarchy && owner.version().major >= STACK_MAP_MAJOR) {
+  if (resolved_hierarchy && (owner.version().major >= STACK_MAP_MAJOR || all_entries)) {
     std::pmr::vector<bool> explicit_frame(blocks.size(), false, &scratch);
     for (std::size_t i = 0; i < blocks.size(); ++i)
-      explicit_frame[i] = blocks[i].frame_boundary;
+      explicit_frame[i] = all_entries || blocks[i].frame_boundary;
     for (const auto instruction : additional) {
       if (auto spent = work.spend(1, instruction); !spent)
         return std::unexpected(std::move(spent.error()));
@@ -545,12 +656,35 @@ Status FrameEngine::run_attempt(FrameAnalysis::Storage& result, const ControlFlo
         continue;
       if (auto spent = work.spend(frame_cost(*entries[i]), blocks[i].first); !spent) // NOLINT(bugprone-unchecked-optional-access)
         return std::unexpected(std::move(spent.error()));
-      if (auto emitted = materialize(result, *entries[i], blocks[i].first); !emitted) // NOLINT(bugprone-unchecked-optional-access)
+      const bool wire_frame = owner.version().major >= STACK_MAP_MAJOR && (!all_entries || blocks[i].frame_boundary);
+      if (auto emitted = materialize(result, *entries[i], blocks[i].first, wire_frame); !emitted) // NOLINT(bugprone-unchecked-optional-access)
         return std::unexpected(std::move(emitted.error()));
     }
   }
   result.maximum_stack = static_cast<std::uint16_t>(maximum_stack);
   return {};
+}
+
+std::expected<SsaFrames, AnalysisError> ssa_frames(
+    const ClassFile& owner, const Method& method, const MethodCode& code,
+    std::span<const ExceptionHandler> handlers, AnalysisContext& context, std::span<const StackMapFrame> seeds) {
+  auto result = FrameEngine(owner, method, code, handlers, context.limits(), &context.hierarchy(), {}, seeds,
+                            FrameEngine::Purpose::SymbolicSimulation)
+                    .run();
+  if (!result)
+    return std::unexpected(std::move(result.error()));
+  const auto entries = result->frames();
+  const auto locals = result->max_locals();
+  const auto stack = result->max_stack();
+  return SsaFrames{std::move(*result), entries, locals, stack};
+}
+
+std::expected<FrameAnalysis, AnalysisError> emission_frames(
+    const ClassFile& owner, const Method& method, const MethodCode& code,
+    std::span<const ExceptionHandler> handlers, AnalysisContext& context, std::span<const StackMapFrame> seeds) {
+  return FrameEngine(owner, method, code, handlers, context.limits(), &context.hierarchy(), {}, seeds,
+                     FrameEngine::Purpose::LoweredEmission)
+      .run();
 }
 
 std::expected<FrameAnalysis, AnalysisError> compute_frames(

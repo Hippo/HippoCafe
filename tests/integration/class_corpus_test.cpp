@@ -176,6 +176,13 @@ TEST(ClassCorpus, reserved_opcode_requires_explicit_opaque_read_and_write) {
   EXPECT_EQ(opaque->class_file.validity(), cafe::ClassValidity::OpaqueEssentialContent);
   ASSERT_EQ(opaque->class_file.methods().size(), 1u);
   EXPECT_EQ(opaque->class_file.methods()[0].code(), nullptr);
+  cafe::analysis::AnalysisContext context;
+  const auto lift = cafe::analysis::lift_ssa(opaque->class_file, 0, context);
+  ASSERT_FALSE(lift);
+  EXPECT_EQ(lift.error().kind, cafe::analysis::SsaErrorKind::UnsupportedOpaqueCode);
+  const auto create = cafe::analysis::create_ssa(opaque->class_file, 0, context);
+  ASSERT_FALSE(create);
+  EXPECT_EQ(create.error().kind, cafe::analysis::SsaErrorKind::UnsupportedOpaqueCode);
   const auto refused = cafe::write_class(opaque->class_file);
   ASSERT_FALSE(refused);
   EXPECT_EQ(refused.error().kind, cafe::WriteErrorKind::UnsupportedOpaqueCode);

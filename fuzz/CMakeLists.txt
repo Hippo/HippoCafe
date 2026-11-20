@@ -18,7 +18,7 @@ execute_process(COMMAND "${CMAKE_COMMAND}" -E tar cf "${archive_seed_dir}/classe
 
 # FuzzTest builds Abseil as C++17, which changes the ABI of its source location
 # type. Keep registration in that mode and compile the properties as C++23.
-add_library(hippocafe_fuzz_properties STATIC properties.cpp)
+add_library(hippocafe_fuzz_properties STATIC properties.cpp ssa_properties.cpp)
 target_link_libraries(hippocafe_fuzz_properties PRIVATE hippocafe::hippocafe)
 target_include_directories(hippocafe_fuzz_properties PRIVATE "${PROJECT_SOURCE_DIR}/src")
 target_compile_options(hippocafe_fuzz_properties PRIVATE -fsanitize-coverage=pc-table)

@@ -9,6 +9,9 @@ extern "C" int LLVMFuzzerTestOneInput(const std::uint8_t* data, std::size_t size
   cafe::fuzz::exercise_reader(bytes);
   cafe::fuzz::exercise_roundtrip(bytes);
   cafe::fuzz::exercise_analysis(bytes);
+  cafe::fuzz::exercise_ssa(bytes);
+  if (bytes.size() <= cafe::fuzz::MAX_PROGRAM_BYTES)
+    cafe::fuzz::exercise_ssa_program(bytes);
   cafe::fuzz::exercise_archive(bytes);
   return 0;
 }
