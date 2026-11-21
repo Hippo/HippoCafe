@@ -11,6 +11,7 @@
 
 #include "io/class_format.hpp"
 #include "io/code_operands.hpp"
+#include "model/class_storage.hpp"
 
 namespace cafe {
 namespace {
@@ -26,7 +27,6 @@ using Result = std::expected<T, CodeEditError>;
 struct SignatureText {
   std::string_view name; ///< Unqualified name in modified UTF-8.
   std::string_view descriptor; ///< JVM descriptor in modified UTF-8.
-  friend bool operator==(SignatureText, SignatureText) = default;
 };
 
 /**
@@ -38,24 +38,6 @@ struct MemberReference {
   SignatureText signature; ///< Member name and descriptor.
   bool owner_is_interface = false; ///< True for InterfaceMethodref.
 };
-
-/**
- * @brief Detect the four field access opcodes.
- * @param opcode Logical instruction opcode.
- * @return True when its operand is a field reference.
- */
-bool field_access(Opcode opcode) noexcept {
-  return opcode >= Opcode::GetStatic && opcode <= Opcode::PutField;
-}
-
-/**
- * @brief Detect the four ordinary invocation opcodes.
- * @param opcode Logical instruction opcode.
- * @return True when its operand is a class or interface method reference.
- */
-bool method_invocation(Opcode opcode) noexcept {
-  return opcode >= Opcode::InvokeVirtual && opcode <= Opcode::InvokeInterface;
-}
 
 /**
  * @brief Read validated modified UTF-8 text with errors in the symbolic read domain.
@@ -107,17 +89,28 @@ Result<MemberReference> read_member(const ConstantPool& pool, const CpEntry& ent
 
 /**
  * @brief Look up and validate the pool operand for an instruction with a symbolic form.
- * @param file Class owning the pool.
+ * @param pool Owning constant pool.
+ * @param version Declared class-file version.
  * @param instruction Field access, invocation, or literal load.
  * @return Borrowed pool entry or an invalid operand.
  */
-Result<const CpEntry*> checked_operand(const ClassFile& file, Instruction instruction) {
-  const auto& pool = file.constant_pool();
+Result<const CpEntry*> checked_operand(const ConstantPool& pool, ClassVersion version, Instruction instruction) {
   const auto index = instruction.constant_index();
   const auto* entry = index ? pool.get(*index) : nullptr;
-  if (!entry || detail::validate_instruction(instruction, file.version(), pool, 0))
+  if (!entry || detail::validate_instruction(instruction, version, pool, 0))
     return std::unexpected(CodeEditError::InvalidOperand);
   return entry;
+}
+
+/// Resolve and validate the complete reference encoded in an ordinary call or field instruction.
+/// @param storage Class storage supplying the version and constant pool.
+/// @param instruction Ordinary invocation or field access.
+/// @return Its encoded member reference, or InvalidOperand.
+Result<MemberReference> resolve_member(const detail::ClassStorage& storage, Instruction instruction) {
+  const auto entry = checked_operand(storage.pool, storage.version, instruction);
+  if (!entry)
+    return std::unexpected(entry.error());
+  return read_member(storage.pool, **entry, storage.version);
 }
 
 /**
@@ -135,23 +128,22 @@ Result<std::vector<InstructionLocation>> find_references(const ClassFile& file, 
     return std::unexpected(CodeEditError::InvalidMethod);
   const auto first = method_index.value_or(0);
   const auto end = method_index ? first + 1 : methods.size();
-  const auto matches_opcode = invocations ? method_invocation : field_access;
   std::vector<InstructionLocation> matches;
   for (auto index = first; index < end; ++index) {
-    const auto* code = methods[index].code();
-    if (!code)
-      continue;
-    for (const auto& instruction : code->code().instructions()) {
-      if (!matches_opcode(instruction.instruction.opcode()))
-        continue;
-      const auto operand = checked_operand(file, instruction.instruction);
-      if (!operand)
-        return std::unexpected(operand.error());
-      const auto member = read_member(file.constant_pool(), **operand, file.version());
-      if (!member)
-        return std::unexpected(member.error());
-      if (member->owner == target.owner && member->signature == target.signature)
-        matches.push_back({index, instruction.id});
+    for (auto instruction : file.instructions(index)) {
+      if (invocations && instruction.is_invoke()) {
+        const auto call = instruction.method_invocation();
+        if (!call)
+          return std::unexpected(call.error());
+        if (call->matches(target.owner, target.signature.name, target.signature.descriptor))
+          matches.push_back(instruction.location());
+      } else if (!invocations && instruction.is_field_access()) {
+        const auto field = instruction.field_access();
+        if (!field)
+          return std::unexpected(field.error());
+        if (field->owner == target.owner && field->name == target.signature.name && field->descriptor == target.signature.descriptor)
+          matches.push_back(instruction.location());
+      }
     }
   }
   return matches;
@@ -328,36 +320,39 @@ std::expected<std::vector<InstructionLocation>, CodeEditError> ClassFile::find_f
   return find_references(*this, method_index, false, {owner, {name, descriptor}});
 }
 
-std::expected<SymbolicInstruction, CodeEditError> ClassFile::inspect_instruction(InstructionLocation location) const {
-  if (location.method_index >= methods().size())
-    return std::unexpected(CodeEditError::InvalidMethod);
-  const auto* code = methods()[location.method_index].code();
-  if (!code)
-    return std::unexpected(CodeEditError::NoCode);
-  const auto instruction = code->code().get(location.id);
-  if (!instruction)
-    return std::unexpected(instruction.error());
-
-  const auto opcode = instruction->opcode();
-  const bool field = field_access(opcode);
-  const bool method = method_invocation(opcode);
-  const bool indy = opcode == Opcode::InvokeDynamic;
-  if (!field && !method && !indy && opcode != Opcode::Ldc && opcode != Opcode::Ldc2W)
+std::expected<MethodInvocation, CodeEditError> InstructionView::method_invocation() const {
+  if (!is_invoke())
     return std::unexpected(CodeEditError::WrongOperandForm);
+  const auto member = resolve_member(*storage, raw());
+  if (!member)
+    return std::unexpected(member.error());
+  return MethodInvocation{opcode(), member->owner, member->signature.name, member->signature.descriptor, member->owner_is_interface};
+}
 
-  const auto operand = checked_operand(*this, *instruction);
+std::expected<FieldAccess, CodeEditError> InstructionView::field_access() const {
+  if (!is_field_access())
+    return std::unexpected(CodeEditError::WrongOperandForm);
+  const auto member = resolve_member(*storage, raw());
+  if (!member)
+    return std::unexpected(member.error());
+  return FieldAccess{opcode(), member->owner, member->signature.name, member->signature.descriptor};
+}
+
+std::expected<SymbolicInstruction, CodeEditError> ClassFile::inspect_instruction(InstructionLocation location) const {
+  const auto view = instruction(location);
+  if (!view)
+    return std::unexpected(view.error());
+  if (view->is_invoke())
+    return view->method_invocation().transform([](MethodInvocation value) { return SymbolicInstruction(value); });
+  if (view->is_field_access())
+    return view->field_access().transform([](FieldAccess value) { return SymbolicInstruction(value); });
+  const bool indy = view->is(Opcode::InvokeDynamic);
+  if (!indy && !view->is(Opcode::Ldc) && !view->is(Opcode::Ldc2W))
+    return std::unexpected(CodeEditError::WrongOperandForm);
+  const auto operand = checked_operand(constant_pool(), version(), view->raw());
   if (!operand)
     return std::unexpected(operand.error());
   const auto& entry = **operand;
-  if (field || method) {
-    const auto member = read_member(constant_pool(), entry, version());
-    if (!member)
-      return std::unexpected(member.error());
-    if (field)
-      return SymbolicInstruction(FieldAccess{opcode, member->owner, member->signature.name, member->signature.descriptor});
-    return SymbolicInstruction(MethodInvocation{opcode, member->owner, member->signature.name, member->signature.descriptor,
-                                                member->owner_is_interface});
-  }
   if (!indy && entry.tag != CpTag::Dynamic)
     return std::unexpected(CodeEditError::WrongOperandForm);
 

@@ -108,7 +108,7 @@ enum class Opcode : std::uint8_t {
   Dup = 0x59, ///< JVM `dup` opcode; see opcode_info() for its form and legality.
   DupX1 = 0x5a, ///< JVM `dup_x1` opcode; see opcode_info() for its form and legality.
   DupX2 = 0x5b, ///< JVM `dup_x2` opcode; see opcode_info() for its form and legality.
-  Dup2 = 0x5c, ///< JVM `dup_2` opcode; see opcode_info() for its form and legality.
+  Dup2 = 0x5c, ///< JVM `dup2` opcode; see opcode_info() for its form and legality.
   Dup2X1 = 0x5d, ///< JVM `dup2_x1` opcode; see opcode_info() for its form and legality.
   Dup2X2 = 0x5e, ///< JVM `dup2_x2` opcode; see opcode_info() for its form and legality.
   Swap = 0x5f, ///< JVM `swap` opcode; see opcode_info() for its form and legality.

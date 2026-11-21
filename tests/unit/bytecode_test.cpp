@@ -610,6 +610,27 @@ private:
   }
 };
 
+TEST(MethodCode, EqualReplacementsValidateScopedOperandsWithoutAllocating) {
+  AllocationCounter resource;
+  MethodCode code(&resource);
+  const auto target = code.append(Instruction::nop()).value();
+  const auto label = code.make_label().value();
+  code.bind_label(label, CodePosition{target}).value();
+  const Branch jump{Opcode::Goto, label};
+  const auto branch = code.append(jump).value();
+  const auto table = code.append(LookupSwitch{label, {}}).value();
+  const auto revision = code.revision();
+  const auto allocations = resource.calls;
+  resource.allocations_left = 0;
+
+  EXPECT_TRUE(code.replace(target, Instruction::nop()));
+  EXPECT_TRUE(code.replace(branch, jump));
+  EXPECT_EQ(code.replace(branch, code.get(branch).value()), std::unexpected(CodeEditError::WrongOperandForm));
+  EXPECT_EQ(code.replace(table, code.get(table).value()), std::unexpected(CodeEditError::WrongOperandForm));
+  EXPECT_EQ(code.revision(), revision);
+  EXPECT_EQ(resource.calls, allocations);
+}
+
 TEST(MethodCode, AllocationFailureDuringBlockPreparationLeavesCodeIntact) {
   bool succeeded = false;
   for (std::size_t budget = 0; budget < 16 && !succeeded; ++budget) {

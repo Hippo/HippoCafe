@@ -4,7 +4,6 @@
  */
 
 /** @cond example_programs */
-#include <array>
 #include <charconv>
 #include <cstddef>
 #include <cstdint>
@@ -20,27 +19,50 @@
 
 #include "class_file_io.hpp"
 
-// [edit-method]
-std::expected<void, cafe::CodeEditError> insert_nop(cafe::MethodCode& code, cafe::InstructionId anchor) {
-  auto inserted = code.insert_before(anchor, cafe::Instruction::nop());
+// [edit-block]
+std::expected<void, cafe::BlockEditError> insert_abs(cafe::MethodEditor& editor, cafe::InstructionId anchor) {
+  namespace i = cafe::insn;
+  auto inserted = editor.insert_before(
+      anchor, {i::bipush(10), i::invokestatic("java/lang/Math", "abs", "(I)I"), i::pop()});
   if (!inserted)
     return std::unexpected(inserted.error());
   return {};
 }
-// [edit-method]
+// [edit-block]
 
-// [edit-block]
-std::expected<void, cafe::BlockEditError> insert_push_pop(cafe::MethodCode& code, cafe::InstructionId anchor) {
-  const std::array<cafe::InstructionBuilder, 2> patch{
-      cafe::Instruction::bipush(42),
-      cafe::Instruction::pop(),
+// [edit-matches]
+std::expected<void, std::string> measure_printed_strings(cafe::ClassFile& file, std::size_t method_index) {
+  namespace p = cafe::pattern;
+  const p::InvokePattern println{
+      .opcode = cafe::Opcode::InvokeVirtual,
+      .owner = "java/io/PrintStream",
+      .name = "println",
+      .descriptor = "(Ljava/lang/String;)V",
   };
-  auto inserted = code.insert_before(anchor, patch);
-  if (!inserted)
-    return std::unexpected(inserted.error());
+  auto calls = p::find_all(file, method_index, p::invoke(println));
+  if (!calls)
+    return std::unexpected(std::string(calls.error().detail));
+
+  auto editor = file.edit_method(method_index);
+  if (!editor)
+    return std::unexpected("method index out of range");
+  for (const auto& match : *calls) {
+    auto inserted = editor->insert_before(
+        match.start(),
+        [](auto& code) {
+          auto skip = code.label();
+          code.dup().ifnull(skip);
+          code.dup().invokevirtual("java/lang/String", "length", "()I").pop();
+          code.bind(skip);
+        },
+        cafe::InsertionEntry::IncludeIncomingBranches);
+    if (!inserted)
+      return std::unexpected("insertion failed at instruction " + std::to_string(match.start_index()) +
+                             " (edit error " + std::to_string(static_cast<int>(inserted.error().cause)) + ")");
+  }
   return {};
 }
-// [edit-block]
+// [edit-matches]
 
 // [compute-frames]
 std::expected<cafe::WriteResult, std::string> write_with_frames(
@@ -84,17 +106,24 @@ int main(int argc, char** argv) {
   }
   for (const auto& diagnostic : parsed->diagnostics)
     std::cerr << diagnostic.path << ": " << diagnostic.detail << '\n';
-  for (std::size_t i = 0; i < parsed->class_file.methods().size(); ++i) {
-    if (auto* code = parsed->class_file.edit_code(i); code && code->code().size() != 0) {
-      const auto anchor = code->code().at(0);
-      if (auto edited = insert_nop(code->code(), anchor); !edited) {
-        std::cerr << "methods[" << i << "]: single-instruction edit failed (" << static_cast<int>(edited.error()) << ")\n";
-        return 1;
-      }
-      if (auto edited = insert_push_pop(code->code(), anchor); !edited) {
-        std::cerr << "methods[" << i << "]: block edit failed (" << static_cast<int>(edited.error().cause) << ")\n";
-        return 1;
-      }
+  auto& file = parsed->class_file;
+  for (std::size_t i = 0; i < file.methods().size(); ++i) {
+    const auto instructions = file.instructions(i);
+    if (instructions.empty())
+      continue;
+    const auto anchor = (*instructions.begin()).id();
+    auto editor = file.edit_method(i);
+    if (!editor) {
+      std::cerr << "method index out of range\n";
+      return 1;
+    }
+    if (auto edited = insert_abs(*editor, anchor); !edited) {
+      std::cerr << "methods[" << i << "]: block edit failed (" << static_cast<int>(edited.error().cause) << ")\n";
+      return 1;
+    }
+    if (auto edited = measure_printed_strings(file, i); !edited) {
+      std::cerr << "methods[" << i << "]: " << edited.error() << '\n';
+      return 1;
     }
   }
   auto result = write_with_frames(parsed->class_file, argv[3], target_release);

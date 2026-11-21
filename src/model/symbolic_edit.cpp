@@ -14,9 +14,14 @@
 #include <utility>
 
 #include "analysis/ssa_commit.hpp"
+#include "bytecode/builder_access.hpp"
+#include "bytecode/code_access.hpp"
+#include "cafe/bytecode/pattern.hpp"
 #include "class_storage.hpp"
+#include "constant_validation.hpp"
 #include "detail/descriptor.hpp"
 #include "io/class_format.hpp"
+#include "io/code_operands.hpp"
 
 namespace cafe::detail {
 namespace {
@@ -156,6 +161,81 @@ public:
   /// Keep the resolved operands after the instruction edit succeeds.
   void commit() noexcept {
     committed = true;
+  }
+
+  /// Materialize one pending instruction using this transaction's constant and bootstrap tables.
+  /// @param value Raw or symbolic instruction supplied by the caller.
+  /// @return Resolved bytecode builder or its construction error.
+  EditResult<InstructionBuilder> resolve(const MethodInstruction& value) {
+    return std::visit([&]<typename T>(const T& operand) -> EditResult<InstructionBuilder> {
+      if constexpr (std::is_convertible_v<T, InstructionBuilder>)
+        return InstructionBuilder{operand};
+      else if constexpr (std::is_same_v<T, std::unexpected<CodeEditError>>)
+        return std::unexpected(operand.error());
+      else
+        return build(operand).transform([](Instruction op) { return InstructionBuilder{op}; });
+    },
+                      value);
+  }
+
+  /// Check the class-dependent constraints of the materialized operand. MethodCode checks labels.
+  /// @param builder Concrete instruction to validate.
+  /// @return Success, or an operand or class-version error.
+  EditResult<void> validate(const InstructionBuilder& builder) {
+    const auto* instruction = std::get_if<Instruction>(&builder);
+    if (!instruction) {
+      if (const auto* branch = std::get_if<Branch>(&builder)) {
+        const auto& info = opcode_info(branch->opcode);
+        if (info.form != OperandForm::BranchShort)
+          return std::unexpected(CodeEditError::WrongOperandForm);
+        if (!info.is_allowed(storage.version.major))
+          return std::unexpected(CodeEditError::UnsupportedClassVersion);
+      }
+      return {};
+    }
+    const auto& info = opcode_info(instruction->opcode());
+    if (!info.is_allowed(storage.version.major))
+      return std::unexpected(CodeEditError::UnsupportedClassVersion);
+    const auto locals_limit = short_code_header(storage.version) ? UINT8_MAX : MAX_COUNT;
+    if (validate_instruction(*instruction, storage.version, pool, locals_limit))
+      return std::unexpected(CodeEditError::InvalidOperand);
+    if (const auto index = instruction->constant_index()) {
+      const auto result = checked.validate(*index, pool, storage.version, storage.attribute_entries);
+      if (result != OperandValidity::Valid)
+        return std::unexpected(result == OperandValidity::UnsupportedVersion ? CodeEditError::UnsupportedClassVersion
+                                                                             : CodeEditError::InvalidOperand);
+    }
+    return {};
+  }
+
+  /// Resolve a symbolic literal and select the category-one or category-two ldc form.
+  /// @param load Pending load of a JVM literal.
+  /// @return An ldc or ldc2_w instruction, or a resolution error.
+  EditResult<Instruction> build(const ConstantLoad& load) {
+    return std::visit([&]<typename T>(const T& literal) -> EditResult<Instruction> {
+      if constexpr (std::is_same_v<T, DynamicConstant>) {
+        return build(literal);
+      } else {
+        constexpr auto op = std::is_same_v<T, double> || std::is_same_v<T, std::int64_t> ? Opcode::Ldc2W : Opcode::Ldc;
+        return argument(literal).and_then([](CpIndex index) { return Instruction::constant(op, index); });
+      }
+    },
+                      load.constant.value);
+  }
+
+  /// Resolve a type opcode against a named class or array and preserve its dimension count.
+  /// @param type Pending type instruction and optional dimension count.
+  /// @return A class-indexed instruction, or a resolution error.
+  EditResult<Instruction> build(const TypeInstruction& type) {
+    if (type.opcode != Opcode::MultiANewArray && type.opcode != Opcode::ANewArray &&
+        type.opcode != Opcode::New && type.opcode != Opcode::CheckCast && type.opcode != Opcode::InstanceOf)
+      return std::unexpected(CodeEditError::WrongOperandForm);
+    if ((type.opcode == Opcode::MultiANewArray) != (type.dimensions != 0))
+      return std::unexpected(CodeEditError::InvalidOperand);
+    return class_constant(type.name).and_then([&](CpIndex index) {
+      return type.opcode == Opcode::MultiANewArray ? Instruction::multi_array(index, type.dimensions)
+                                                   : Instruction::constant(type.opcode, index);
+    });
   }
 
   /**
@@ -564,6 +644,7 @@ private:
   BootstrapMethods* bootstraps = nullptr; ///< Existing or staged table, discovered on first use.
   std::size_t old_bootstrap_count = 0; ///< Original row count when reusing a table.
   bool committed = false; ///< True after the method accepts the edit.
+  ConstantOperandValidator checked{&storage.budget}; ///< Reachable operands checked during this patch.
 };
 
 SsaCommit::SsaCommit(ClassFile& owner, std::size_t method_index) :
@@ -582,13 +663,7 @@ std::expected<CpIndex, CodeEditError> SsaCommit::utf8(std::string_view value) {
 }
 
 std::expected<InstructionBuilder, CodeEditError> SsaCommit::resolve(const MethodInstruction& value) {
-  return std::visit([&]<typename T>(const T& operand) -> EditResult<InstructionBuilder> {
-    if constexpr (std::is_convertible_v<T, InstructionBuilder>)
-      return InstructionBuilder{operand};
-    else
-      return transaction->build(operand).transform([](Instruction op) { return InstructionBuilder{op}; });
-  },
-                    value);
+  return transaction->resolve(value);
 }
 
 std::expected<CpIndex, CodeEditError> SsaCommit::resolve(const BootstrapArgument& value) {
@@ -605,36 +680,48 @@ std::expected<CpIndex, CodeEditError> SsaCommit::resolve(const BootstrapArgument
 
 namespace {
 
-/**
- * @brief Apply a bytecode edit, resolving a symbolic operand transactionally when needed.
- * @param storage Owning class for symbolic pool and bootstrap references.
- * @param code Decoded Code attribute, or null for a method without editable code.
- * @param value Instruction to materialize and edit.
- * @param apply Existing MethodCode edit operation.
- * @return The underlying operation's result, or a code/operand/version/capacity error.
- */
-template<typename Apply>
-auto edit_instruction(ClassStorage& storage, CodeAttribute* code, const MethodInstruction& value, Apply apply) {
-  using Result = decltype(apply(code->code(), InstructionBuilder{}));
+/// Ordered published IDs or a block edit error.
+using PatchResult = std::expected<std::vector<InstructionId>, BlockEditError>;
+
+/// Resolve the whole patch under one pool/bootstrap checkpoint, then publish the staged bytecode.
+/// @param storage Class whose symbolic operands are resolved.
+/// @param code Decoded target method, or null when unavailable.
+/// @param patch Placement, matched IDs and label fixups.
+/// @param values Ordered raw and symbolic instructions.
+/// @return Inserted IDs or a failure with the offending element index when available.
+PatchResult apply_edit(ClassStorage& storage, CodeAttribute* code, const CodePatch& patch,
+                       std::span<const MethodInstruction> values) {
   if (!code)
-    return Result(std::unexpected(CodeEditError::NoCode));
+    return std::unexpected(BlockEditError{CodeEditError::NoCode, std::nullopt});
 
-  return std::visit([&]<typename T>(const T& operand) -> Result {
-    if constexpr (std::is_convertible_v<T, InstructionBuilder>) {
-      return apply(code->code(), operand);
-    } else {
-      SymbolicEdit edit(storage);
-      const auto instruction = edit.build(operand);
-      if (!instruction)
-        return std::unexpected(instruction.error());
+  SymbolicEdit edit(storage);
+  std::pmr::vector<InstructionBuilder> instructions(&storage.budget);
+  instructions.reserve(values.size());
+  for (const auto& value : values) {
+    auto instruction = edit.resolve(value);
+    if (!instruction)
+      return std::unexpected(BlockEditError{instruction.error(), instructions.size()});
+    if (const auto valid = edit.validate(*instruction); !valid)
+      return std::unexpected(BlockEditError{valid.error(), instructions.size()});
+    instructions.push_back(*instruction);
+  }
+  auto inserted = BytecodeAccess::apply_patch(code->code(), patch, instructions);
+  if (inserted)
+    edit.commit();
+  return inserted;
+}
 
-      auto result = apply(code->code(), *instruction);
-      if (result)
-        edit.commit();
-      return result;
-    }
-  },
-                    value);
+/// Preserve the original single-instruction result while using the same patch checks.
+/// @param storage Class whose symbolic operands are resolved.
+/// @param code Decoded target method, or null when unavailable.
+/// @param patch Placement and anchor.
+/// @param value Instruction to resolve and install.
+/// @return The installed instruction ID or the underlying failure.
+EditResult<InstructionId> apply_one(ClassStorage& storage, CodeAttribute* code, const CodePatch& patch,
+                                    const MethodInstruction& value) {
+  return apply_edit(storage, code, patch, {&value, 1})
+      .transform([](const auto& ids) { return ids.front(); })
+      .transform_error([](BlockEditError error) { return error.cause; });
 }
 
 } // namespace
@@ -643,26 +730,32 @@ auto edit_instruction(ClassStorage& storage, CodeAttribute* code, const MethodIn
 namespace cafe {
 
 std::expected<InstructionId, CodeEditError> MethodEditor::append(const MethodInstruction& value) {
-  return detail::edit_instruction(*storage, code(), value,
-                                  [](MethodCode& body, const InstructionBuilder& builder) { return body.append(builder); });
+  return detail::apply_one(*storage, code(), {.placement = detail::PatchPlacement::Append}, value);
 }
 
-std::expected<InstructionId, CodeEditError> MethodEditor::insert_before(InstructionId at, const MethodInstruction& value) {
-  return detail::edit_instruction(*storage, code(), value, [at](MethodCode& body, const InstructionBuilder& builder) {
-    return body.insert_before(at, builder);
-  });
+std::expected<InstructionId, CodeEditError> MethodEditor::insert_before(InstructionId at, const MethodInstruction& value,
+                                                                        InsertionEntry entry) {
+  return detail::apply_one(*storage, code(), {.placement = detail::PatchPlacement::Before, .anchor = at, .include_incoming = entry == InsertionEntry::IncludeIncomingBranches}, value);
+}
+
+std::expected<InstructionId, CodeEditError> MethodEditor::insert_after(InstructionId at, const MethodInstruction& value) {
+  return detail::apply_one(*storage, code(), {.placement = detail::PatchPlacement::After, .anchor = at}, value);
 }
 
 std::expected<InstructionId, CodeEditError> MethodEditor::insert_at(LabelId at, const MethodInstruction& value) {
-  return detail::edit_instruction(*storage, code(), value, [at](MethodCode& body, const InstructionBuilder& builder) {
-    return body.insert_at(at, builder);
-  });
+  auto* body = code();
+  if (!body)
+    return std::unexpected(CodeEditError::NoCode);
+  const auto position = body->code().label_position(at);
+  if (!position)
+    return std::unexpected(position.error());
+  const auto placement = position->before ? detail::PatchPlacement::Before : detail::PatchPlacement::Append;
+  return detail::apply_one(*storage, body, {.placement = placement, .anchor = position->before.value_or(InstructionId{}), .move_label = at}, value);
 }
 
 std::expected<void, CodeEditError> MethodEditor::replace(InstructionId at, const MethodInstruction& value) {
-  return detail::edit_instruction(*storage, code(), value, [at](MethodCode& body, const InstructionBuilder& builder) {
-    return body.replace(at, builder);
-  });
+  return detail::apply_one(*storage, code(), {.placement = detail::PatchPlacement::Replace, .anchor = at}, value)
+      .transform([](InstructionId) {});
 }
 
 std::expected<void, CodeEditError> MethodEditor::erase(InstructionId id) {
@@ -670,6 +763,39 @@ std::expected<void, CodeEditError> MethodEditor::erase(InstructionId id) {
   if (!body)
     return std::unexpected(CodeEditError::NoCode);
   return body->code().erase(id);
+}
+
+std::expected<std::size_t, BlockEditError> MethodEditor::match_position(const pattern::Match& match) const {
+  const auto* body = code();
+  if (!body)
+    return std::unexpected(BlockEditError{CodeEditError::StaleMatch, std::nullopt});
+  return detail::BytecodeAccess::match_position(body->code(), match.instruction_ids(),
+                                                match.source_scope(), match.source_revision());
+}
+
+std::expected<std::vector<InstructionId>, BlockEditError> MethodEditor::apply_sequence(
+    InstructionId anchor, bool after, InsertionEntry entry, const pattern::Match* match,
+    std::span<const MethodInstruction> instructions, const CodeBuilder* builder) {
+  detail::CodePatch patch{};
+  patch.anchor = anchor;
+  patch.placement = after ? detail::PatchPlacement::After : detail::PatchPlacement::Before;
+  patch.include_incoming = entry == InsertionEntry::IncludeIncomingBranches;
+  if (match) {
+    const auto start = match_position(*match);
+    if (!start)
+      return std::unexpected(start.error());
+    patch.placement = detail::PatchPlacement::Replace;
+    patch.matched_ids = match->instruction_ids();
+    patch.match_position = *start;
+  }
+  if (builder) {
+    if (const auto error = detail::BuilderAccess::error(*builder))
+      return std::unexpected(*error);
+    instructions = detail::BuilderAccess::instructions(*builder);
+    patch.label_bindings = detail::BuilderAccess::label_bindings(*builder);
+    patch.branch_fixups = detail::BuilderAccess::branch_fixups(*builder);
+  }
+  return detail::apply_edit(*storage, code(), patch, instructions);
 }
 
 } // namespace cafe

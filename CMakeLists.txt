@@ -97,8 +97,11 @@ add_library(hippocafe STATIC
   src/archive/zip_archive.cpp
   src/archive/zip_writer.cpp
   src/bytecode/code.cpp
+  src/bytecode/code_builder.cpp
   src/bytecode/instruction_builder.cpp
+  src/bytecode/instruction_view.cpp
   src/bytecode/opcode_info.cpp
+  src/bytecode/pattern.cpp
   src/classpath/class_hierarchy.cpp
   src/classpath/class_metadata_reader.cpp
   src/classpath/class_path.cpp
@@ -122,6 +125,8 @@ add_library(hippocafe STATIC
   src/model/attribute.cpp
   src/model/class_file.cpp
   src/model/constant_pool.cpp
+  src/model/constant_validation.cpp
+  src/model/symbol_storage.cpp
   src/model/symbolic_edit.cpp
   src/model/symbolic_read.cpp
 )

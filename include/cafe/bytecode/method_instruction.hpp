@@ -8,6 +8,7 @@
 
 #include <cstddef>
 #include <cstdint>
+#include <expected>
 #include <span>
 #include <string_view>
 #include <utility>
@@ -39,6 +40,18 @@ struct MethodInvocation {
   std::string_view name; ///< Method name in modified UTF-8.
   std::string_view descriptor; ///< Method descriptor in modified UTF-8.
   bool owner_is_interface = false; ///< Set for static or special interface calls; invokeinterface implies it.
+
+  /**
+   * @brief Compare the exact owner, name and descriptor encoded in the method reference.
+   * @param expected_owner JVM internal class name or array descriptor.
+   * @param expected_name Target method name.
+   * @param expected_descriptor Target method descriptor.
+   * @return True when all three strings match.
+   */
+  [[nodiscard]] constexpr bool matches(std::string_view expected_owner, std::string_view expected_name,
+                                       std::string_view expected_descriptor) const noexcept {
+    return owner == expected_owner && name == expected_name && descriptor == expected_descriptor;
+  }
 };
 
 /**
@@ -128,6 +141,24 @@ struct DynamicInvocation {
 };
 
 /**
+ * @brief An ldc-family literal to intern in the destination class at edit time.
+ * @ingroup bytecode
+ */
+struct ConstantLoad {
+  BootstrapArgument constant; ///< Loadable JVM constant; its category determines ldc or ldc2_w.
+};
+
+/**
+ * @brief An object or array instruction with a symbolic Class operand.
+ * @ingroup bytecode
+ */
+struct TypeInstruction {
+  Opcode opcode; ///< New, ANewArray, CheckCast, InstanceOf, or MultiANewArray.
+  std::string_view name; ///< Internal class name or array descriptor in modified UTF-8.
+  std::uint8_t dimensions = 0; ///< Nonzero dimension count for MultiANewArray, zero otherwise.
+};
+
+/**
  * @brief An instruction accepted by MethodEditor, which resolves symbolic operands in its class.
  *
  * Referenced text, bootstrap arguments, and switch data must remain live through the edit call.
@@ -135,7 +166,8 @@ struct DynamicInvocation {
  * @ingroup bytecode
  */
 using MethodInstruction = std::variant<Instruction, Branch, TableSwitch, LookupSwitch,
-                                       FieldAccess, MethodInvocation, DynamicInvocation, DynamicConstant>;
+                                       FieldAccess, MethodInvocation, DynamicInvocation, DynamicConstant,
+                                       ConstantLoad, TypeInstruction, std::unexpected<CodeEditError>>;
 
 /**
  * @brief A class-relative method index and a stable instruction handle within that method.

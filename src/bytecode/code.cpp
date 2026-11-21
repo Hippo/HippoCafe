@@ -11,6 +11,7 @@
 #include <atomic>
 #include <cassert>
 #include <limits>
+#include <map>
 #include <stdexcept>
 #include <vector>
 
@@ -23,6 +24,16 @@ constexpr std::uint32_t NO_SLOT = std::numeric_limits<std::uint32_t>::max(); ///
 constexpr std::uint32_t SWITCH_SLOT_COUNT = 1u << 16; ///< Number of operand slots representable by the packed switch handle.
 constexpr InstructionId UNBOUND{}; ///< Label-table sentinel for a label with no boundary binding.
 constexpr InstructionId EXCLUSIVE_END{NO_SLOT, 0}; ///< Label-table sentinel identifying the boundary after the last instruction.
+
+/// Instruction slots and label indices use disjoint key ranges in the same sparse edit history.
+using EditStamps = std::pmr::map<std::uint64_t, std::uint64_t>;
+constexpr std::uint64_t LABEL_KEY_BASE = std::uint64_t{1} << 32; ///< First label key, beyond every instruction slot.
+
+/// @param label Method-scoped label whose binding may change.
+/// @return Sparse stamp key for that binding.
+constexpr std::uint64_t binding_key(LabelId label) {
+  return LABEL_KEY_BASE + label.value;
+}
 
 /**
  * @brief Allocate a process-wide nonwrapping handle generation.
@@ -134,6 +145,52 @@ SwitchPayload own_switch(View view, std::pmr::memory_resource* resource) {
   return SwitchPayload(std::in_place_type<Payload>, view, resource);
 }
 
+/// Materialize symbolic destinations while preserving switch key order.
+/// @param value Branch or switch with pending target operands.
+/// @param fixups Nonempty list of (instruction index, label ordinal) pairs, switch default first.
+/// @param resolve Callback resolving a local label ordinal in the pending patch.
+/// @param build Callback staging a concrete branch or switch in method storage.
+/// @return Resolved instruction or an invalid target or staging error.
+template<typename Resolve, typename Build>
+std::expected<Instruction, CodeEditError> build_local_targets(
+    const InstructionBuilder& value, std::span<const std::pair<std::size_t, std::size_t>> fixups,
+    Resolve&& resolve, Build&& build) {
+  const auto* branch = std::get_if<Branch>(&value);
+  const auto* table = std::get_if<TableSwitch>(&value);
+  const auto* lookup = std::get_if<LookupSwitch>(&value);
+  if (!branch && !table && !lookup)
+    return std::unexpected(CodeEditError::WrongOperandForm);
+  const auto case_count = table ? table->targets.size() : lookup ? lookup->pairs.size()
+                                                                 : 0;
+  if (fixups.size() - 1 != case_count)
+    return std::unexpected(CodeEditError::InvalidLabel);
+  const auto target = resolve(fixups.front().second);
+  if (!target)
+    return std::unexpected(target.error());
+  if (branch)
+    return build(Branch{branch->opcode, *target, branch->encoding_hint});
+  if (table) {
+    std::vector<LabelId> cases;
+    cases.reserve(case_count);
+    for (const auto& fixup : fixups.subspan(1)) {
+      const auto label = resolve(fixup.second);
+      if (!label)
+        return std::unexpected(label.error());
+      cases.push_back(*label);
+    }
+    return build(TableSwitch{table->low, *target, cases});
+  }
+  std::vector<LookupPair> cases;
+  cases.reserve(case_count);
+  for (std::size_t i = 0; i < case_count; ++i) {
+    const auto label = resolve(fixups[i + 1].second);
+    if (!label)
+      return std::unexpected(label.error());
+    cases.push_back({lookup->pairs[i].key, *label});
+  }
+  return build(LookupSwitch{*target, cases});
+}
+
 /**
  * @brief Reusable out-of-line switch operand slot with generation and free-list linkage.
  * @ingroup implementation
@@ -185,7 +242,7 @@ struct MethodCode::Storage {
    * @param resource PMR resource that must outlive the allocated object or returned storage.
    */
   explicit Storage(std::pmr::memory_resource* resource) :
-      resource(resource), slots(resource), order(resource), labels(resource), switches(resource) {
+      resource(resource), slots(resource), order(resource), labels(resource), switches(resource), changes(resource) {
   }
 
   /**
@@ -227,6 +284,23 @@ struct MethodCode::Storage {
    */
   [[nodiscard]] bool can_edit() const {
     return scope != 0 && revision != std::numeric_limits<std::uint64_t>::max();
+  }
+
+  /// Reserve a new stamp node outside live state before an edit with further failure points.
+  /// @param staged Nodes to merge on successful publication.
+  /// @param key Instruction slot or tagged label binding.
+  void stage_stamp(EditStamps& staged, std::uint64_t key) const {
+    if (!changes.contains(key))
+      staged.try_emplace(key, revision + 1);
+  }
+
+  /// Publish a previously staged binding update alongside an instruction insertion.
+  /// @param label Label whose move was staged.
+  /// @param target New entry instruction.
+  /// @param stamp Revision of the insertion.
+  void publish_binding(LabelId label, InstructionId target, std::uint64_t stamp) {
+    changes.at(binding_key(label)) = stamp;
+    labels[label.value] = target;
   }
 
   /**
@@ -282,6 +356,7 @@ struct MethodCode::Storage {
   std::pmr::vector<std::uint32_t> order; ///< Live slot indices in method traversal order.
   std::pmr::vector<InstructionId> labels; ///< Method-scoped label bindings indexed by label value.
   std::pmr::vector<SwitchSlot> switches; ///< Out-of-line switch operand slots with generation/free-list metadata.
+  EditStamps changes; ///< Last edit to each replaced instruction or rebound label, stored sparsely.
   std::uint32_t free_instruction = NO_SLOT; ///< Head of the reusable instruction-slot free list.
   std::uint32_t free_switch = NO_SLOT; ///< Head of the reusable switch-slot free list.
   std::uint32_t scope = acquire_generation(); ///< Method identity used to reject foreign labels or switches.
@@ -360,9 +435,13 @@ std::expected<InstructionId, CodeEditError> MethodCode::insert_at(LabelId id, co
   auto position = label_position(id);
   if (!position)
     return std::unexpected(position.error());
+  EditStamps staged(storage->resource);
+  storage->stage_stamp(staged, binding_key(id));
   auto inserted = position->before ? insert_before(*position->before, value) : append(value);
-  if (inserted)
-    storage->labels[id.value] = *inserted;
+  if (inserted) {
+    storage->changes.merge(staged);
+    storage->publish_binding(id, *inserted, storage->revision);
+  }
   return inserted;
 }
 
@@ -400,6 +479,11 @@ std::expected<void, CodeEditError> MethodCode::replace(InstructionId id, const I
     return std::unexpected(CodeEditError::InvalidInstruction);
   if (!storage->can_edit())
     return std::unexpected(CodeEditError::HandleLimit);
+  // Stage the stamp node before build() can publish an owned switch.
+  decltype(storage->changes) new_stamps(storage->resource);
+  const bool owns_switch = std::holds_alternative<TableSwitch>(value) || std::holds_alternative<LookupSwitch>(value);
+  if (owns_switch && !storage->changes.contains(id.index))
+    new_stamps.emplace(id.index, storage->revision + 1);
   auto replacement = build(value);
   if (!replacement)
     return std::unexpected(replacement.error());
@@ -407,6 +491,8 @@ std::expected<void, CodeEditError> MethodCode::replace(InstructionId id, const I
   auto& instruction = storage->slots[id.index].instruction;
   if (instruction == *replacement)
     return {};
+  storage->changes.merge(new_stamps);
+  storage->changes.insert_or_assign(id.index, storage->revision + 1);
   release_operand(instruction);
   instruction = *replacement;
   ++storage->revision;
@@ -427,6 +513,7 @@ std::expected<void, CodeEditError> MethodCode::erase(InstructionId id) {
   release_operand(slot.instruction);
   slot = InstructionSlot{Instruction{}, 0, storage->free_instruction};
   storage->free_instruction = id.index;
+  storage->changes.erase(id.index);
   ++storage->revision;
   return {};
 }
@@ -468,6 +555,10 @@ std::expected<LabelId, CodeEditError> MethodCode::make_label() {
 }
 
 std::expected<void, CodeEditError> MethodCode::bind_label(LabelId id, CodePosition position) {
+  return set_label_binding(id, position, true);
+}
+
+std::expected<void, CodeEditError> MethodCode::set_label_binding(LabelId id, CodePosition position, bool record_edit) {
   if (!storage->contains(id))
     return std::unexpected(CodeEditError::InvalidLabel);
   if (position.before && !storage->contains(*position.before))
@@ -476,6 +567,8 @@ std::expected<void, CodeEditError> MethodCode::bind_label(LabelId id, CodePositi
     return std::unexpected(CodeEditError::HandleLimit);
   auto next = position.before.value_or(EXCLUSIVE_END);
   if (storage->labels[id.value] != next) {
+    if (record_edit)
+      storage->changes.insert_or_assign(binding_key(id), storage->revision + 1);
     storage->labels[id.value] = next;
     ++storage->revision;
   }
@@ -528,11 +621,15 @@ std::expected<LookupSwitch, CodeEditError> MethodCode::lookup_switch(SwitchId id
 }
 
 std::expected<Instruction, CodeEditError> MethodCode::build(const InstructionBuilder& value) {
-  return build(value, [this](auto view) { return storage->add_switch(view); });
+  return build(value, [this](auto view) { return storage->add_switch(view); }, [this](LabelId id) -> std::optional<CodeEditError> {
+                 if (!storage->contains(id))
+                   return CodeEditError::InvalidLabel;
+                 return std::nullopt; });
 }
 
-template<typename AddSwitch>
-std::expected<Instruction, CodeEditError> MethodCode::build(const InstructionBuilder& value, AddSwitch&& add_switch) {
+template<typename AddSwitch, typename CheckLabel>
+std::expected<Instruction, CodeEditError> MethodCode::build(const InstructionBuilder& value, AddSwitch&& add_switch,
+                                                            CheckLabel&& check_label) {
   if (auto instruction = std::get_if<Instruction>(&value)) {
     auto op = instruction->opcode();
     const auto& info = opcode_info(op);
@@ -544,18 +641,20 @@ std::expected<Instruction, CodeEditError> MethodCode::build(const InstructionBui
   if (auto branch = std::get_if<Branch>(&value)) {
     if (opcode_info(branch->opcode).form != OperandForm::BranchShort)
       return std::unexpected(CodeEditError::WrongOperandForm);
-    if (!storage->contains(branch->target))
-      return std::unexpected(CodeEditError::InvalidLabel);
+    if (auto error = check_label(branch->target))
+      return std::unexpected(*error);
     return Instruction(branch->opcode, branch->target.value, 0, branch->encoding_hint);
   }
 
-  auto missing = [&](LabelId id) { return !storage->contains(id); };
   if (auto table = std::get_if<TableSwitch>(&value)) {
     if (table->targets.empty() || table->targets.size() > std::numeric_limits<std::uint32_t>::max() ||
         static_cast<std::int64_t>(table->low) + static_cast<std::int64_t>(table->targets.size()) - 1 > std::numeric_limits<std::int32_t>::max())
       return std::unexpected(CodeEditError::InvalidSwitch);
-    if (missing(table->default_target) || std::ranges::any_of(table->targets, missing))
-      return std::unexpected(CodeEditError::InvalidLabel);
+    if (auto error = check_label(table->default_target))
+      return std::unexpected(*error);
+    for (const auto target : table->targets)
+      if (auto error = check_label(target))
+        return std::unexpected(*error);
     return add_switch(*table).transform([](auto id) { return Instruction(Opcode::TableSwitch, id); });
   }
 
@@ -564,13 +663,13 @@ std::expected<Instruction, CodeEditError> MethodCode::build(const InstructionBui
     return std::unexpected(CodeEditError::WrongOperandForm);
   if (lookup->pairs.size() > static_cast<std::size_t>(std::numeric_limits<std::int32_t>::max()))
     return std::unexpected(CodeEditError::InvalidSwitch);
-  if (missing(lookup->default_target))
-    return std::unexpected(CodeEditError::InvalidLabel);
+  if (auto error = check_label(lookup->default_target))
+    return std::unexpected(*error);
   for (std::size_t i = 0; i < lookup->pairs.size(); ++i) {
     if (i != 0 && lookup->pairs[i - 1].key >= lookup->pairs[i].key)
       return std::unexpected(CodeEditError::InvalidSwitch);
-    if (missing(lookup->pairs[i].target))
-      return std::unexpected(CodeEditError::InvalidLabel);
+    if (auto error = check_label(lookup->pairs[i].target))
+      return std::unexpected(*error);
   }
   return add_switch(*lookup).transform([](auto id) { return Instruction(Opcode::LookupSwitch, id); });
 }
@@ -589,21 +688,86 @@ std::expected<std::vector<InstructionId>, BlockEditError> MethodCode::insert_blo
   if (!position)
     return std::unexpected(BlockEditError{position.error(), std::nullopt});
 
+  if (block.empty())
+    return std::vector<InstructionId>{};
+  EditStamps staged(storage->resource);
+  storage->stage_stamp(staged, binding_key(at));
   auto inserted = position->before ? insert_block_before(*position->before, block) : insert_block(size(), block);
-  if (inserted && !inserted->empty())
-    storage->labels[at.value] = inserted->front();
+  if (inserted) {
+    storage->changes.merge(staged);
+    storage->publish_binding(at, inserted->front(), storage->revision);
+  }
   return inserted;
 }
 
 std::expected<std::vector<InstructionId>, BlockEditError> MethodCode::insert_block(
     std::size_t position, std::span<const InstructionBuilder> block) {
-  if (block.empty())
+  return splice(position, block, {}, nullptr);
+}
+
+std::expected<std::vector<InstructionId>, BlockEditError> MethodCode::splice(
+    std::size_t position, std::span<const InstructionBuilder> block, std::span<const InstructionId> removed,
+    const detail::CodePatch* patch) {
+  if (block.empty() && removed.empty())
     return std::vector<InstructionId>{};
   if (!storage->can_edit())
-    return std::unexpected(BlockEditError{CodeEditError::HandleLimit, 0});
-  const auto limit = std::min({static_cast<std::size_t>(NO_SLOT), storage->slots.max_size(), storage->order.max_size()});
-  if (block.size() > limit - size())
-    return std::unexpected(BlockEditError{CodeEditError::HandleLimit, limit - size()});
+    return std::unexpected(BlockEditError{CodeEditError::HandleLimit, block.empty() ? std::nullopt : std::optional<std::size_t>{0}});
+  const bool retain_entry = !block.empty() && !removed.empty();
+  const auto erased = removed.subspan(retain_entry ? 1 : 0);
+  if (!erased.empty() && !storage->labels.empty()) {
+    std::vector<std::uint32_t> slots;
+    slots.reserve(erased.size());
+    for (auto id : erased)
+      slots.push_back(id.index);
+    std::ranges::sort(slots);
+    for (auto target : storage->labels)
+      if (target.generation != 0 && std::ranges::binary_search(slots, target.index))
+        return std::unexpected(BlockEditError{CodeEditError::LabeledInstruction, std::nullopt});
+  }
+
+  const auto successor = at(position + removed.size());
+  const auto binds = patch ? patch->label_bindings : std::span<const std::optional<std::size_t>>{};
+  const auto fixups = patch ? patch->branch_fixups : std::span<const std::pair<std::size_t, std::size_t>>{};
+  std::vector<LabelId> local_labels(binds.size());
+  std::vector<std::size_t> target_boundaries;
+  auto next_fixup = fixups.begin();
+  const auto new_label = [&]() -> std::expected<LabelId, CodeEditError> {
+    if (target_boundaries.size() >= NO_SLOT - storage->labels.size())
+      return std::unexpected(CodeEditError::HandleLimit);
+    return LabelId{static_cast<std::uint32_t>(storage->labels.size() + target_boundaries.size()), storage->scope};
+  };
+  const auto resolve_local = [&](std::size_t label) -> std::expected<LabelId, CodeEditError> {
+    if (label >= binds.size())
+      return std::unexpected(CodeEditError::InvalidLabel);
+    if (!binds[label])
+      return std::unexpected(CodeEditError::UnboundLabel);
+    const auto boundary = *binds[label];
+    if (boundary > block.size() || (boundary == block.size() && successor.generation == 0))
+      return std::unexpected(CodeEditError::InvalidLabel);
+    if (local_labels[label].scope == 0) {
+      const auto id = new_label();
+      if (!id)
+        return std::unexpected(id.error());
+      local_labels[label] = *id;
+      target_boundaries.push_back(boundary);
+    }
+    return local_labels[label];
+  };
+  const auto check_label = [&](LabelId id) -> std::optional<CodeEditError> {
+    if (!storage->contains(id))
+      return CodeEditError::InvalidLabel;
+    if (patch && patch->move_label != id) {
+      const auto destination = storage->labels[id.value];
+      if (destination == UNBOUND)
+        return CodeEditError::UnboundLabel;
+      if (destination == EXCLUSIVE_END)
+        return CodeEditError::InvalidLabel;
+    }
+    return std::nullopt;
+  };
+  const auto limit = std::min(static_cast<std::size_t>(NO_SLOT), storage->order.max_size());
+  if (block.size() > limit - (size() - removed.size()))
+    return std::unexpected(BlockEditError{CodeEditError::HandleLimit, limit - (size() - removed.size())});
 
   // Plan free-list reuse and copy switch data before mutating any live slots.
   std::vector<InstructionId> inserted;
@@ -632,11 +796,24 @@ std::expected<std::vector<InstructionId>, BlockEditError> MethodCode::insert_blo
     return id;
   };
   for (std::size_t i = 0; i < block.size(); ++i) {
-    const auto instruction = build(block[i], prepare_switch);
+    auto instruction = [&]() -> std::expected<Instruction, CodeEditError> {
+      if (next_fixup == fixups.end() || next_fixup->first != i)
+        return build(block[i], prepare_switch, check_label);
+      const auto first = next_fixup;
+      while (next_fixup != fixups.end() && next_fixup->first == i)
+        ++next_fixup;
+      return build_local_targets(block[i], {first, next_fixup}, resolve_local, [&](const InstructionBuilder& resolved) {
+        return build(resolved, prepare_switch, [](LabelId) -> std::optional<CodeEditError> { return std::nullopt; });
+      });
+    }();
     if (!instruction)
       return std::unexpected(BlockEditError{instruction.error(), i});
     instructions.push_back(*instruction);
-    if (next_instruction == NO_SLOT) {
+    if (retain_entry && i == 0) {
+      inserted.push_back(removed.front());
+    } else if (next_instruction == NO_SLOT) {
+      if (storage->slots.size() + new_instructions >= std::min(storage->slots.max_size(), static_cast<std::size_t>(NO_SLOT)))
+        return std::unexpected(BlockEditError{CodeEditError::HandleLimit, i});
       const auto index = static_cast<std::uint32_t>(storage->slots.size() + new_instructions);
       ++new_instructions;
       inserted.push_back({index, storage->scope});
@@ -645,10 +822,38 @@ std::expected<std::vector<InstructionId>, BlockEditError> MethodCode::insert_blo
       next_instruction = storage->slots[next_instruction].next_free;
     }
   }
+  if (next_fixup != fixups.end())
+    return std::unexpected(BlockEditError{CodeEditError::InvalidLabel, next_fixup->first});
+  if (retain_entry && !patch->match_position && block.size() == 1 &&
+      storage->slots[removed.front().index].instruction == instructions.front())
+    return inserted;
 
-  reserve_additional(storage->order, block.size());
+  std::vector<std::uint32_t> incoming;
+  if (patch && patch->include_incoming) {
+    for (const auto slot : storage->order)
+      if (redirect_targets(slot, patch->anchor, std::nullopt))
+        incoming.push_back(slot);
+  }
+  std::optional<LabelId> entry;
+  if (!incoming.empty()) {
+    auto id = new_label();
+    if (!id)
+      return std::unexpected(BlockEditError{id.error(), std::nullopt});
+    entry = *id;
+    target_boundaries.push_back(0);
+  }
+  if (block.size() > removed.size())
+    reserve_additional(storage->order, block.size() - removed.size());
   reserve_additional(storage->slots, new_instructions);
   reserve_additional(storage->switches, new_switches);
+  reserve_additional(storage->labels, target_boundaries.size());
+  decltype(storage->changes) new_stamps(storage->resource);
+  if (retain_entry)
+    storage->stage_stamp(new_stamps, removed.front().index);
+  for (const auto slot : incoming)
+    storage->stage_stamp(new_stamps, slot);
+  if (patch && patch->move_label)
+    storage->stage_stamp(new_stamps, binding_key(*patch->move_label));
   for (std::size_t i = 0; i < inserted.size(); ++i) {
     auto& id = inserted[i];
     if (id.generation == 0) {
@@ -658,14 +863,42 @@ std::expected<std::vector<InstructionId>, BlockEditError> MethodCode::insert_blo
     }
   }
 
-  // Capacity and handles are ready. Commit with one shift of the order vector.
-  auto order = storage->order.insert(storage->order.begin() + static_cast<std::ptrdiff_t>(position), block.size(), 0);
+  // No allocations or validation below this point. Redirect only pre-existing edges.
+  storage->changes.merge(new_stamps);
+  for (const auto slot : incoming) {
+    redirect_targets(slot, patch->anchor, entry);
+    storage->changes.at(slot) = storage->revision + 1;
+  }
+  for (auto boundary : target_boundaries)
+    storage->labels.push_back(boundary == block.size() ? successor : inserted[boundary]);
+  if (patch && patch->move_label && !inserted.empty())
+    storage->publish_binding(*patch->move_label, inserted.front(), storage->revision + 1);
+
+  // Install allocated switch/instruction slots before adding the newly erased slots to their free lists.
   for (auto& payload : payloads)
     storage->install_switch(std::move(payload));
-  for (std::size_t i = 0; i < inserted.size(); ++i) {
+  for (std::size_t i = retain_entry ? 1 : 0; i < inserted.size(); ++i)
     storage->install_instruction(inserted[i], instructions[i]);
-    *order++ = inserted[i].index;
+  if (retain_entry) {
+    auto& first = storage->slots[removed.front().index].instruction;
+    release_operand(first);
+    first = instructions.front();
+    storage->changes.at(removed.front().index) = storage->revision + 1;
   }
+  for (auto id : erased) {
+    auto& slot = storage->slots[id.index];
+    release_operand(slot.instruction);
+    slot = {Instruction{}, 0, storage->free_instruction};
+    storage->free_instruction = id.index;
+    storage->changes.erase(id.index);
+  }
+  auto order = storage->order.begin() + static_cast<std::ptrdiff_t>(position);
+  if (block.size() > removed.size())
+    order = storage->order.insert(order, block.size() - removed.size(), 0);
+  else if (removed.size() > block.size())
+    order = storage->order.erase(order, order + static_cast<std::ptrdiff_t>(removed.size() - block.size()));
+  for (auto id : inserted)
+    *order++ = id.index;
   ++storage->revision;
   return inserted;
 }
@@ -684,7 +917,121 @@ void MethodCode::release_operand(Instruction value) {
   }
 }
 
+bool MethodCode::redirect_targets(std::uint32_t index, InstructionId anchor, std::optional<LabelId> entry) {
+  auto& instruction = storage->slots[index].instruction;
+  bool changed = false;
+  const auto redirect = [&](LabelId& target) {
+    if (storage->labels[target.value] == anchor) {
+      changed = true;
+      if (entry)
+        target = *entry;
+    }
+  };
+  switch (opcode_info(instruction.opcode()).form) {
+    case OperandForm::BranchShort: {
+      auto target = LabelId{instruction.operand_bits, storage->scope};
+      redirect(target);
+      if (changed && entry)
+        instruction.operand_bits = target.value;
+      break;
+    }
+    case OperandForm::TableSwitch: {
+      auto& table = std::get<OwnedTableSwitch>(storage->switches[switch_index(instruction.operand_bits)].payload);
+      redirect(table.default_target);
+      for (auto& target : table.targets)
+        redirect(target);
+      break;
+    }
+    case OperandForm::LookupSwitch: {
+      auto& lookup = std::get<OwnedLookupSwitch>(storage->switches[switch_index(instruction.operand_bits)].payload);
+      redirect(lookup.default_target);
+      for (auto& pair : lookup.pairs)
+        redirect(pair.target);
+      break;
+    }
+    default:
+      break;
+  }
+  return changed;
+}
+
+bool MethodCode::changed_since(std::uint32_t slot, std::uint64_t revision) const {
+  const auto& changes = storage->changes;
+  if (storage->revision == revision || changes.empty())
+    return false;
+  const auto changed = [&](std::uint64_t key) {
+    const auto stamp = changes.find(key);
+    return stamp != changes.end() && stamp->second > revision;
+  };
+  if (changed(slot))
+    return true;
+  if (changes.rbegin()->first < LABEL_KEY_BASE)
+    return false;
+  const auto rebound = [&](LabelId id) { return changed(binding_key(id)); };
+  const auto& instruction = storage->slots[slot].instruction;
+  switch (opcode_info(instruction.opcode()).form) {
+    case OperandForm::BranchShort:
+      return rebound(LabelId{instruction.operand_bits, storage->scope});
+    case OperandForm::TableSwitch: {
+      const auto& table = std::get<OwnedTableSwitch>(storage->switches[switch_index(instruction.operand_bits)].payload);
+      return rebound(table.default_target) || std::ranges::any_of(table.targets, rebound);
+    }
+    case OperandForm::LookupSwitch: {
+      const auto& lookup = std::get<OwnedLookupSwitch>(storage->switches[switch_index(instruction.operand_bits)].payload);
+      return rebound(lookup.default_target) || std::ranges::any_of(lookup.pairs, rebound, &LookupPair::target);
+    }
+    default:
+      return false;
+  }
+}
+
 namespace detail {
+
+std::expected<std::size_t, BlockEditError> BytecodeAccess::match_position(
+    const MethodCode& code, std::span<const InstructionId> ids, std::uint32_t scope, std::uint64_t revision) {
+  const auto stale = std::unexpected(BlockEditError{CodeEditError::StaleMatch, std::nullopt});
+  const auto& state = *code.storage;
+  if (ids.empty() || scope == 0 || scope != state.scope || revision > state.revision || !state.contains(ids.front()))
+    return stale;
+  const auto at = std::ranges::find(state.order, ids.front().index);
+  const auto position = static_cast<std::size_t>(at - state.order.begin());
+  if (ids.size() > code.size() - position)
+    return stale;
+  for (std::size_t i = 0; i < ids.size(); ++i) {
+    const auto id = ids[i];
+    if (code.at(position + i) != id || code.changed_since(id.index, revision))
+      return stale;
+  }
+  return position;
+}
+
+std::expected<std::vector<InstructionId>, BlockEditError> BytecodeAccess::apply_patch(
+    MethodCode& code, const CodePatch& patch, std::span<const InstructionBuilder> block) {
+  const auto fail = [](CodeEditError error) { return std::unexpected(BlockEditError{error, std::nullopt}); };
+  const auto& state = *code.storage;
+  if (patch.include_incoming && patch.placement != PatchPlacement::Before)
+    return fail(CodeEditError::InvalidOperand);
+  std::size_t position = patch.match_position.value_or(code.size());
+  if (!patch.match_position && patch.placement != PatchPlacement::Append) {
+    if (!state.contains(patch.anchor))
+      return fail(CodeEditError::InvalidInstruction);
+    const auto at = std::ranges::find(state.order, patch.anchor.index);
+    position = static_cast<std::size_t>(at - state.order.begin());
+    if (patch.placement == PatchPlacement::After)
+      ++position;
+  }
+  if (patch.move_label) {
+    const auto binding = code.label_position(*patch.move_label);
+    if (!binding)
+      return fail(binding.error());
+    if (binding->before.value_or(InstructionId{}) != code.at(position))
+      return fail(CodeEditError::InvalidLabel);
+  }
+  std::span<const InstructionId> removed;
+  if (patch.placement == PatchPlacement::Replace)
+    removed = patch.match_position ? patch.matched_ids : std::span<const InstructionId>(&patch.anchor, 1);
+  return code.splice(position, block, removed, &patch);
+}
 
 std::uint32_t BytecodeAccess::scope(const MethodCode& code) {
   return code.storage->scope;
@@ -704,6 +1051,7 @@ std::expected<LabelId, CodeEditError> BytecodeAccess::original_label(MethodCode&
 
 void BytecodeAccess::mark_clean(MethodCode& code) {
   code.storage->revision = 0;
+  code.storage->changes.clear();
 }
 
 void BytecodeAccess::set_original_switch_padding(MethodCode& code, InstructionId id, std::span<const std::byte> padding) {

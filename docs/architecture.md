@@ -62,11 +62,22 @@ instruction or the exclusive method end; unbound labels support forward branches
 Switch payloads live out of line. Generation/revision exhaustion is reported rather
 than allowing stale handles to become valid again.
 
-Block edits validate operands and ownership, plan slot reuse, copy switch payloads,
-and reserve capacity before committing. Failure preserves logical contents. The
-commit advances the revision once. `insert_before` retains anchor labels;
-`insert_at` rebinds only the selected label. A labeled instruction cannot be erased
-until its labels are explicitly retargeted.
+An instruction view pairs the copied instruction and stable ID with its class
+storage, so typed accessors resolve the encoded member on demand. Pattern
+searches traverse these views in method order. Matches retain their original
+instruction IDs and capture contents. Range edits check the method scope,
+current contiguity, and whether any selected instruction or its branch or switch
+target bindings have changed since the search.
+
+`MethodEditor` resolves each sequence under one constant-pool and bootstrap
+checkpoint. The method stages instruction slots, switch payloads, label fixups,
+and order changes before publishing. A failed edit preserves logical contents.
+A successful sequence edit advances the revision once. By default,
+`insert_before` retains anchor labels. `IncludeIncomingBranches` rewrites
+existing branch and switch operands through a new entry label, keeping exception
+handler boundaries attached to their original instructions. `insert_at` rebinds
+only its selected label. Erasure requires every removed instruction to be free
+of bound labels.
 
 ## Parsing, preservation, and emission
 

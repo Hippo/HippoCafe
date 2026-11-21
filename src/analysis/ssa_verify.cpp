@@ -491,10 +491,10 @@ public:
     if (auto state = effects.initialize(initial, locals); !state)
       return Location{}.cause(std::move(state.error()));
     for (const auto& symbol : data.symbols) {
-      for (const auto& name : symbol.names)
+      for (const auto& name : symbol.storage.names)
         if (!work.spend(name.size()))
           return work.failure({{}, symbol.owner});
-      for (const auto& args : symbol.arguments)
+      for (const auto& args : symbol.storage.arguments)
         if (!work.spend(args.size() + 1))
           return work.failure({{}, symbol.owner});
     }

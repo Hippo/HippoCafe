@@ -303,6 +303,99 @@ void generate_symbolic(const path& output_dir, analysis::AnalysisContext& contex
   write(parsed, context, destination);
 }
 
+void generate_branch_entries(const path& output_dir, analysis::AnalysisContext& context) {
+  auto source = ClassFile::create({55, 0}, "BranchEntries").value();
+  const auto code_name = source.constant_pool().append_utf8("Code").value();
+  for (const auto name : {"preserve", "include"}) {
+    auto& code = add_method(source, name, "(I)I", code_name);
+    const auto entry = code.make_label().value();
+    const auto fallthrough = code.make_label().value();
+    const auto handler = code.make_label().value();
+    code.append(Instruction::iload(0)).value();
+    code.append(branch(Opcode::IfEq, entry)).value();
+    code.append(Instruction::iload(0)).value();
+    const std::array cases{entry, fallthrough};
+    code.append(TableSwitch{1, entry, cases}).value();
+    const auto fallthrough_id = code.append(Instruction::nop()).value();
+    const auto anchor = code.append(Instruction::iload(0)).value();
+    code.append(simple(Opcode::IReturn)).value();
+    const auto catch_entry = code.append(Instruction::pop()).value();
+    code.append(simple(Opcode::IConstM1)).value();
+    code.append(simple(Opcode::IReturn)).value();
+    code.bind_label(entry, CodePosition{anchor}).value();
+    code.bind_label(fallthrough, CodePosition{fallthrough_id}).value();
+    code.bind_label(handler, CodePosition{catch_entry}).value();
+    const std::array handlers{ExceptionHandler{entry, handler, handler, {}}};
+    source.edit_code(source.find_method(name, "(I)I").value())->set_exception_handlers(handlers);
+  }
+  for (const auto name : {"preserveBounds", "includeBounds"}) {
+    auto& code = add_method(source, name, "(I)I", code_name);
+    const auto start = code.make_label().value();
+    const auto fallthrough = code.make_label().value();
+    const auto shared = code.make_label().value();
+    // Slot 1 counts visits to the later insertion. Normal entry carries null
+    // where exceptional entry carries the caught Throwable.
+    const std::array<InstructionBuilder, 12> body{
+        simple(Opcode::IConst0), Instruction::istore(1),
+        simple(Opcode::AConstNull), Instruction::iload(0), branch(Opcode::IfEq, shared),
+        Instruction::iload(0), branch(Opcode::IfGt, fallthrough), simple(Opcode::AThrow),
+        Instruction::nop(), Instruction::pop(), Instruction::iload(1), simple(Opcode::IReturn)};
+    const auto ids = code.append(body).value();
+    code.bind_label(start, {ids[2]}).value();
+    code.bind_label(fallthrough, {ids[8]}).value();
+    code.bind_label(shared, {ids[9]}).value();
+    const std::array handlers{ExceptionHandler{start, shared, shared, {}}};
+    source.edit_code(source.find_method(name, "(I)I").value())->set_exception_handlers(handlers);
+  }
+
+  const auto wire = write_class(source, {.code_analysis = CodeAnalysisMode::ComputeFrames}, context).value();
+  auto parsed = parse(wire.bytes);
+  const auto returns_input = pattern::seq(pattern::iload(0), pattern::opcode(Opcode::IReturn));
+  for (const auto name : {std::string_view{"preserve"}, std::string_view{"include"}}) {
+    const auto method = parsed.find_method(name, "(I)I").value();
+    const auto match = pattern::find_first(parsed, method, returns_input).value().value();
+    auto editor = parsed.edit_method(method).value();
+    const auto& code = editor.code()->code();
+    const auto entry = editor.code()->exception_handlers().front().start;
+    const auto branch_id = code.at(1);
+    const auto switch_id = code.at(3);
+    const auto table = code.table_switch(code.switch_id(switch_id).value()).value();
+    require(code.branch_target(branch_id) == entry && table.default_target == entry &&
+                table.targets.front() == entry,
+            "parsed fixture must share a label between branch, switch and exception range");
+    const bool include = name == "include";
+    const auto policy = include ? InsertionEntry::IncludeIncomingBranches : InsertionEntry::PreserveAnchor;
+    const auto patch = editor.insert_before(match.start(), [](auto& builder) { builder.iinc(0, 5); }, policy).value();
+    const auto expected_entry = include ? patch.front() : match.start();
+    const auto target = [&](LabelId label) { return code.label_position(label).value().before; };
+    const auto updated = code.table_switch(code.switch_id(switch_id).value()).value();
+    require(target(code.branch_target(branch_id).value()) == expected_entry &&
+                target(updated.default_target) == expected_entry && target(updated.targets.front()) == expected_entry &&
+                target(editor.code()->exception_handlers().front().start) == match.start(),
+            "branch or exception range entry changed unexpectedly");
+  }
+  for (const auto name : {std::string_view{"preserveBounds"}, std::string_view{"includeBounds"}}) {
+    auto editor = parsed.edit_method(parsed.find_method(name, "(I)I").value()).value();
+    const auto& code = editor.code()->code();
+    const auto handler = editor.code()->exception_handlers().front();
+    const auto jump = code.at(4);
+    require(code.branch_target(jump) == handler.handler && handler.end == handler.handler,
+            "parsed fixture must share a branch target with end_pc and handler_pc");
+    const auto anchor = code.label_position(handler.handler).value().before.value();
+    const bool include = name == "includeBounds";
+    const auto policy = include ? InsertionEntry::IncludeIncomingBranches : InsertionEntry::PreserveAnchor;
+    const auto patch = editor.insert_before(anchor, [](auto& b) {
+      const auto done = b.label();
+      // Divide only on the first visit so an erroneous handler entry yields a
+      // failing count instead of repeatedly throwing from the handler.
+      b.iload(1).iinc(1, 1).ifne(done).iconst_1().iload(0).idiv().pop().bind(done); }, policy).value();
+    require(code.label_position(code.branch_target(jump).value())->before == (include ? patch.front() : anchor) &&
+                code.label_position(handler.end)->before == anchor && code.label_position(handler.handler)->before == anchor,
+            "ordinary entry redirection changed the protected end or the handler target");
+  }
+  write(parsed, context, output_dir / "BranchEntries.class");
+}
+
 } // namespace
 
 int main(int argc, char** argv) try {
@@ -321,6 +414,7 @@ int main(int argc, char** argv) try {
   analysis::AnalysisContext context{classpath::ClassHierarchy{classpath::ClassResolver{builder.build()}}};
   generate(output, context);
   generate_symbolic(output, context);
+  generate_branch_entries(output, context);
   if (fixtures != "-")
     rewrite_compiled(fixtures, output, context);
   return 0;

@@ -8,6 +8,7 @@
 #include <cafe/bytecode/code.hpp>
 #include <cafe/class_file.hpp>
 
+#include "bytecode/code_access.hpp"
 #include "io/ssa_relocation.hpp"
 
 #include <algorithm>
@@ -897,7 +898,7 @@ void Emitter::finalize() {
   }
   for (const auto& [id, position] : bindings) {
     const auto at = position < code.size() ? CodePosition{code.at(position)} : CodePosition{};
-    if (!code.bind_label(id, at)) {
+    if (!cafe::detail::BytecodeAccess::bind_initial_label(code, id, at)) {
       fail(SsaErrorKind::EmissionFailure, "could not bind staged control-flow boundary");
       return;
     }

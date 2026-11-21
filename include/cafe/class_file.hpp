@@ -18,6 +18,7 @@
 #include <vector>
 
 #include <cafe/access_flags.hpp>
+#include <cafe/bytecode/instruction_view.hpp>
 #include <cafe/class_version.hpp>
 #include <cafe/constant_pool.hpp>
 #include <cafe/field.hpp>
@@ -200,6 +201,27 @@ public:
    * @return Its current table index, or nullopt; later insertion/erasure can change indices.
    */
   [[nodiscard]] std::optional<std::size_t> find_method(std::string_view name, std::string_view descriptor) const noexcept;
+
+  /**
+   * @brief Iterate class-aware instructions in method order.
+   * @param method_index Zero-based method-table index.
+   * @return A sized borrowed range, empty for an invalid index or absent/opaque Code.
+   *   Reacquire it after editing the method or changing the method table.
+   */
+  [[nodiscard]] InstructionViewRange instructions(std::size_t method_index) const noexcept;
+  /**
+   * @brief Look up an instruction range and report whether decoded Code is available.
+   * @param method_index Zero-based method-table index.
+   * @return A range (possibly empty), InvalidMethod for an out-of-bounds index,
+   *   or NoCode for absent or opaque Code.
+   */
+  [[nodiscard]] std::expected<InstructionViewRange, CodeEditError> checked_instructions(std::size_t method_index) const noexcept;
+  /**
+   * @brief Look up a fresh class-aware instruction snapshot by stable handle.
+   * @param location Current method-table index and instruction handle.
+   * @return The view, or InvalidMethod, NoCode, or InvalidInstruction for a stale/foreign handle.
+   */
+  [[nodiscard]] std::expected<InstructionView, CodeEditError> instruction(InstructionLocation location) const noexcept;
 
   /**
    * @brief Find ordinary calls with an exact symbolic owner, name, and descriptor.

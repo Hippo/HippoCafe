@@ -106,7 +106,7 @@ public:
       position = entry.source;
       if (!offsets.is_instruction_start(entry.target))
         return fail(ReadErrorKind::InvalidBranchTarget, "branch targets the middle of an instruction or switch padding");
-      if (!code.bind_label(offsets.labels[entry.target], CodePosition{code.at(offsets.ordinals[entry.target])}))
+      if (!BytecodeAccess::bind_initial_label(code, offsets.labels[entry.target], CodePosition{code.at(offsets.ordinals[entry.target])}))
         return fail(ReadErrorKind::ResourceLimitExceeded, "exhausted method label handles");
     }
     BytecodeAccess::mark_clean(code);

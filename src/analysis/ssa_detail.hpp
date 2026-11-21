@@ -10,6 +10,7 @@
 #include <string>
 #include <unordered_set>
 #include "../model/budget_resource.hpp"
+#include "../model/symbol_storage.hpp"
 #include "ssa_commit.hpp"
 
 namespace cafe::analysis {
@@ -33,11 +34,10 @@ struct SsaSymbols {
    * @brief Bind symbolic operand storage to the graph budget.
    * @param resource Resource outliving this operand.
    */
-  explicit SsaSymbols(std::pmr::memory_resource* resource) : names(resource), arguments(resource) {
+  explicit SsaSymbols(std::pmr::memory_resource* resource) : storage(resource) {
   }
   SsaOperationId owner{}; ///< Operation retaining this backing storage.
-  std::pmr::list<std::pmr::string> names; ///< Stable backing for symbolic names.
-  std::pmr::list<std::pmr::vector<BootstrapArgument>> arguments; ///< Stable owned bootstrap argument arrays.
+  detail::SymbolStorage storage; ///< Stable symbolic text and bootstrap arguments.
 };
 
 /// Constant-time dominance tests use preorder intervals of the verifier's dominator tree.

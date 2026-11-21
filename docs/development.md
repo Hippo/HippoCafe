@@ -48,7 +48,7 @@ Instrumented sanitizer/fuzz builds intentionally omit install/export rules.
 
 Examples are compiled with project warnings. The quickstart exercises both class
 serialization and an in-memory archive edit. `hippocafe_edit_and_compute input.class
-output.class java-home target-release` demonstrates single and block insertion,
+output.class java-home target-release` demonstrates batch insertion and editing matched calls,
 computes frames, and saves the result. Supply a matching runtime and release;
 add application dependencies to the example for non-runtime references.
 

@@ -12,12 +12,48 @@
 
 namespace cafe::detail {
 
+/// Placement of an atomic class-aware instruction patch.
+enum class PatchPlacement {
+  Before, ///< Insert before the anchor.
+  After, ///< Insert after the anchor.
+  Replace, ///< Replace the anchor or checked match.
+  Append, ///< Insert at method end.
+};
+
+/// The original edit location, match identity and unresolved builder-local branches.
+struct CodePatch {
+  PatchPlacement placement = PatchPlacement::Before; ///< Operation relative to the anchor or match.
+  InstructionId anchor{}; ///< Anchor for insertion or replacement by ID.
+  std::span<const InstructionId> matched_ids{}; ///< Exact ordered IDs of a range replacement.
+  std::optional<std::size_t> match_position{}; ///< Validated start ordinal of a match in the current method.
+  bool include_incoming{}; ///< Redirect existing branches and switches entering the anchor.
+  std::span<const std::optional<std::size_t>> label_bindings{}; ///< Builder label to boundary ordinal.
+  std::span<const std::pair<std::size_t, std::size_t>> branch_fixups{}; ///< Ordered (instruction index, label ordinal) pairs, with each switch default preceding its cases.
+  std::optional<LabelId> move_label{}; ///< Selected existing insert_at boundary to bind to the patch entry.
+};
+
 /**
  * @brief Restricted codec access to method storage identity and original-wire metadata. These
  * helpers must not be used as public edit operations.
  * @ingroup implementation
  */
 struct BytecodeAccess {
+  /// Find a saved match in current instruction order and verify its identity and operand stamps.
+  /// @param code Live method receiving the edit.
+  /// @param ids Stable identities, in original match order.
+  /// @param scope Source method scope.
+  /// @param revision Source revision when the match was observed.
+  /// @return First current ordinal, or StaleMatch for an invalidated, empty or foreign match.
+  static std::expected<std::size_t, BlockEditError> match_position(const MethodCode& code,
+                                                                   std::span<const InstructionId> ids,
+                                                                   std::uint32_t scope, std::uint64_t revision);
+  /// Apply an atomic splice after symbolic operands have been resolved.
+  /// @param code Live method to edit.
+  /// @param patch Anchor, optional match validation, and label fixups.
+  /// @param block Concrete instructions and method-scoped operands in insertion order.
+  /// @return Published IDs or an error leaving the logical method unchanged.
+  static std::expected<std::vector<InstructionId>, BlockEditError> apply_patch(
+      MethodCode& code, const CodePatch& patch, std::span<const InstructionBuilder> block);
   /**
    * @brief Copy an instruction while setting its original wire-encoding preference.
    * @param value Instruction copied with the supplied encoding hint.
@@ -58,6 +94,14 @@ struct BytecodeAccess {
    * recording a user edit.
    */
   static std::expected<LabelId, CodeEditError> original_label(MethodCode& code, CodePosition position);
+  /// Bind a label during construction of an unpublished decoded or lowered body.
+  /// @param code Detached method whose instruction identities have not yet been published.
+  /// @param label Method-scoped label to bind.
+  /// @param position Instruction boundary, including the exclusive end.
+  /// @return Success or an invalid label, instruction, or revision error.
+  static std::expected<void, CodeEditError> bind_initial_label(MethodCode& code, LabelId label, CodePosition position) {
+    return code.set_label_binding(label, position, false);
+  }
   /**
    * @brief Reset the instruction revision after successful initial decoding.
    * @param code Decoded instruction sequence or associated Code attribute.

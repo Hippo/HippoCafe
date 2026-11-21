@@ -27,9 +27,17 @@ int main() {
   if (!parsed)
     return 1;
 
+  auto& file = parsed->class_file;
+  auto match = cafe::pattern::find_first(file, *method, cafe::pattern::opcode(cafe::Opcode::IReturn));
+  if (!match || !*match)
+    return 1;
+  auto editor = file.edit_method(*method);
+  if (!editor || !editor->insert_before((*match)->start(), [](cafe::CodeBuilder& code) { code.bipush(10).pop(); }))
+    return 1;
+
   // Pull in the archive implementation to check exported static dependencies.
   auto archive = cafe::archive::Archive::create(cafe::archive::Format::Jar);
-  auto output = cafe::write_class(parsed->class_file);
+  auto output = cafe::write_class(file, {.code_analysis = cafe::CodeAnalysisMode::ComputeMaxs});
   if (!output || !archive.add("Example.class", output->bytes))
     return 1;
   return archive.write() ? 0 : 1;

@@ -200,6 +200,7 @@ TEST(SymbolicEdit, RequiresDecodedCodeAndSupportedClassVersions) {
 }
 
 TEST(SymbolicEdit, AllocationFailuresRollBackAndAllowARetry) {
+  std::optional<std::vector<std::byte>> expected_output;
   for (std::size_t allowance = 0;; ++allowance) {
     ASSERT_LT(allowance, 128);
     SCOPED_TRACE(allowance);
@@ -208,22 +209,47 @@ TEST(SymbolicEdit, AllocationFailuresRollBackAndAllowARetry) {
     auto& code = with_return(model).code();
     auto editor = model.edit_method(0).value();
     const auto anchor = code.at(0);
+    const auto entry = code.make_label().value();
+    code.bind_label(entry, {anchor}).value();
+    const auto jump = editor.insert_before(anchor, insn::goto_(entry)).value();
+    const auto match = pattern::find_first(model, 0, pattern::opcode(Opcode::Goto)).value().value();
+    const WriteOptions computed{.code_analysis = CodeAnalysisMode::ComputeFrames};
+    const auto before = write_class(model, computed).value().bytes;
     const auto pool_size = model.constant_pool().size();
     const auto revision = code.revision();
-    const DynamicConstant value{"name", "I", TEST_BOOTSTRAP};
+    const auto apply = [&] {
+      return editor.insert_before(anchor, {DynamicConstant{"name", "I", TEST_BOOTSTRAP}, insn::pop()},
+                                  InsertionEntry::IncludeIncomingBranches);
+    };
     resource.allocations_left = allowance;
+    bool injected = false;
     try {
-      ASSERT_TRUE(editor.insert_before(anchor, value));
-      break;
+      ASSERT_TRUE(apply());
     } catch (const std::bad_alloc&) {
       resource.allocations_left.reset();
+      injected = true;
       EXPECT_EQ(model.constant_pool().size(), pool_size);
       EXPECT_EQ(code.revision(), revision);
       EXPECT_TRUE(model.attributes().empty());
-      ASSERT_TRUE(editor.insert_before(anchor, value));
-      ASSERT_EQ(model.attributes().size(), 1);
-      EXPECT_EQ(model.attributes().front().get<BootstrapMethods>()->methods.size(), 1);
+      EXPECT_EQ(code.branch_target(jump).value(), entry);
+      EXPECT_EQ(code.label_position(entry).value().before, anchor);
+      EXPECT_EQ(write_class(model, computed).value().bytes, before);
+      EXPECT_EQ(editor.replace(match, {insn::getstatic("Bad", "state", "()V")}).error().cause,
+                CodeEditError::InvalidOperand);
+      ASSERT_TRUE(apply());
     }
+    resource.allocations_left.reset();
+    ASSERT_EQ(model.attributes().size(), 1u);
+    EXPECT_EQ(model.attributes().front().get<BootstrapMethods>()->methods.size(), 1u);
+    EXPECT_EQ(code.label_position(code.branch_target(jump).value()).value().before, code.at(1));
+    EXPECT_EQ(code.label_position(entry).value().before, anchor);
+    EXPECT_EQ(editor.erase(match).error().cause, CodeEditError::StaleMatch);
+    const auto after = write_class(model, computed).value().bytes;
+    if (!expected_output)
+      expected_output = after;
+    EXPECT_EQ(after, *expected_output);
+    if (!injected)
+      break;
   }
 }
 
@@ -393,7 +419,9 @@ TEST(SymbolicRead, InspectsCyclesAndRejectsUnrelatedOrInvalidOperands) {
   EXPECT_EQ(file.inspect_instruction({0, body.at(1)}).error(), CodeEditError::WrongOperandForm);
   EXPECT_EQ(file.find_invocations("Owner", "bootstrap", "()I", 1).error(), CodeEditError::InvalidMethod);
   auto editor = file.edit_method(0).value();
-  const auto malformed = editor.append(Instruction::constant(Opcode::GetStatic, cycle).value()).value();
+  const auto invalid_field = Instruction::constant(Opcode::GetStatic, cycle).value();
+  EXPECT_EQ(editor.append(invalid_field), std::unexpected(CodeEditError::InvalidOperand));
+  const auto malformed = editor.code()->code().append(invalid_field).value();
   EXPECT_EQ(file.inspect_instruction({0, malformed}).error(), CodeEditError::InvalidOperand);
   EXPECT_EQ(file.find_field_accesses("Owner", "state", "I").error(), CodeEditError::InvalidOperand);
 }

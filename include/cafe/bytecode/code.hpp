@@ -24,6 +24,10 @@
 
 namespace cafe {
 
+namespace detail {
+struct CodePatch;
+}
+
 /**
  * @brief Failure of an atomic instruction-block edit, optionally identifying the offending patch
  * element.
@@ -400,6 +404,32 @@ private:
    */
   [[nodiscard]] std::expected<std::vector<InstructionId>, BlockEditError> insert_block(
       std::size_t position, std::span<const InstructionBuilder> block);
+  /// Apply a staged block insertion or validated range replacement at a resolved boundary.
+  /// @param position Index of the insertion boundary in the original method.
+  /// @param block Instructions to install in caller order.
+  /// @param removed Contiguous instruction handles being replaced or erased.
+  /// @param patch Class-aware validation and fixups, or null for low-level insertion.
+  /// @return Installed IDs in order or a failure with no published edit.
+  [[nodiscard]] std::expected<std::vector<InstructionId>, BlockEditError> splice(
+      std::size_t position, std::span<const InstructionBuilder> block,
+      std::span<const InstructionId> removed, const detail::CodePatch* patch);
+  /// Inspect or redirect one pre-existing branch or switch operand.
+  /// @param slot Slot of the live instruction to inspect.
+  /// @param anchor Pre-insertion target instruction.
+  /// @param entry Optional new destination. An empty value only tests for incoming edges.
+  /// @return Whether the instruction contained an incoming edge.
+  bool redirect_targets(std::uint32_t slot, InstructionId anchor, std::optional<LabelId> entry);
+  /// Check a matched instruction's own operand and all its explicit destination bindings.
+  /// @param slot Live instruction slot in this method.
+  /// @param revision Revision observed by the match.
+  /// @return True if the instruction or any of its label bindings changed after observation.
+  [[nodiscard]] bool changed_since(std::uint32_t slot, std::uint64_t revision) const;
+  /// Bind a boundary, optionally recording the change for matches on already published code.
+  /// @param id Existing label for the boundary.
+  /// @param position New instruction boundary or exclusive end.
+  /// @param record_edit False when assembling a body before it can be observed.
+  /// @return Success or a handle/validation error.
+  [[nodiscard]] std::expected<void, CodeEditError> set_label_binding(LabelId id, CodePosition position, bool record_edit);
   /**
    * @brief Validate a builder and install any owned switch operand.
    * @param value Instruction descriptor to validate and copy into this method.
@@ -411,10 +441,12 @@ private:
    * @param value Instruction descriptor to validate and copy into this method.
    * @param add_switch Callback that stages owned switch operands and returns a compact operand
    *   index.
+   * @param check_label Callback validating target labels for this edit.
    * @return A compact instruction, or a form/ownership/handle-limit error.
    */
-  template<typename AddSwitch>
-  [[nodiscard]] std::expected<Instruction, CodeEditError> build(const InstructionBuilder& value, AddSwitch&& add_switch);
+  template<typename AddSwitch, typename CheckLabel>
+  [[nodiscard]] std::expected<Instruction, CodeEditError> build(const InstructionBuilder& value, AddSwitch&& add_switch,
+                                                                CheckLabel&& check_label);
   /**
    * @brief Allocate a scoped label with an optional binding.
    * @param position Instruction-order position or explicit code boundary.

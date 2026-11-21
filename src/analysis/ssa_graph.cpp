@@ -9,7 +9,6 @@
 #include <atomic>
 #include <limits>
 #include <tuple>
-#include <unordered_map>
 #include "../detail/member_signature.hpp"
 #include "../io/class_format.hpp"
 
@@ -264,122 +263,6 @@ SsaType descriptor_ssa_type(detail::DescriptorType type) {
   return {};
 }
 
-/// Deep-copy even cyclic bootstrap arguments without recursing through caller-provided graphs.
-class SymbolCopier {
-public:
-  /**
-   * @brief Initialize a graph-copy worklist.
-   * @param backing Stable destination storage.
-   * @param limits Work and cancellation policy.
-   * @param resource Temporary allocator.
-   */
-  SymbolCopier(SsaSymbols& backing, const AnalysisLimits& limits, std::pmr::memory_resource* resource) : backing(backing), limits(limits), memo(resource), pending(resource) {
-  }
-
-  /**
-   * @brief Clone a symbolic instruction and all reachable bootstrap arrays.
-   * @param input Borrowed source instruction.
-   * @return Deep-copied operand or an unsupported operand error.
-   */
-  SsaResult<MethodInstruction> copy(const MethodInstruction& input) {
-    MethodInstruction result;
-    if (const auto* f = std::get_if<FieldAccess>(&input)) {
-      result = FieldAccess{f->opcode, name(f->owner), name(f->name), name(f->descriptor)};
-    } else if (const auto* m = std::get_if<MethodInvocation>(&input)) {
-      result = MethodInvocation{m->opcode, name(m->owner), name(m->name), name(m->descriptor), m->owner_is_interface};
-    } else if (const auto* d = std::get_if<DynamicInvocation>(&input)) {
-      result = DynamicInvocation{name(d->name), name(d->descriptor), bootstrap(d->bootstrap)};
-    } else if (const auto* d = std::get_if<DynamicConstant>(&input)) {
-      result = dynamic(*d);
-    } else {
-      return std::unexpected(fail(SsaErrorKind::InvalidGraph, "expected symbolic field, method or dynamic operand"));
-    }
-    for (std::size_t i = 0; i < pending.size(); ++i) {
-      if (limits.cancellation.stop_requested())
-        return std::unexpected(fail(SsaErrorKind::Cancelled, "symbolic bootstrap copy cancelled"));
-      const auto [src, dst] = pending[i];
-      for (std::size_t j = 0; j < src.size(); ++j)
-        (*dst)[j].value = std::visit([&](const auto& value) -> BootstrapArgument::Value {
-          using T = std::decay_t<decltype(value)>;
-          if constexpr (std::is_same_v<T, std::string_view>)
-            return name(value);
-          else if constexpr (std::is_same_v<T, MethodTypeConstant>)
-            return MethodTypeConstant{name(value.descriptor)};
-          else if constexpr (std::is_same_v<T, ClassConstant>)
-            return ClassConstant{name(value.name)};
-          else if constexpr (std::is_same_v<T, MethodHandle>)
-            return handle(value);
-          else if constexpr (std::is_same_v<T, DynamicConstant>)
-            return dynamic(value);
-          else
-            return value;
-        },
-                                     src[j].value);
-    }
-    return result;
-  }
-
-private:
-  /**
-   * @brief Retain a possibly short string in stable node storage.
-   * @param text Caller-owned bytes.
-   * @return Stable graph-owned view.
-   */
-  std::string_view name(std::string_view text) {
-    if (text.empty())
-      return {};
-    return backing.names.emplace_back(text);
-  }
-  /**
-   * @brief Retain a method-handle constant.
-   * @param h Source handle.
-   * @return Handle whose text belongs to the destination.
-   */
-  MethodHandle handle(MethodHandle h) {
-    return {h.kind, name(h.owner), name(h.name), name(h.descriptor), h.owner_is_interface};
-  }
-  /**
-   * @brief Retain a dynamically computed constant.
-   * @param d Source constant.
-   * @return Owned symbolic view.
-   */
-  DynamicConstant dynamic(const DynamicConstant& d) {
-    return {name(d.name), name(d.descriptor), bootstrap(d.bootstrap)};
-  }
-  /**
-   * @brief Reserve a stable destination array before enqueueing its arguments.
-   * @param b Source bootstrap handle and arguments.
-   * @return Bootstrap backed by graph-owned memory.
-   */
-  Bootstrap bootstrap(const Bootstrap& b) {
-    Bootstrap result{handle(b.handle)};
-    if (b.arguments.empty())
-      return result;
-    const auto [begin, end] = memo.equal_range(b.arguments.data());
-    for (auto it = begin; it != end; ++it) {
-      if (it->second->size() == b.arguments.size()) {
-        result.arguments = *it->second;
-        return result;
-      }
-    }
-    if (b.arguments.size() > limits.max_work - work)
-      throw detail::BudgetExceeded();
-    work += b.arguments.size();
-    auto& args = backing.arguments.emplace_back();
-    args.resize(b.arguments.size());
-    memo.emplace(b.arguments.data(), &args);
-    pending.emplace_back(b.arguments, &args);
-    result.arguments = args;
-    return result;
-  }
-  SsaSymbols& backing; ///< Destination operand backing.
-  const AnalysisLimits& limits; ///< Copy work and cancellation policy.
-  using Arguments = std::pmr::vector<BootstrapArgument>; ///< Allocator-owned copied argument array.
-  std::pmr::unordered_multimap<const BootstrapArgument*, Arguments*> memo; ///< Materialized ranges indexed by source array address.
-  std::pmr::vector<std::pair<std::span<const BootstrapArgument>, Arguments*>> pending; ///< Source arrays awaiting element copying.
-  std::size_t work = 0; ///< Total reachable arguments charged to the copy.
-};
-
 } // namespace
 
 SsaStorage::SsaStorage(std::size_t index, const AnalysisLimits& policy, detail::SsaSourceStamp stamp) : limits(policy), budget(policy.upstream_resource, policy.max_memory_bytes), scope(next_scope()), method_index(index),
@@ -619,10 +502,12 @@ SsaResult<SsaOperationId> SsaMethod::append_symbolic(SsaBlockId block_id, const 
       return std::unexpected(fail(SsaErrorKind::InvalidHandle, "unknown symbolic operation block"));
     std::pmr::list<SsaSymbols> pending(&storage->budget);
     auto& symbols = pending.emplace_back(&storage->budget);
-    SymbolCopier copier(symbols, storage->limits, &storage->budget);
-    auto copy = copier.copy(instruction);
+    if (!std::holds_alternative<FieldAccess>(instruction) && !std::holds_alternative<MethodInvocation>(instruction) &&
+        !std::holds_alternative<DynamicInvocation>(instruction) && !std::holds_alternative<DynamicConstant>(instruction))
+      return std::unexpected(fail(SsaErrorKind::InvalidGraph, "expected symbolic field, method or dynamic operand"));
+    auto copy = symbols.storage.copy(instruction, storage->limits.max_work, storage->limits.cancellation);
     if (!copy)
-      return std::unexpected(std::move(copy.error()));
+      return std::unexpected(fail(SsaErrorKind::Cancelled, "symbolic bootstrap copy cancelled"));
     const auto opcode = std::visit([](const auto& item) {
       using T = std::decay_t<decltype(item)>;
       if constexpr (std::is_same_v<T, MethodInvocation> || std::is_same_v<T, FieldAccess>)

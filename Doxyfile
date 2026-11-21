@@ -5,6 +5,12 @@ OUTPUT_DIRECTORY       = build/docs
 INPUT                  = include src docs README.md tests/fixtures/README.md examples
 FILE_PATTERNS          = *.hpp *.cpp *.md *.dox
 RECURSIVE              = YES
+# Document the mnemonic functions produced by the shared opcode table.
+INCLUDE_PATH           = include
+MACRO_EXPANSION        = YES
+EXPAND_ONLY_PREDEF     = YES
+EXCLUDE_SYMBOLS        = HIPPOCAFE_INSN_* HIPPOCAFE_EXPAND_MNEMONICS
+EXPAND_AS_DEFINED      = HIPPOCAFE_EXPAND_MNEMONICS HIPPOCAFE_INSN_SIMPLE HIPPOCAFE_INSN_LOCAL HIPPOCAFE_INSN_BRANCH HIPPOCAFE_INSN_FIELD HIPPOCAFE_INSN_TYPE
 EXCLUDE                = examples/class_file_io.hpp
 EXAMPLE_PATH           = examples
 EXAMPLE_RECURSIVE      = YES

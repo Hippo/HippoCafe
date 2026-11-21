@@ -129,6 +129,10 @@ const char* method_handle_issue(const ConstantPool& pool, const CpEntry& entry, 
   const auto name = pool.get_utf8(name_and_type->first);
   if (!name || (*name == "<init>") != (kind == 8) || *name == "<clinit>")
     return "method handle target name is not legal for its reference kind";
+  const auto descriptor = pool.get_utf8(name_and_type->second);
+  const auto slots = descriptor ? method_parameter_slots(*descriptor) : std::nullopt;
+  if (!slots || (*slots == 255 && kind != 6))
+    return "method handle target has an invalid descriptor or parameter slot count";
   return nullptr;
 }
 

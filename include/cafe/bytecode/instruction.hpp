@@ -38,6 +38,7 @@ enum class CodeEditError {
   ConstantPoolLimit, ///< The symbolic edit would exceed the class's constant-pool capacity.
   BootstrapLimit, ///< The symbolic edit would exceed a BootstrapMethods count limit.
   InvalidMethod, ///< The method-table index is out of range.
+  StaleMatch, ///< The matched instructions were modified, removed, separated, or belong to another method.
 };
 
 /**

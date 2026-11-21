@@ -68,51 +68,113 @@ Constant-pool appends preserve existing indices. Use `append_utf8()` for strings
 it is distinct from the UTF-8 slot itself. Existing pool entry pointers may be
 invalidated by appends, so retain indices or value copies when editing.
 
-## Edit instructions
+## Inspect instructions
 
-Traverse `code.instructions()` to obtain value copies paired with stable handles.
-Instruction IDs survive unrelated edits, but not erasure or owner destruction.
-Labels identify instruction boundaries or the exclusive method end. New labels are
-unbound until `bind_label()` supplies a position; this supports forward branches.
-Branch and switch builders retain scoped labels until the method checks ownership.
+Iterate `file.instructions(method_index)` to read instructions in bytecode order.
+Each view carries its class context and stable `InstructionId`. `is()` compares the
+logical opcode, `immediate()` reads a signed `bipush` or `sipush` operand, and
+`local_index()` reads the slot for a local load or store. Compact and wide local
+encodings yield the same logical opcode and slot.
 
-`append`, `insert_before`, and `insert_at` accept one builder or an atomic block.
-Pass an instruction directly for a single insertion; the result contains its
-`InstructionId` or a `CodeEditError`. For multiple instructions, pass a contiguous
-range of `InstructionBuilder` values, such as `std::array`; the result contains
-the new IDs or a `BlockEditError`.
-A failed block leaves logical code unchanged and can report the failing patch index.
-A successful nonempty edit invalidates borrowed ranges and switch views.
-`insert_before` leaves labels on the original anchor; `insert_at` moves only the
-selected label to the first inserted instruction. Retarget labels before erasing
-a labeled instruction. The writer chooses implicit, explicit, and wide encodings.
-
-This helper inserts before an existing instruction, so the example does not create
-an unreachable trailing instruction:
-
-<!-- snippet: examples/edit_and_compute.cpp:edit-method -->
+<!-- snippet: examples/inspect_class.cpp:scan-method -->
 ```cpp
-std::expected<void, cafe::CodeEditError> insert_nop(cafe::MethodCode& code, cafe::InstructionId anchor) {
-  auto inserted = code.insert_before(anchor, cafe::Instruction::nop());
-  if (!inserted)
-    return std::unexpected(inserted.error());
+std::expected<void, cafe::CodeEditError> scan_method(const cafe::ClassFile& file, std::size_t method_index) {
+  using cafe::Opcode;
+  for (auto insn : file.instructions(method_index)) {
+    if (insn.is(Opcode::Bipush) && insn.immediate() == 10)
+      std::cout << "  bipush 10\n";
+    if (!insn.is_invoke())
+      continue;
+    auto call = insn.method_invocation();
+    if (!call)
+      return std::unexpected(call.error());
+    if (insn.is(Opcode::InvokeStatic) && call->matches("java/lang/Math", "abs", "(I)I"))
+      std::cout << "  invokestatic Math.abs(int)\n";
+    if (insn.is(Opcode::InvokeVirtual) && call->matches("java/io/PrintStream", "println", "(Ljava/lang/String;)V"))
+      std::cout << "  invokevirtual PrintStream.println(String)\n";
+  }
   return {};
 }
 ```
 <!-- end snippet -->
 
-Use the block overload when several instructions must be inserted together. This
-stack-neutral pair temporarily uses one stack slot, so its maxima and frames need
-to be considered when writing:
+The direct range is empty for an out-of-range method index, absent or opaque
+Code, or an empty body. Use `checked_instructions(method_index)` to distinguish
+`InvalidMethod` and `NoCode` from a successful lookup of an empty body.
+`is_invoke()` covers virtual, special, static, and interface calls.
+`method_invocation()` and `field_access()` return a typed operand or a
+`CodeEditError`. `WrongOperandForm` identifies an unrelated opcode and
+`InvalidOperand` identifies a malformed reference. `MethodInvocation::matches`
+compares the encoded owner, name, and descriptor exactly. Use
+`inspect_instruction(insn.location())` for bootstrap-aware dynamic operands.
+
+Keep the class alive while inspecting borrowed operands. A copied view describes
+the instruction as observed. Reacquire the range after editing the code or
+changing the method table. Save `insn.id()` to anchor a later edit in the same
+method. IDs survive unrelated insertions and become invalid when their
+instruction is erased.
+
+## Match instruction sequences
+
+Use `cafe::pattern` to search one decoded method in linear instruction order.
+`opcode` and `any` match one instruction. `iload`, `istore`, and
+`int_constant` accept an optional slot or signed 32-bit value. Integer constants
+include `iconst_m1` through `iconst_5`, immediate pushes, and integer pool loads.
+`invoke` and `field` match symbolic references using the filters you supply.
+
+<!-- snippet: examples/inspect_class.cpp:capture-prefix -->
+```cpp
+std::expected<void, cafe::pattern::MatchError> show_prefixes(const cafe::ClassFile& file, std::size_t method_index) {
+  namespace p = cafe::pattern;
+  auto pattern = p::seq(
+      p::capture("prefix", p::repeat(p::any(), 1, 3)),
+      p::invoke({.opcode = cafe::Opcode::InvokeStatic, .owner = "java/lang/Math", .name = "abs", .descriptor = "(I)I"}));
+  auto found = p::find_all(file, method_index, pattern);
+  if (!found)
+    return std::unexpected(found.error());
+  for (const auto& match : *found) {
+    std::cout << "  Math.abs prefix at instruction " << match.start_index() << '\n';
+    if (auto prefix = match.capture("prefix")) {
+      for (auto insn : prefix->instructions())
+        std::cout << "    " << cafe::format(insn) << '\n';
+    }
+  }
+  return {};
+}
+```
+<!-- end snippet -->
+
+`seq` matches consecutive patterns, `either` tries alternatives in declaration
+order, and `optional` and bounded `repeat` consume greedily while allowing the
+following pattern to match. `find_first` returns the first match, or an empty
+optional. `find_all` returns non-overlapping matches by default. Pass
+`MatchOptions{.overlap = true}` to consider every start position. Both searches
+return errors for malformed patterns, invalid candidate operands, or exhausted work
+limits.
+
+Every reported match consumes at least one instruction. `start_index()` is the
+zero-based position at search time, `size()` is the instruction count, and
+`start()` is the stable handle used by the editor. A named capture that
+participated can contain zero instructions. A missing or nonparticipating name
+returns `std::nullopt`. In a repetition, the capture exposes its last
+participating iteration. Captures retain the instruction views observed during
+the search. Keep their source class alive while inspecting them.
+
+## Edit instruction sequences
+
+Use `ClassFile::edit_method(index)` to insert raw or symbolic instructions
+relative to a stable anchor. `insert_before` and `insert_after` accept a single
+instruction, an initializer list, a standard range of `MethodInstruction`, or a
+builder. `cafe::insn` factories construct instructions with deferred symbolic
+operands. This edit pushes an integer, calls `Math.abs(int)`, and discards the
+result, leaving the original operand stack intact.
 
 <!-- snippet: examples/edit_and_compute.cpp:edit-block -->
 ```cpp
-std::expected<void, cafe::BlockEditError> insert_push_pop(cafe::MethodCode& code, cafe::InstructionId anchor) {
-  const std::array<cafe::InstructionBuilder, 2> patch{
-      cafe::Instruction::bipush(42),
-      cafe::Instruction::pop(),
-  };
-  auto inserted = code.insert_before(anchor, patch);
+std::expected<void, cafe::BlockEditError> insert_abs(cafe::MethodEditor& editor, cafe::InstructionId anchor) {
+  namespace i = cafe::insn;
+  auto inserted = editor.insert_before(
+      anchor, {i::bipush(10), i::invokestatic("java/lang/Math", "abs", "(I)I"), i::pop()});
   if (!inserted)
     return std::unexpected(inserted.error());
   return {};
@@ -120,7 +182,93 @@ std::expected<void, cafe::BlockEditError> insert_push_pop(cafe::MethodCode& code
 ```
 <!-- end snippet -->
 
-After editing Code, select a metadata policy before writing.
+A single insertion returns an instruction ID. A sequence returns IDs in the
+order supplied, or a `BlockEditError` whose `instruction_index` identifies the
+failing element when known. A failed edit preserves instruction order, labels,
+constants, and bootstrap entries. An empty sequence at a valid anchor succeeds
+with an empty ID list. Keep pool indices across edits and reacquire borrowed pool
+entry pointers and class attribute spans after a symbolic edit attempt, since
+temporary growth can relocate their storage. Both single-instruction and
+sequence edits validate raw pool references against the class and require bound
+executable branch targets. Use a builder-local label for a forward branch
+within a sequence.
+
+This example measures each non-null string passed to
+`PrintStream.println(String)` and discards the length. Both paths leave the
+receiver and original argument ready for the call.
+
+<!-- snippet: examples/edit_and_compute.cpp:edit-matches -->
+```cpp
+std::expected<void, std::string> measure_printed_strings(cafe::ClassFile& file, std::size_t method_index) {
+  namespace p = cafe::pattern;
+  const p::InvokePattern println{
+      .opcode = cafe::Opcode::InvokeVirtual,
+      .owner = "java/io/PrintStream",
+      .name = "println",
+      .descriptor = "(Ljava/lang/String;)V",
+  };
+  auto calls = p::find_all(file, method_index, p::invoke(println));
+  if (!calls)
+    return std::unexpected(std::string(calls.error().detail));
+
+  auto editor = file.edit_method(method_index);
+  if (!editor)
+    return std::unexpected("method index out of range");
+  for (const auto& match : *calls) {
+    auto inserted = editor->insert_before(
+        match.start(),
+        [](auto& code) {
+          auto skip = code.label();
+          code.dup().ifnull(skip);
+          code.dup().invokevirtual("java/lang/String", "length", "()I").pop();
+          code.bind(skip);
+        },
+        cafe::InsertionEntry::IncludeIncomingBranches);
+    if (!inserted)
+      return std::unexpected("insertion failed at instruction " + std::to_string(match.start_index()) +
+                             " (edit error " + std::to_string(static_cast<int>(inserted.error().cause)) + ")");
+  }
+  return {};
+}
+```
+<!-- end snippet -->
+
+A callback receives a temporary `CodeBuilder`. Its `label()` and `bind()`
+functions identify positions in the pending sequence. Binding `skip` at the end
+of the inserted sequence makes it land on the original call. A branch at the
+end of a method requires an executable destination. Unbound or foreign labels
+cause the edit to fail. Exceptions from callback code propagate before the edit
+is committed. Build a reusable sequence by constructing `cafe::CodeBuilder`
+directly, then passing it to the editor. The builder owns its pending operands.
+Its `tableswitch` and `lookupswitch` methods accept builder-local destinations
+for reusable sequences. They also accept existing method-scoped `LabelId`
+destinations, as do the switch factories.
+For a bare `MethodInstruction` or range, keep any borrowed strings, bootstrap
+arguments, and switch data alive through the edit.
+
+The default `InsertionEntry::PreserveAnchor` keeps existing branches and switch
+edges pointed at the original anchor. With `IncludeIncomingBranches`, incoming
+branches and switch arms targeting the anchor execute the insertion first.
+Exception-handler boundaries keep their original bindings.
+
+Use `editor.replace(match, sequence)` or `editor.erase(match)` to edit a whole
+match. The editor checks that its members still exist, are unchanged, and are
+consecutive in the same method. A nonempty replacement retains the first
+instruction's ID and entry labels. The editor rejects removals that would
+orphan a bound label. Re-run the search to obtain a fresh match after a change
+to any of its members, including a rebind of a branch or switch destination.
+The editor checks a saved match before invoking a replacement callback and
+again after the callback returns. Select a metadata policy when writing edited code.
+
+### Work with raw method code
+
+For low-level assembly, `MethodCode::instructions()` yields raw instruction
+values paired with stable IDs. `MethodCode::append`, `insert_before`, and
+`insert_at` accept an `InstructionBuilder` or a contiguous range of builders.
+Labels from `make_label()` can be bound later with `bind_label()` to construct
+forward branches. `insert_at` moves its selected label to the first inserted
+instruction. Reacquire borrowed ranges and switch views after mutation. The
+writer chooses implicit, explicit, and wide encodings.
 
 ### Add symbolic field, method, and dynamic instructions
 
@@ -185,19 +333,6 @@ instruction order. Pass a method index as the fourth argument to search one
 method. Matching uses the exact owner, name, and descriptor encoded in the
 class file. Each match contains a method index and an instruction handle for
 `inspect_instruction` or `edit_method`.
-
-```cpp
-auto matches = file.find_invocations("java/lang/Math", "abs", "(I)I");
-if (matches) {
-  for (const auto& location : *matches) {
-    auto result = file.inspect_instruction(location);
-    if (result) {
-      const auto& call = std::get<cafe::MethodInvocation>(result->operand());
-      std::cout << call.owner << '.' << call.name << call.descriptor << '\n';
-    }
-  }
-}
-```
 
 To inspect an `invokedynamic` or dynamic constant load, pass its method index
 and instruction handle to `inspect_instruction({method_index, id})`. The result's
@@ -264,7 +399,7 @@ std::expected<cafe::WriteResult, std::string> write_with_frames(
 ```
 <!-- end snippet -->
 
-The complete example inserts a nop and a push/pop block before computing frames.
+The complete example inserts the arithmetic sequence and instruments matched calls before computing frames.
 It reports diagnostics and saves the serialized class. This invocation targets Java 17.
 
 ```sh

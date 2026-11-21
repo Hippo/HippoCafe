@@ -100,14 +100,12 @@ std::optional<OperandError> validate_constant(Instruction instruction, ClassVers
       auto name = pool.get_utf8(name_and_type->first);
       if (!name || *name == "<clinit>" || (*name == "<init>" && opcode != Opcode::InvokeSpecial))
         return OperandError{"invocation refers to an invalid method name", true};
-      if (opcode == Opcode::InvokeInterface) {
-        auto descriptor = pool.get_utf8(name_and_type->second);
-        auto slots = descriptor ? method_parameter_slots(*descriptor) : std::nullopt;
-        if (!slots)
-          return OperandError{"interface method reference has an invalid descriptor", true};
-        if (*slots + 1 != *instruction.interface_count()) // NOLINT(bugprone-unchecked-optional-access)
-          return OperandError{"invokeinterface count does not match the descriptor slot count", false};
-      }
+      auto descriptor = pool.get_utf8(name_and_type->second);
+      auto slots = descriptor ? method_parameter_slots(*descriptor) : std::nullopt;
+      if (!slots || (*slots == 255 && opcode != Opcode::InvokeStatic))
+        return OperandError{"method reference has an invalid descriptor or parameter slot count", true};
+      if (opcode == Opcode::InvokeInterface && *slots + 1 != *instruction.interface_count()) // NOLINT(bugprone-unchecked-optional-access)
+        return OperandError{"invokeinterface count does not match the descriptor slot count", false};
       return std::nullopt;
     }
     case Opcode::InvokeDynamic:
