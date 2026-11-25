@@ -6,6 +6,8 @@
 
 #include <cafe/class_file.hpp>
 
+#include "model/class_storage.hpp"
+
 #include <array>
 #include <locale>
 #include <sstream>
@@ -94,6 +96,32 @@ std::expected<const MethodCode*, CodeEditError> decoded_code(const ClassFile& fi
 
 InstructionViewRange ClassFile::instructions(std::size_t method_index) const noexcept {
   return checked_instructions(method_index).value_or(InstructionViewRange{});
+}
+
+std::size_t MethodEditor::method_index() const noexcept {
+  return static_cast<std::size_t>(member - storage->method_entries.data());
+}
+
+InstructionViewRange MethodEditor::instructions() const noexcept {
+  const auto* body = code();
+  if (!body)
+    return {};
+  const auto index = method_index();
+  const auto entries = body->code().instructions();
+  return {InstructionViewIterator(storage, index, entries.begin()),
+          InstructionViewIterator(storage, index, entries.end()), entries.size()};
+}
+
+std::expected<InstructionView, CodeEditError> MethodEditor::instruction(InstructionId id) const noexcept {
+  const auto* body = code();
+  if (!body)
+    return std::unexpected(CodeEditError::NoCode);
+  return body->code().get(id).transform([&](Instruction value) { return InstructionView(storage, method_index(), {id, value}); });
+}
+
+std::vector<CodeNode> MethodEditor::nodes() const {
+  const auto* body = code();
+  return body ? body->code().nodes() : std::vector<CodeNode>{};
 }
 
 std::expected<InstructionViewRange, CodeEditError> ClassFile::checked_instructions(std::size_t method_index) const noexcept {

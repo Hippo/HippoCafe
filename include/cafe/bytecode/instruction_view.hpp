@@ -90,6 +90,7 @@ public:
 
 private:
   friend class ClassFile;
+  friend class MethodEditor;
   friend class InstructionViewIterator;
 
   /// Attach a copied instruction to the class storage supplying its symbolic operands.
@@ -139,6 +140,7 @@ public:
 
 private:
   friend class ClassFile;
+  friend class MethodEditor;
   /// Wrap an existing method-order iterator with class resolution context.
   /// @param storage Move-stable class storage owning the constant pool.
   /// @param method_index Source method ordinal.

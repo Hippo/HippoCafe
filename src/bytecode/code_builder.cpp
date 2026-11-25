@@ -40,6 +40,7 @@ struct CodeBuilder::Storage {
   std::list<std::vector<LabelId>> dense_targets; ///< Stable target arrays for dense switches.
   std::list<std::vector<LookupPair>> sparse_targets; ///< Stable case arrays for sparse switches.
   std::vector<std::optional<std::size_t>> bindings; ///< Boundary index for each bound local label.
+  std::vector<std::size_t> binding_order; ///< Label ordinals in emission order.
   std::vector<std::pair<std::size_t, std::size_t>> fixups; ///< Each local branch's instruction index and label ordinal.
   std::optional<BlockEditError> error; ///< First failed construction step.
 };
@@ -66,6 +67,7 @@ CodeBuilder& CodeBuilder::bind(const BuilderLabel& target) {
     sequence.error = BlockEditError{CodeEditError::InvalidLabel, std::nullopt};
     return *this;
   }
+  sequence.binding_order.push_back(target.ordinal);
   sequence.bindings[target.ordinal] = sequence.instructions.size();
   return *this;
 }
@@ -213,6 +215,10 @@ std::span<const MethodInstruction> BuilderAccess::instructions(const CodeBuilder
 
 std::span<const std::optional<std::size_t>> BuilderAccess::label_bindings(const CodeBuilder& builder) noexcept {
   return builder.storage ? std::span(builder.storage->bindings) : std::span<const std::optional<std::size_t>>{};
+}
+
+std::span<const std::size_t> BuilderAccess::binding_order(const CodeBuilder& builder) noexcept {
+  return builder.storage ? std::span(builder.storage->binding_order) : std::span<const std::size_t>{};
 }
 
 std::span<const std::pair<std::size_t, std::size_t>> BuilderAccess::branch_fixups(const CodeBuilder& builder) noexcept {

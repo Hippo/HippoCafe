@@ -17,6 +17,7 @@
 #include <ranges>
 #include <span>
 #include <utility>
+#include <variant>
 #include <vector>
 
 #include "cafe/bytecode/builder.hpp"
@@ -51,6 +52,9 @@ struct InstructionEntry {
   InstructionId id; ///< Stable handle of the associated instruction.
   Instruction instruction; ///< Copied instruction value; branch and switch operands remain method-scoped.
 };
+
+/// Handle for an instruction or a bound label in the editable sequence.
+using CodeNode = std::variant<InstructionId, LabelId>;
 
 /**
  * @brief Owns ordered instructions, scoped labels, and switch operands.
@@ -197,6 +201,10 @@ public:
    * @return A sized borrowed range; acquire a new range after any mutation.
    */
   [[nodiscard]] InstructionRange instructions() const noexcept;
+
+  /// Snapshot handles in sequence order, including bound labels and labels at the method end.
+  /// @return The ordered handles. Unbound labels have no position in the sequence.
+  [[nodiscard]] std::vector<CodeNode> nodes() const;
   /**
    * @brief Reserve instruction-order and slot capacity without changing logical contents.
    * @param count Desired total instruction capacity; this is not an additional count.
@@ -318,6 +326,10 @@ public:
    * New labels start unbound, so builders can refer to forward destinations.
    */
   [[nodiscard]] std::expected<LabelId, CodeEditError> make_label();
+  /// Create a bound label after any existing labels at this boundary.
+  /// @param position Boundary immediately before an instruction or at method end.
+  /// @return The new method label or an edit error.
+  [[nodiscard]] std::expected<LabelId, CodeEditError> make_label(CodePosition position);
   /**
    * @brief Bind a label to an instruction boundary or the exclusive end.
    * @param id Label handle scoped to the supplied method.

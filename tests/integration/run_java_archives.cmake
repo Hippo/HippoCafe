@@ -13,9 +13,13 @@ endfunction()
 file(REMOVE_RECURSE "${OUTPUT_DIR}")
 file(MAKE_DIRECTORY "${OUTPUT_DIR}/resources")
 file(WRITE "${OUTPUT_DIR}/resources/obsolete.txt" "remove this")
-run("${JAR}" --create --file "${OUTPUT_DIR}/input.jar"
+
+# JDK 17's jar --release validator cannot read the sealed classes in this fixture.
+file(COPY "${FIXTURES}/cafe" DESTINATION "${OUTPUT_DIR}/versioned/META-INF/versions/17")
+file(WRITE "${OUTPUT_DIR}/multi-release.mf" "Manifest-Version: 1.0\nMulti-Release: true\n\n")
+run("${JAR}" --create --file "${OUTPUT_DIR}/input.jar" --manifest "${OUTPUT_DIR}/multi-release.mf"
   -C "${FIXTURES}" . -C "${OUTPUT_DIR}/resources" obsolete.txt
-  --release 17 -C "${FIXTURES}" cafe)
+  -C "${OUTPUT_DIR}/versioned" META-INF/versions/17)
 run("${JMOD}" create --class-path "${FIXTURES}" --config "${OUTPUT_DIR}/resources" "${OUTPUT_DIR}/input.jmod")
 run("${REWRITE}" "${FIXTURES}" "${OUTPUT_DIR}")
 run("${JAVA}" "${CMAKE_CURRENT_LIST_DIR}/VerifyArchives.java" "${OUTPUT_DIR}")

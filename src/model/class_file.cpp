@@ -230,29 +230,46 @@ std::expected<std::reference_wrapper<CodeAttribute>, ModelError>
 ClassFile::add_code(std::size_t method_index, CpIndex name) {
   if (method_index >= methods().size())
     return std::unexpected(ModelError::InvalidMethod);
-  const auto& method = methods()[method_index];
-  if (!detail::needs_code(method.access_flags(), *constant_pool().get_utf8(method.name_index())))
+  return attach_code(*storage, storage->method_entries[method_index], name);
+}
+
+std::expected<std::reference_wrapper<CodeAttribute>, ModelError>
+ClassFile::attach_code(detail::ClassStorage& storage, Method& method, CpIndex name) {
+  const auto method_name = storage.pool.get_utf8(method.name_index());
+  if (!method_name || !detail::needs_code(method.access_flags(), *method_name))
     return std::unexpected(ModelError::InvalidMethod);
-  const auto attribute_name = constant_pool().get_utf8(name);
+  const auto attribute_name = storage.pool.get_utf8(name);
   if (!attribute_name || *attribute_name != "Code")
     return std::unexpected(ModelError::InvalidReference);
-  auto& attributes = storage->method_entries[method_index].attribute_entries;
+  auto& attributes = method.attribute_entries;
   if (attributes.size() == MAX_COUNT)
     return std::unexpected(ModelError::LimitExceeded);
   for (const auto& attribute : attributes) {
-    const auto name = constant_pool().get_utf8(attribute.name_index());
+    const auto name = storage.pool.get_utf8(attribute.name_index());
     if (name && *name == "Code")
       return std::unexpected(ModelError::DuplicateCode);
   }
 
-  auto& attribute = attributes.emplace_back(Attribute::new_code(name, &storage->budget));
+  auto& attribute = attributes.emplace_back(Attribute::new_code(name, &storage.budget));
   return std::ref(*attribute.mutable_code());
+}
+
+std::expected<std::reference_wrapper<CodeAttribute>, ModelError> ClassFile::add_code(std::size_t method_index) {
+  auto editor = edit_method(method_index);
+  if (!editor)
+    return std::unexpected(ModelError::InvalidMethod);
+  return editor->add_code();
 }
 
 std::optional<MethodEditor> ClassFile::edit_method(std::size_t index) noexcept {
   if (index >= methods().size())
     return std::nullopt;
   return MethodEditor(*storage, storage->method_entries[index]);
+}
+
+std::optional<MethodEditor> ClassFile::edit_method(std::string_view name, std::string_view descriptor) noexcept {
+  const auto index = find_method(name, descriptor);
+  return index ? edit_method(*index) : std::nullopt;
 }
 
 CodeAttribute* ClassFile::edit_code(std::size_t method_index) noexcept {

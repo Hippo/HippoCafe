@@ -219,4 +219,39 @@ std::expected<WriteResult, WriteError> write_class(const ClassFile& class_file, 
   return detail::ClassWriter(class_file, options, &context).write();
 }
 
+std::expected<WriteResult, WriteError> write_class_with_frames(
+    const ClassFile& class_file, const std::filesystem::path& java_home, std::uint16_t target_release,
+    std::span<const std::filesystem::path> dependencies, WriteOptions options) {
+  const auto registration_error = [](const classpath::ResolutionError& error, const std::filesystem::path& path) {
+    auto kind = WriteErrorKind::ClassResolutionFailure;
+    if (error.kind == classpath::ResolutionErrorKind::ResourceLimitExceeded)
+      kind = WriteErrorKind::ResourceLimitExceeded;
+    else if (error.kind == classpath::ResolutionErrorKind::Cancelled)
+      kind = WriteErrorKind::Cancelled;
+    return WriteError{kind, (error.path.empty() ? path : error.path).string(), error.detail};
+  };
+
+  classpath::ClassPathBuilder builder;
+  builder.set_target_release(target_release);
+  if (auto added = builder.add_java_home(java_home); !added)
+    return std::unexpected(registration_error(added.error(), java_home));
+  for (const auto& path : dependencies) {
+    const auto added = [&] {
+      std::error_code error;
+      if (std::filesystem::is_directory(path, error))
+        return builder.add_directory(path);
+      if (path.extension() == ".jar")
+        return builder.add_jar(path);
+      if (path.extension() == ".jmod")
+        return builder.add_jmod(path);
+      return builder.add_directory(path);
+    }();
+    if (!added)
+      return std::unexpected(registration_error(added.error(), path));
+  }
+  analysis::AnalysisContext context{classpath::ClassHierarchy{classpath::ClassResolver{builder.build()}}};
+  options.code_analysis = CodeAnalysisMode::ComputeFrames;
+  return write_class(class_file, options, context);
+}
+
 } // namespace cafe

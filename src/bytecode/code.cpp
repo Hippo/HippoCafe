@@ -242,7 +242,7 @@ struct MethodCode::Storage {
    * @param resource PMR resource that must outlive the allocated object or returned storage.
    */
   explicit Storage(std::pmr::memory_resource* resource) :
-      resource(resource), slots(resource), order(resource), labels(resource), switches(resource), changes(resource) {
+      resource(resource), slots(resource), order(resource), labels(resource), label_order(resource), switches(resource), changes(resource) {
   }
 
   /**
@@ -355,6 +355,7 @@ struct MethodCode::Storage {
   std::pmr::vector<InstructionSlot> slots; ///< Allocated instruction slots, including reusable erased slots.
   std::pmr::vector<std::uint32_t> order; ///< Live slot indices in method traversal order.
   std::pmr::vector<InstructionId> labels; ///< Method-scoped label bindings indexed by label value.
+  std::pmr::vector<std::uint32_t> label_order; ///< Label values in relative order within each boundary.
   std::pmr::vector<SwitchSlot> switches; ///< Out-of-line switch operand slots with generation/free-list metadata.
   EditStamps changes; ///< Last edit to each replaced instruction or rebound label, stored sparsely.
   std::uint32_t free_instruction = NO_SLOT; ///< Head of the reusable instruction-slot free list.
@@ -413,6 +414,37 @@ MethodCode::InstructionIterator MethodCode::InstructionIterator::operator++(int)
 
 MethodCode::InstructionRange MethodCode::instructions() const noexcept {
   return {InstructionIterator(this, 0), InstructionIterator(this, size()), size()};
+}
+
+std::vector<CodeNode> MethodCode::nodes() const {
+  std::vector<CodeNode> nodes;
+  nodes.reserve(size() + storage->labels.size());
+  if (storage->labels.empty()) {
+    for (const auto entry : instructions())
+      nodes.emplace_back(entry.id);
+    return nodes;
+  }
+  // Group labels by their following instruction and preserve the order of aliases at each boundary.
+  std::vector<std::uint32_t> first(storage->slots.size() + 1, NO_SLOT);
+  std::vector<std::uint32_t> next(storage->labels.size(), NO_SLOT);
+  const auto end = storage->slots.size();
+  for (const auto label : storage->label_order | std::views::reverse) {
+    const auto target = storage->labels[label];
+    if (target != UNBOUND) {
+      auto& head = first[target == EXCLUSIVE_END ? end : target.index];
+      next[label] = std::exchange(head, label);
+    }
+  }
+  const auto append_labels = [&](std::size_t boundary) {
+    for (auto label = first[boundary]; label != NO_SLOT; label = next[label])
+      nodes.emplace_back(LabelId{label, storage->scope});
+  };
+  for (const auto entry : instructions()) {
+    append_labels(entry.id.index);
+    nodes.emplace_back(entry.id);
+  }
+  append_labels(end);
+  return nodes;
 }
 
 void MethodCode::reserve(std::size_t count) {
@@ -543,12 +575,22 @@ std::expected<LabelId, CodeEditError> MethodCode::add_label(std::optional<CodePo
     return std::unexpected(CodeEditError::InvalidInstruction);
 
   auto id = LabelId{static_cast<std::uint32_t>(storage->labels.size()), storage->scope};
+  reserve_additional(storage->labels, 1);
+  reserve_additional(storage->label_order, 1);
   storage->labels.push_back(position ? position->before.value_or(EXCLUSIVE_END) : UNBOUND);
+  storage->label_order.push_back(id.value);
   return id;
 }
 
 std::expected<LabelId, CodeEditError> MethodCode::make_label() {
   auto label = add_label(std::nullopt);
+  if (label)
+    ++storage->revision;
+  return label;
+}
+
+std::expected<LabelId, CodeEditError> MethodCode::make_label(CodePosition position) {
+  auto label = add_label(position);
   if (label)
     ++storage->revision;
   return label;
@@ -567,8 +609,11 @@ std::expected<void, CodeEditError> MethodCode::set_label_binding(LabelId id, Cod
     return std::unexpected(CodeEditError::HandleLimit);
   auto next = position.before.value_or(EXCLUSIVE_END);
   if (storage->labels[id.value] != next) {
-    if (record_edit)
+    if (record_edit) {
       storage->changes.insert_or_assign(binding_key(id), storage->revision + 1);
+      const auto old_order = std::ranges::find(storage->label_order, id.value);
+      std::rotate(old_order, old_order + 1, storage->label_order.end());
+    }
     storage->labels[id.value] = next;
     ++storage->revision;
   }
@@ -708,7 +753,9 @@ std::expected<std::vector<InstructionId>, BlockEditError> MethodCode::insert_blo
 std::expected<std::vector<InstructionId>, BlockEditError> MethodCode::splice(
     std::size_t position, std::span<const InstructionBuilder> block, std::span<const InstructionId> removed,
     const detail::CodePatch* patch) {
-  if (block.empty() && removed.empty())
+  const auto binds = patch ? patch->label_bindings : std::span<const std::optional<std::size_t>>{};
+  const auto binding_order = patch ? patch->binding_order : std::span<const std::size_t>{};
+  if (block.empty() && removed.empty() && binding_order.empty())
     return std::vector<InstructionId>{};
   if (!storage->can_edit())
     return std::unexpected(BlockEditError{CodeEditError::HandleLimit, block.empty() ? std::nullopt : std::optional<std::size_t>{0}});
@@ -726,7 +773,6 @@ std::expected<std::vector<InstructionId>, BlockEditError> MethodCode::splice(
   }
 
   const auto successor = at(position + removed.size());
-  const auto binds = patch ? patch->label_bindings : std::span<const std::optional<std::size_t>>{};
   const auto fixups = patch ? patch->branch_fixups : std::span<const std::pair<std::size_t, std::size_t>>{};
   std::vector<LabelId> local_labels(binds.size());
   std::vector<std::size_t> target_boundaries;
@@ -736,31 +782,65 @@ std::expected<std::vector<InstructionId>, BlockEditError> MethodCode::splice(
       return std::unexpected(CodeEditError::HandleLimit);
     return LabelId{static_cast<std::uint32_t>(storage->labels.size() + target_boundaries.size()), storage->scope};
   };
+  for (const auto ordinal : binding_order) {
+    if (ordinal >= binds.size())
+      return std::unexpected(BlockEditError{CodeEditError::InvalidLabel, std::nullopt});
+    const auto boundary = binds[ordinal];
+    if (!boundary || *boundary > block.size())
+      return std::unexpected(BlockEditError{CodeEditError::InvalidLabel, std::nullopt});
+    const auto id = new_label();
+    if (!id)
+      return std::unexpected(BlockEditError{id.error(), std::nullopt});
+    local_labels[ordinal] = *id;
+    target_boundaries.push_back(*boundary);
+  }
+
+  std::vector<LabelId> moved_labels;
+  auto label_insert = storage->label_order.size();
+  // Preceding labels follow the patch entry. Trailing builder labels go ahead of the first label after the patch.
+  const auto label_anchor = patch ? patch->label_anchor : std::nullopt;
+  const bool before_anchor = patch && patch->placement == detail::PatchPlacement::Before;
+  bool before_insertion = label_anchor || (patch && patch->ordered && before_anchor);
+  if (before_insertion || !target_boundaries.empty()) {
+    const auto target = successor.generation == 0 ? EXCLUSIVE_END : successor;
+    for (std::size_t i = 0; i < storage->label_order.size(); ++i) {
+      const auto label = storage->label_order[i];
+      if (storage->labels[label] != target)
+        continue;
+      const auto id = LabelId{label, storage->scope};
+      if (label_anchor == id && before_anchor)
+        before_insertion = false;
+      if (!before_insertion) {
+        label_insert = i;
+        break;
+      }
+      if (!block.empty())
+        moved_labels.push_back(id);
+      if (label_anchor == id)
+        before_insertion = false;
+    }
+  }
+  if (patch && patch->move_label && !block.empty())
+    moved_labels.push_back(*patch->move_label);
+
   const auto resolve_local = [&](std::size_t label) -> std::expected<LabelId, CodeEditError> {
     if (label >= binds.size())
       return std::unexpected(CodeEditError::InvalidLabel);
-    if (!binds[label])
+    if (!binds[label] || local_labels[label].scope == 0)
       return std::unexpected(CodeEditError::UnboundLabel);
     const auto boundary = *binds[label];
     if (boundary > block.size() || (boundary == block.size() && successor.generation == 0))
       return std::unexpected(CodeEditError::InvalidLabel);
-    if (local_labels[label].scope == 0) {
-      const auto id = new_label();
-      if (!id)
-        return std::unexpected(id.error());
-      local_labels[label] = *id;
-      target_boundaries.push_back(boundary);
-    }
     return local_labels[label];
   };
   const auto check_label = [&](LabelId id) -> std::optional<CodeEditError> {
     if (!storage->contains(id))
       return CodeEditError::InvalidLabel;
-    if (patch && patch->move_label != id) {
+    if (patch) {
       const auto destination = storage->labels[id.value];
       if (destination == UNBOUND)
         return CodeEditError::UnboundLabel;
-      if (destination == EXCLUSIVE_END)
+      if (destination == EXCLUSIVE_END && std::ranges::find(moved_labels, id) == moved_labels.end())
         return CodeEditError::InvalidLabel;
     }
     return std::nullopt;
@@ -829,7 +909,7 @@ std::expected<std::vector<InstructionId>, BlockEditError> MethodCode::splice(
     return inserted;
 
   std::vector<std::uint32_t> incoming;
-  if (patch && patch->include_incoming) {
+  if (patch && patch->include_incoming && !block.empty()) {
     for (const auto slot : storage->order)
       if (redirect_targets(slot, patch->anchor, std::nullopt))
         incoming.push_back(slot);
@@ -842,18 +922,23 @@ std::expected<std::vector<InstructionId>, BlockEditError> MethodCode::splice(
     entry = *id;
     target_boundaries.push_back(0);
   }
+  std::vector<std::uint32_t> trailing_labels;
+  for (std::size_t i = 0; i < target_boundaries.size(); ++i)
+    if (target_boundaries[i] == block.size())
+      trailing_labels.push_back(static_cast<std::uint32_t>(storage->labels.size() + i));
   if (block.size() > removed.size())
     reserve_additional(storage->order, block.size() - removed.size());
   reserve_additional(storage->slots, new_instructions);
   reserve_additional(storage->switches, new_switches);
   reserve_additional(storage->labels, target_boundaries.size());
+  reserve_additional(storage->label_order, target_boundaries.size());
   decltype(storage->changes) new_stamps(storage->resource);
   if (retain_entry)
     storage->stage_stamp(new_stamps, removed.front().index);
   for (const auto slot : incoming)
     storage->stage_stamp(new_stamps, slot);
-  if (patch && patch->move_label)
-    storage->stage_stamp(new_stamps, binding_key(*patch->move_label));
+  for (const auto label : moved_labels)
+    storage->stage_stamp(new_stamps, binding_key(label));
   for (std::size_t i = 0; i < inserted.size(); ++i) {
     auto& id = inserted[i];
     if (id.generation == 0) {
@@ -869,10 +954,16 @@ std::expected<std::vector<InstructionId>, BlockEditError> MethodCode::splice(
     redirect_targets(slot, patch->anchor, entry);
     storage->changes.at(slot) = storage->revision + 1;
   }
-  for (auto boundary : target_boundaries)
-    storage->labels.push_back(boundary == block.size() ? successor : inserted[boundary]);
-  if (patch && patch->move_label && !inserted.empty())
-    storage->publish_binding(*patch->move_label, inserted.front(), storage->revision + 1);
+  const auto trailing = successor.generation == 0 ? EXCLUSIVE_END : successor;
+  for (const auto boundary : target_boundaries) {
+    if (boundary != block.size())
+      storage->label_order.push_back(static_cast<std::uint32_t>(storage->labels.size()));
+    storage->labels.push_back(boundary == block.size() ? trailing : inserted[boundary]);
+  }
+  storage->label_order.insert(storage->label_order.begin() + static_cast<std::ptrdiff_t>(label_insert),
+                              trailing_labels.begin(), trailing_labels.end());
+  for (const auto label : moved_labels)
+    storage->publish_binding(label, inserted.front(), storage->revision + 1);
 
   // Install allocated switch/instruction slots before adding the newly erased slots to their free lists.
   for (auto& payload : payloads)
@@ -1012,7 +1103,15 @@ std::expected<std::vector<InstructionId>, BlockEditError> BytecodeAccess::apply_
   if (patch.include_incoming && patch.placement != PatchPlacement::Before)
     return fail(CodeEditError::InvalidOperand);
   std::size_t position = patch.match_position.value_or(code.size());
-  if (!patch.match_position && patch.placement != PatchPlacement::Append) {
+  if (patch.label_anchor) {
+    const auto binding = code.label_position(*patch.label_anchor);
+    if (!binding)
+      return fail(binding.error());
+    if (binding->before) {
+      const auto at = std::ranges::find(state.order, binding->before->index);
+      position = static_cast<std::size_t>(at - state.order.begin());
+    }
+  } else if (!patch.match_position && patch.placement != PatchPlacement::Append) {
     if (!state.contains(patch.anchor))
       return fail(CodeEditError::InvalidInstruction);
     const auto at = std::ranges::find(state.order, patch.anchor.index);

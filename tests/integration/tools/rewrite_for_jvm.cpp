@@ -306,7 +306,7 @@ void generate_symbolic(const path& output_dir, analysis::AnalysisContext& contex
 void generate_branch_entries(const path& output_dir, analysis::AnalysisContext& context) {
   auto source = ClassFile::create({55, 0}, "BranchEntries").value();
   const auto code_name = source.constant_pool().append_utf8("Code").value();
-  for (const auto name : {"preserve", "include"}) {
+  for (const auto name : {"preserve", "include", "ordered"}) {
     auto& code = add_method(source, name, "(I)I", code_name);
     const auto entry = code.make_label().value();
     const auto fallthrough = code.make_label().value();
@@ -351,10 +351,9 @@ void generate_branch_entries(const path& output_dir, analysis::AnalysisContext& 
   const auto wire = write_class(source, {.code_analysis = CodeAnalysisMode::ComputeFrames}, context).value();
   auto parsed = parse(wire.bytes);
   const auto returns_input = pattern::seq(pattern::iload(0), pattern::opcode(Opcode::IReturn));
-  for (const auto name : {std::string_view{"preserve"}, std::string_view{"include"}}) {
-    const auto method = parsed.find_method(name, "(I)I").value();
-    const auto match = pattern::find_first(parsed, method, returns_input).value().value();
-    auto editor = parsed.edit_method(method).value();
+  for (const std::string_view name : {"preserve", "include", "ordered"}) {
+    auto editor = parsed.edit_method(name, "(I)I").value();
+    const auto match = editor.find_first(returns_input).value().value();
     const auto& code = editor.code()->code();
     const auto entry = editor.code()->exception_handlers().front().start;
     const auto branch_id = code.at(1);
@@ -363,15 +362,21 @@ void generate_branch_entries(const path& output_dir, analysis::AnalysisContext& 
     require(code.branch_target(branch_id) == entry && table.default_target == entry &&
                 table.targets.front() == entry,
             "parsed fixture must share a label between branch, switch and exception range");
-    const bool include = name == "include";
-    const auto policy = include ? InsertionEntry::IncludeIncomingBranches : InsertionEntry::PreserveAnchor;
-    const auto patch = editor.insert_before(match.start(), [](auto& builder) { builder.iinc(0, 5); }, policy).value();
-    const auto expected_entry = include ? patch.front() : match.start();
+    const auto increment = [](CodeBuilder& builder) { builder.iinc(0, 5); };
+    const auto patch = [&] {
+      if (name == "include")
+        return editor.insert_before_and_redirect_branches(match.start(), increment).value();
+      if (name == "ordered")
+        return editor.insert_before(CodeNode{match.start()}, increment).value();
+      return editor.insert_before(match.start(), increment).value();
+    }();
+    const auto expected_entry = name == "preserve" ? match.start() : patch.front();
+    const auto expected_try_start = name == "ordered" ? patch.front() : match.start();
     const auto target = [&](LabelId label) { return code.label_position(label).value().before; };
     const auto updated = code.table_switch(code.switch_id(switch_id).value()).value();
     require(target(code.branch_target(branch_id).value()) == expected_entry &&
                 target(updated.default_target) == expected_entry && target(updated.targets.front()) == expected_entry &&
-                target(editor.code()->exception_handlers().front().start) == match.start(),
+                target(editor.code()->exception_handlers().front().start) == expected_try_start,
             "branch or exception range entry changed unexpectedly");
   }
   for (const auto name : {std::string_view{"preserveBounds"}, std::string_view{"includeBounds"}}) {

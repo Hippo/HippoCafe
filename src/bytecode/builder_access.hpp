@@ -20,6 +20,9 @@ struct BuilderAccess {
   /// @param builder Pending instruction sequence.
   /// @return Label bindings indexed by label ordinal.
   static std::span<const std::optional<std::size_t>> label_bindings(const CodeBuilder& builder) noexcept;
+  /// @param builder Pending instruction sequence.
+  /// @return Bound label ordinals in the order they were bound.
+  static std::span<const std::size_t> binding_order(const CodeBuilder& builder) noexcept;
   /// Borrow (instruction index, label ordinal) pairs for builder-local branches and switches, with each switch default first.
   /// @param builder Pending instruction sequence.
   /// @return Instruction ordinals and their target label ordinals.

@@ -12,6 +12,20 @@
 namespace cafe {
 
 /**
+ * @brief Class-model edit validation failures.
+ * @ingroup model
+ */
+enum class ModelError {
+  InvalidVersion, ///< Declared class-file version is invalid for this operation.
+  InvalidIdentity, ///< Class name, superclass, or module identity is inconsistent.
+  InvalidReference, ///< Constant-pool reference is absent or has an incompatible tag.
+  InvalidMethod, ///< Method index, signature, or Code arrangement is invalid.
+  DuplicateCode, ///< A method already has a Code attribute.
+  LimitExceeded, ///< Configured resource ceiling or format capacity would be exceeded.
+  InvalidField, ///< Field index or signature is invalid.
+};
+
+/**
  * @brief Importance of a recoverable diagnostic.
  * @ingroup model
  */

@@ -58,8 +58,9 @@ TEST(CodePatch, ResolvesLocalTargetsAtBothEndsAndRejectsBranchesPastMethodEnd) {
   const auto successor = code.append(Instruction::return_void()).value();
   const std::array<InstructionBuilder, 3> block{Branch{Opcode::IfEq, {}}, Instruction::nop(), Branch{Opcode::Goto, {}}};
   const std::array<std::optional<std::size_t>, 2> bindings{3u, 0u};
+  const std::array<std::size_t, 2> order{1, 0};
   const std::array<std::pair<std::size_t, std::size_t>, 2> fixups{{{0, 0}, {2, 1}}};
-  CodePatch patch{.placement = PatchPlacement::After, .anchor = successor, .label_bindings = bindings, .branch_fixups = fixups};
+  CodePatch patch{.placement = PatchPlacement::After, .anchor = successor, .label_bindings = bindings, .branch_fixups = fixups, .binding_order = order};
   const auto revision = code.revision();
   auto failed = BytecodeAccess::apply_patch(code, patch, block);
   ASSERT_FALSE(failed);
@@ -81,8 +82,9 @@ TEST(CodePatch, ResolvesDenseAndSparseSwitchesAgainstTheSameBuilderLabels) {
   std::array<LookupPair, 2> pairs{{{13, {}}, {2, {}}}};
   const std::array<InstructionBuilder, 2> block{TableSwitch{-1, {}, targets}, LookupSwitch{{}, pairs}};
   const std::array<std::optional<std::size_t>, 3> bindings{0u, 1u, 2u};
+  const std::array<std::size_t, 3> order{0, 1, 2};
   const std::array<std::pair<std::size_t, std::size_t>, 6> fixups{{{0, 2}, {0, 0}, {0, 1}, {1, 0}, {1, 2}, {1, 1}}};
-  const CodePatch patch{.anchor = anchor, .label_bindings = bindings, .branch_fixups = fixups};
+  const CodePatch patch{.anchor = anchor, .label_bindings = bindings, .branch_fixups = fixups, .binding_order = order};
   const auto previous_revision = code.revision();
   auto bad = BytecodeAccess::apply_patch(code, patch, block);
   ASSERT_FALSE(bad);
@@ -143,8 +145,9 @@ TEST(CodePatch, AllocationFailureDuringStagingPreservesEdgesAndFreeSlots) {
     const std::array<InstructionBuilder, 4> block{TableSwitch{0, original, targets}, Instruction::nop(),
                                                   Branch{Opcode::Goto, {}}, Instruction::nop()};
     const std::array<std::optional<std::size_t>, 1> binding{1u};
+    const std::array<std::size_t, 1> order{0};
     const std::array<std::pair<std::size_t, std::size_t>, 1> fixup{{{2, 0}}};
-    const CodePatch patch{.anchor = anchor, .include_incoming = true, .label_bindings = binding, .branch_fixups = fixup};
+    const CodePatch patch{.anchor = anchor, .include_incoming = true, .label_bindings = binding, .branch_fixups = fixup, .binding_order = order};
     resource.remaining = budget;
     try {
       const auto result = BytecodeAccess::apply_patch(code, patch, block);

@@ -156,4 +156,18 @@ CodeAttribute* MethodEditor::code() const noexcept {
   return nullptr;
 }
 
+std::expected<LabelId, CodeEditError> MethodEditor::label_before(InstructionId instruction) {
+  auto* body = code();
+  if (!body)
+    return std::unexpected(CodeEditError::NoCode);
+  return body->code().make_label(CodePosition{instruction});
+}
+
+std::expected<LabelId, CodeEditError> MethodEditor::label_at_end() {
+  auto* body = code();
+  if (!body)
+    return std::unexpected(CodeEditError::NoCode);
+  return body->code().make_label(CodePosition{});
+}
+
 } // namespace cafe

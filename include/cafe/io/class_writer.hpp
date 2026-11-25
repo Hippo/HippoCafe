@@ -8,6 +8,8 @@
 
 #include <cstddef>
 #include <expected>
+#include <filesystem>
+#include <span>
 #include <vector>
 
 #include <cafe/class_file.hpp>
@@ -62,8 +64,6 @@ struct WriteResult {
  * Allocation failures may propagate. Configured analysis budget failures return
  * WriteErrorKind::ResourceLimitExceeded.
  *
- * @snippet edit_and_compute.cpp compute-frames
- *
  * @param class_file Class model to serialize without mutation.
  * @param options Encoding, preservation, and verification-metadata policy.
  * @param context Hierarchy and resource policy for verification computation.
@@ -72,5 +72,20 @@ struct WriteResult {
  */
 [[nodiscard]] std::expected<WriteResult, WriteError> write_class(
     const ClassFile& class_file, const WriteOptions& options, analysis::AnalysisContext& context);
+
+/**
+ * @brief Write a class with recomputed frames, max stack, and max locals using a target JDK.
+ * @snippet edit_and_compute.cpp compute-frames
+ * @param class_file Class to serialize without mutation.
+ * @param java_home Target Java installation containing jmods or rt.jar.
+ * @param target_release Java release used to select multi-release JAR entries and bound resolved versions.
+ * @param dependencies Ordered application class directories, JARs, and JMODs.
+ * @param options Other emission options. The analysis mode is set to ComputeFrames.
+ * @return Owned output bytes and diagnostics, or a classpath or emission error.
+ * @ingroup io
+ */
+[[nodiscard]] std::expected<WriteResult, WriteError> write_class_with_frames(
+    const ClassFile& class_file, const std::filesystem::path& java_home, std::uint16_t target_release,
+    std::span<const std::filesystem::path> dependencies = {}, WriteOptions options = {});
 
 } // namespace cafe

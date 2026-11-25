@@ -45,3 +45,54 @@ file(SHA256 "${output}" final_hash)
 if(NOT original_hash STREQUAL final_hash)
   message(FATAL_ERROR "A failed invocation changed the previously written class")
 endif()
+
+set(deps "${OUTPUT_DIR}/dependencies")
+file(MAKE_DIRECTORY "${deps}/classes" "${deps}/input" "${deps}/output")
+file(WRITE "${deps}/module-info.java" "module sample.dependency { exports api; }\n")
+file(WRITE "${deps}/Dependency.java" [=[
+package api;
+public class Dependency {
+    public String message() { return "dependency resolved"; }
+}
+]=])
+file(WRITE "${deps}/UsesDependency.java" [=[
+public class UsesDependency extends api.Dependency {
+    public static void main(String[] args) {
+        System.out.println(new UsesDependency().message());
+    }
+}
+]=])
+execute_process(COMMAND "${JAVAC}" --release 17 -d "${deps}/classes"
+  "${deps}/module-info.java" "${deps}/Dependency.java" COMMAND_ERROR_IS_FATAL ANY)
+execute_process(COMMAND "${JAVAC}" --release 17 -cp "${deps}/classes" -d "${deps}/input"
+  "${deps}/UsesDependency.java" COMMAND_ERROR_IS_FATAL ANY)
+set(sources "${deps}/classes")
+if(JAR)
+  execute_process(COMMAND "${JAR}" --create --file "${deps}/dep.jar" -C "${deps}/classes" api
+    COMMAND_ERROR_IS_FATAL ANY)
+  list(APPEND sources "${deps}/dep.jar")
+endif()
+if(JMOD)
+  file(REMOVE "${deps}/dep.jmod")
+  execute_process(COMMAND "${JMOD}" create --class-path "${deps}/classes" "${deps}/dep.jmod"
+    COMMAND_ERROR_IS_FATAL ANY)
+  list(APPEND sources "${deps}/dep.jmod")
+endif()
+
+set(input "${deps}/input/UsesDependency.class")
+set(output "${deps}/output/UsesDependency.class")
+execute_process(COMMAND "${EDIT}" "${input}" "${output}" "${runtime}" "${JAVA_RELEASE}"
+  RESULT_VARIABLE status ERROR_VARIABLE error)
+if(status EQUAL 0 OR NOT error MATCHES "api/Dependency")
+  message(FATAL_ERROR "Expected a resolution error for the missing dependency: ${error}")
+endif()
+foreach(source IN LISTS sources)
+  execute_process(COMMAND "${EDIT}" "${input}" "${output}" "${runtime}" "${JAVA_RELEASE}" "${source}"
+    COMMAND_ERROR_IS_FATAL ANY)
+endforeach()
+execute_process(COMMAND "${JAVA}" -Xverify:all --module-path "${deps}/classes" --add-modules sample.dependency
+  -cp "${deps}/output" UsesDependency
+  OUTPUT_VARIABLE message OUTPUT_STRIP_TRAILING_WHITESPACE COMMAND_ERROR_IS_FATAL ANY)
+if(NOT message STREQUAL "dependency resolved")
+  message(FATAL_ERROR "Unexpected output after writing with application dependencies: ${message}")
+endif()

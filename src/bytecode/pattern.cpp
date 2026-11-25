@@ -14,6 +14,7 @@
 
 #include "bytecode/code_access.hpp"
 #include "io/code_operands.hpp"
+#include "model/class_storage.hpp"
 #include "model/constant_validation.hpp"
 
 namespace cafe::pattern {
@@ -306,6 +307,13 @@ std::optional<Capture> Match::capture(std::string_view name) const noexcept {
 }
 
 namespace {
+/// Class metadata shared by the class-scoped and method-scoped entry points.
+struct MatchInput {
+  const ConstantPool& pool; ///< Pool supplying loadable constants.
+  ClassVersion version; ///< Instruction validation version.
+  std::span<const Attribute> attributes; ///< Class attributes supplying bootstrap methods.
+};
+
 /// @param instruction Instruction whose operand could not be resolved.
 /// @return An invalid-operand error carrying the stable instruction ID.
 std::unexpected<MatchError> bad_operand(const InstructionView& instruction) {
@@ -318,12 +326,12 @@ std::unexpected<MatchError> work_limit() {
 }
 
 /// Resolve integer literal loads, distinguishing non-integer literals from malformed references.
-/// @param file Class supplying loadable constants.
+/// @param input Class supplying loadable constants.
 /// @param instruction Candidate instruction.
 /// @param checked Shared validation cache for pool operands reached in this search.
 /// @param budget Remaining search work.
 /// @return An integer literal, nullopt for other operands, or a validation/work error.
-std::expected<std::optional<std::int32_t>, MatchError> integer(const ClassFile& file, const InstructionView& instruction,
+std::expected<std::optional<std::int32_t>, MatchError> integer(MatchInput input, const InstructionView& instruction,
                                                                cafe::detail::ConstantOperandValidator& checked, std::size_t& budget) {
   const auto opcode = instruction.opcode();
   if (opcode >= Opcode::IConstM1 && opcode <= Opcode::IConst5)
@@ -334,13 +342,13 @@ std::expected<std::optional<std::int32_t>, MatchError> integer(const ClassFile& 
   const auto index = raw.constant_index();
   if (!index)
     return bad_operand(instruction);
-  const auto& pool = file.constant_pool();
+  const auto& pool = input.pool;
   const auto* entry = pool.get(*index);
-  if (!entry || cafe::detail::validate_instruction(raw, file.version(), pool, 0))
+  if (!entry || cafe::detail::validate_instruction(raw, input.version, pool, 0))
     return bad_operand(instruction);
   if (entry->tag == CpTag::Integer)
     return std::bit_cast<std::int32_t>(static_cast<std::uint32_t>(entry->bits));
-  const auto validity = checked.validate(*index, pool, file.version(), file.attributes(), &budget);
+  const auto validity = checked.validate(*index, pool, input.version, input.attributes, &budget);
   if (validity == cafe::detail::OperandValidity::WorkLimit)
     return work_limit();
   if (validity != cafe::detail::OperandValidity::Valid)
@@ -360,13 +368,13 @@ std::expected<bool, MatchError> check_member(const detail::MemberFilter& filter,
   return filter.accepts(*member);
 }
 
-/// @param file Class supplying the constant pool.
+/// @param input Class supplying the constant pool.
 /// @param step Single consuming predicate.
 /// @param insn Candidate instruction.
 /// @param checked Shared validation cache for constants.
 /// @param budget Remaining search work.
 /// @return Whether the candidate satisfies the predicate, or an invalid operand.
-std::expected<bool, MatchError> accepts(const ClassFile& file, const Step& step, const InstructionView& insn,
+std::expected<bool, MatchError> accepts(MatchInput input, const Step& step, const InstructionView& insn,
                                         cafe::detail::ConstantOperandValidator& checked, std::size_t& budget) {
   switch (step.action) {
     case Action::Any:
@@ -376,7 +384,7 @@ std::expected<bool, MatchError> accepts(const ClassFile& file, const Step& step,
     case Action::Local:
       return insn.is(static_cast<Opcode>(step.argument)) && (!step.operand || insn.local_index() == step.operand);
     case Action::Integer: {
-      auto value = integer(file, insn, checked, budget);
+      auto value = integer(input, insn, checked, budget);
       if (!value)
         return std::unexpected(value.error());
       return value->has_value() && (!step.operand || *value == step.operand);
@@ -425,14 +433,14 @@ struct Change {
 /// The input cache is filled on demand, so find_first can finish before reading later candidates.
 class Matcher {
 public:
-  /// @param file Source class.
+  /// @param input Class supplying symbolic operands.
   /// @param range Input views in method order.
   /// @param code Owner supplying instruction identity and revision.
   /// @param program Immutable compiled pattern.
   /// @param budget Work remaining after preparation.
-  Matcher(const ClassFile& file, InstructionViewRange range, const MethodCode& code,
+  Matcher(MatchInput input, InstructionViewRange range, const MethodCode& code,
           std::shared_ptr<const Program> program, std::size_t budget) :
-      file(file), next_view(range.begin()), count(range.size()), budget(budget),
+      input(input), next_view(range.begin()), count(range.size()), budget(budget),
       source(std::make_shared<detail::Source>(detail::Source{
           std::move(program), cafe::detail::BytecodeAccess::scope(code), code.revision(), {}, {}})),
       slots(source->program->names.size() + source->program->steps.size()) {
@@ -570,7 +578,7 @@ private:
             break;
           default:
             if (cursor < count) {
-              auto accepted = accepts(file, step, view(cursor), checked, budget);
+              auto accepted = accepts(input, step, view(cursor), checked, budget);
               if (!accepted)
                 return std::unexpected(accepted.error());
               if (*accepted) {
@@ -590,7 +598,7 @@ private:
     }
   }
 
-  const ClassFile& file; ///< Class supplying symbolic operands.
+  MatchInput input; ///< Class supplying symbolic operands.
   InstructionViewIterator next_view; ///< Next input instruction to cache.
   std::size_t count; ///< Number of instructions available for search.
   std::size_t budget; ///< Remaining allowed work for the search.
@@ -601,29 +609,50 @@ private:
   cafe::detail::ConstantOperandValidator checked; ///< Reachable pool operands already checked in this search.
 };
 
+/// @param input Class supplying loadable constants.
+/// @param range Decoded instruction views in method order.
+/// @param body Decoded body, or null if unavailable.
+/// @param pattern Pattern to execute.
+/// @param options Overlap and work limits.
+/// @param first_only Stop after the earliest match.
+/// @return Matching ranges or a validation/execution error.
+std::expected<std::vector<Match>, MatchError> search(MatchInput input, InstructionViewRange range, const CodeAttribute* body,
+                                                     const Pattern& pattern, MatchOptions options, bool first_only) {
+  if (!body)
+    return std::unexpected(MatchError{MatchErrorKind::NoCode, "method has no decoded Code"});
+  const auto& program = PatternAccess::get(pattern);
+  if (!program || !program->error.empty())
+    return std::unexpected(MatchError{MatchErrorKind::InvalidPattern, program ? program->error : "moved-from pattern"});
+  if (range.empty())
+    return std::vector<Match>{};
+  if (!spend(options.max_work, program->steps.size()) || !spend(options.max_work, program->names.size()))
+    return work_limit();
+  Matcher matcher(input, range, body->code(), program, options.max_work);
+  return matcher.run(first_only, options.overlap);
+}
+
 /// @param file Source class.
-/// @param method_index Method declaration ordinal.
+/// @param method_index Method-table index.
 /// @param pattern Pattern to execute.
 /// @param options Overlap and work limits.
 /// @param first_only Stop after the earliest match.
 /// @return Matching ranges or a validation/execution error.
 std::expected<std::vector<Match>, MatchError> search(const ClassFile& file, std::size_t method_index,
                                                      const Pattern& pattern, MatchOptions options, bool first_only) {
-  const auto range = file.checked_instructions(method_index);
-  if (!range) {
-    if (range.error() == CodeEditError::InvalidMethod)
-      return std::unexpected(MatchError{MatchErrorKind::InvalidMethod, "invalid method index"});
-    return std::unexpected(MatchError{MatchErrorKind::NoCode, "method has no decoded Code"});
-  }
-  const auto& program = PatternAccess::get(pattern);
-  if (!program || !program->error.empty())
-    return std::unexpected(MatchError{MatchErrorKind::InvalidPattern, program ? program->error : "moved-from pattern"});
-  if (range->empty())
-    return std::vector<Match>{};
-  if (!spend(options.max_work, program->steps.size()) || !spend(options.max_work, program->names.size()))
-    return work_limit();
-  Matcher matcher(file, *range, file.methods()[method_index].code()->code(), program, options.max_work);
-  return matcher.run(first_only, options.overlap);
+  if (method_index >= file.methods().size())
+    return std::unexpected(MatchError{MatchErrorKind::InvalidMethod, "invalid method index"});
+  return search({file.constant_pool(), file.version(), file.attributes()}, file.instructions(method_index),
+                file.methods()[method_index].code(), pattern, options, first_only);
+}
+
+/// @param results Search result containing at most one match.
+/// @return The first match, an empty optional, or a search error.
+std::expected<std::optional<Match>, MatchError> first_match(std::expected<std::vector<Match>, MatchError> results) {
+  return std::move(results).transform([](auto matches) -> std::optional<Match> {
+    if (matches.empty())
+      return std::nullopt;
+    return std::move(matches.front());
+  });
 }
 } // namespace
 
@@ -634,11 +663,22 @@ std::expected<std::vector<Match>, MatchError> find_all(const ClassFile& file, st
 
 std::expected<std::optional<Match>, MatchError> find_first(const ClassFile& file, std::size_t method_index,
                                                            const Pattern& pattern, MatchOptions options) {
-  auto results = search(file, method_index, pattern, options, true);
-  if (!results)
-    return std::unexpected(results.error());
-  if (results->empty())
-    return std::nullopt;
-  return std::move(results->front());
+  return first_match(search(file, method_index, pattern, options, true));
 }
 } // namespace cafe::pattern
+
+namespace cafe {
+
+std::expected<std::optional<pattern::Match>, pattern::MatchError> MethodEditor::find_first(
+    const pattern::Pattern& query, pattern::MatchOptions options) const {
+  return pattern::first_match(pattern::search({storage->pool, storage->version, storage->attribute_entries},
+                                              instructions(), code(), query, options, true));
+}
+
+std::expected<std::vector<pattern::Match>, pattern::MatchError> MethodEditor::find_all(
+    const pattern::Pattern& query, pattern::MatchOptions options) const {
+  return pattern::search({storage->pool, storage->version, storage->attribute_entries},
+                         instructions(), code(), query, options, false);
+}
+
+} // namespace cafe

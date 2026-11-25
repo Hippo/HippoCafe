@@ -31,6 +31,70 @@ ClassFile sequence_class() {
   return file;
 }
 
+TEST(MethodSequence, InsertsOnEitherSideOfLabelsWithoutChangingLegacyInstructionPlacement) {
+  auto file = sequence_class();
+  auto editor = file.edit_method("run", "()V").value();
+  const auto ret = (*editor.instructions().begin()).id();
+  const auto match = editor.find_first(p::opcode(Opcode::Return)).value().value();
+  const auto first = editor.label_before(ret).value();
+  const auto second = editor.label_before(ret).value();
+  const auto third = editor.label_before(ret).value();
+  const auto end = editor.label_at_end().value();
+  const auto& body = editor.code()->code();
+  const auto jump = editor.insert_before(first, i::goto_(second)).value();
+  const auto branch_match = editor.find_first(p::opcode(Opcode::Goto)).value().value();
+
+  const auto first_patch = editor.insert_before(second, {i::nop()}).value().front();
+  EXPECT_EQ(body.label_position(first)->before, first_patch);
+  EXPECT_EQ(body.label_position(second)->before, ret);
+  const auto build_patch = [](CodeBuilder& code) {
+    const auto local = code.label();
+    const auto entry = code.label();
+    const auto trailing = code.label();
+    code.bind(entry).bind(local).goto_(local).bind(trailing);
+  };
+  const auto second_patch = editor.insert_after(second, build_patch).value().front();
+
+  const auto nodes = editor.nodes();
+  ASSERT_EQ(nodes.size(), 11u);
+  EXPECT_EQ(nodes[0], CodeNode{jump});
+  EXPECT_EQ(nodes[1], CodeNode{first});
+  EXPECT_EQ(nodes[2], CodeNode{first_patch});
+  EXPECT_EQ(nodes[3], CodeNode{second});
+  EXPECT_EQ(nodes[5], CodeNode{body.branch_target(second_patch).value()});
+  EXPECT_EQ(nodes[6], CodeNode{second_patch});
+  EXPECT_EQ(nodes[8], CodeNode{third});
+  EXPECT_EQ(nodes[9], CodeNode{ret});
+  EXPECT_EQ(nodes[10], CodeNode{end});
+  EXPECT_TRUE(editor.instruction(ret)->is(Opcode::Return));
+  EXPECT_EQ(body.branch_target(jump).value(), second);
+  EXPECT_EQ(body.label_position(second)->before, second_patch);
+  EXPECT_EQ(editor.erase(branch_match).error().cause, CodeEditError::StaleMatch);
+
+  const auto ordered = editor.insert_before(nodes[9], i::nop()).value();
+  EXPECT_EQ(body.label_position(third)->before, ordered);
+  const auto late = editor.label_before(ret).value();
+  EXPECT_TRUE(editor.insert_before(ret, i::nop()));
+  EXPECT_EQ(body.label_position(late)->before, ret);
+  EXPECT_EQ(editor.replace(match, {i::nop(), Instruction::return_void()})->front(), ret);
+
+  const auto new_end = editor.label_at_end().value();
+  const auto appended = editor.insert_after(end, i::goto_(end)).value();
+  EXPECT_EQ(body.label_position(end)->before, appended);
+  EXPECT_EQ(body.label_position(new_end)->before, std::nullopt);
+  const auto mark_only = editor.insert_before(new_end, [](CodeBuilder& code) { code.bind(code.label()); });
+  ASSERT_TRUE(mark_only);
+  EXPECT_TRUE(mark_only->empty());
+  const auto before = editor.nodes();
+  const auto trailing = std::get<LabelId>(before[before.size() - 2]);
+  EXPECT_NE(trailing, new_end);
+  EXPECT_EQ(body.label_position(trailing)->before, std::nullopt);
+  const auto unbound = editor.code()->code().make_label().value();
+  EXPECT_EQ(editor.insert_before(unbound, i::nop()), std::unexpected(CodeEditError::UnboundLabel));
+  EXPECT_EQ(editor.insert_after(LabelId{}, i::nop()), std::unexpected(CodeEditError::InvalidLabel));
+  EXPECT_EQ(editor.nodes(), before);
+}
+
 TEST(MethodSequence, InsertsListsRangesAndBuildersInCallerOrder) {
   auto file = sequence_class();
   auto editor = file.edit_method(0).value();

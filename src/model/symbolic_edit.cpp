@@ -9,6 +9,7 @@
 #include <algorithm>
 #include <bit>
 #include <functional>
+#include <iterator>
 #include <limits>
 #include <type_traits>
 #include <utility>
@@ -115,6 +116,8 @@ std::optional<std::size_t> pool_hash(const ConstantPool& pool, CpIndex index) no
  */
 class SymbolicEdit {
   friend class SsaCommit;
+  friend class cafe::ClassFile;
+  friend class cafe::MethodEditor;
 
 public:
   /**
@@ -161,6 +164,24 @@ public:
   /// Keep the resolved operands after the instruction edit succeeds.
   void commit() noexcept {
     committed = true;
+  }
+
+  /// Resolve both parts of a declaration signature under this transaction.
+  /// @param name Declaration name.
+  /// @param descriptor JVM descriptor.
+  /// @return Name and descriptor pool indices or a model error.
+  std::expected<std::pair<CpIndex, CpIndex>, ModelError> signature(std::string_view name, std::string_view descriptor) {
+    const auto name_index = utf8(name);
+    if (!name_index)
+      return std::unexpected(model_error(name_index.error()));
+    return utf8(descriptor).transform([&](CpIndex index) { return std::pair{*name_index, index}; }).transform_error(model_error);
+  }
+
+  /// Convert a pool error to the class declaration error domain.
+  /// @param error Symbolic constant validation or capacity error.
+  /// @return The corresponding model error.
+  static ModelError model_error(CodeEditError error) noexcept {
+    return error == CodeEditError::ConstantPoolLimit ? ModelError::LimitExceeded : ModelError::InvalidReference;
   }
 
   /// Materialize one pending instruction using this transaction's constant and bootstrap tables.
@@ -729,17 +750,131 @@ EditResult<InstructionId> apply_one(ClassStorage& storage, CodeAttribute* code, 
 
 namespace cafe {
 
+std::expected<void, ModelError> ClassFile::add_named_interface(std::string_view name) {
+  if (!detail::valid_class_name(name))
+    return std::unexpected(ModelError::InvalidReference);
+  detail::SymbolicEdit edit(*storage);
+  const auto index = edit.class_constant(name);
+  if (!index)
+    return std::unexpected(edit.model_error(index.error()));
+  auto result = add_interface(*index);
+  if (result)
+    edit.commit();
+  return result;
+}
+
+std::expected<std::size_t, ModelError> ClassFile::add_named_field(
+    std::uint16_t flags, std::string_view name, std::string_view descriptor, std::vector<Attribute> attributes) {
+  detail::SymbolicEdit edit(*storage);
+  const auto signature = edit.signature(name, descriptor);
+  if (!signature)
+    return std::unexpected(signature.error());
+  auto result = add_field(flags, signature->first, signature->second, std::move(attributes));
+  if (result)
+    edit.commit();
+  return result;
+}
+
+std::expected<MethodEditor, ModelError> ClassFile::add_named_method(
+    std::uint16_t flags, std::string_view name, std::string_view descriptor, std::vector<Attribute> attributes) {
+  detail::SymbolicEdit edit(*storage);
+  const auto signature = edit.signature(name, descriptor);
+  if (!signature)
+    return std::unexpected(signature.error());
+  auto result = add_method(flags, signature->first, signature->second, std::move(attributes));
+  if (!result)
+    return std::unexpected(result.error());
+  edit.commit();
+  return MethodEditor(*storage, storage->method_entries[*result]);
+}
+
+std::expected<std::reference_wrapper<CodeAttribute>, ModelError> MethodEditor::add_code() {
+  detail::SymbolicEdit edit(*storage);
+  const auto name = edit.utf8("Code");
+  if (!name)
+    return std::unexpected(edit.model_error(name.error()));
+  auto result = ClassFile::attach_code(*storage, *member, *name);
+  if (result)
+    edit.commit();
+  return result;
+}
+
+std::expected<void, CodeEditError> MethodEditor::add_exception_handler(
+    LabelId start, LabelId end, LabelId handler, std::optional<std::string_view> catch_type) {
+  auto* body = code();
+  if (!body)
+    return std::unexpected(CodeEditError::NoCode);
+  if (body->exception_handlers().size() >= detail::MAX_COUNT)
+    return std::unexpected(CodeEditError::HandleLimit);
+  const auto& instructions = body->code();
+  const auto first = instructions.label_position(start);
+  const auto last = instructions.label_position(end);
+  const auto entry = instructions.label_position(handler);
+  for (const auto* label : {&first, &last, &entry})
+    if (!*label)
+      return std::unexpected(label->error());
+  if (!first->before || !entry->before)
+    return std::unexpected(CodeEditError::InvalidLabel);
+  if (last->before) {
+    const auto range = instructions.instructions();
+    const auto begin = std::ranges::find(range, *first->before, &InstructionEntry::id);
+    const auto finish = std::ranges::find(std::next(begin), range.end(), *last->before, &InstructionEntry::id);
+    if (finish == range.end())
+      return std::unexpected(CodeEditError::InvalidLabel);
+  }
+
+  detail::SymbolicEdit edit(*storage);
+  CpIndex catch_index;
+  if (catch_type) {
+    if (!detail::valid_class_name(*catch_type))
+      return std::unexpected(CodeEditError::InvalidOperand);
+    const auto index = edit.class_constant(*catch_type);
+    if (!index)
+      return std::unexpected(index.error());
+    catch_index = *index;
+  }
+  const auto existing = body->exception_handlers();
+  std::pmr::vector<ExceptionHandler> updated(&storage->budget);
+  updated.reserve(existing.size() + 1);
+  if (!existing.empty())
+    updated.insert(updated.end(), existing.begin(), existing.end());
+  updated.push_back({start, end, handler, catch_index});
+  body->set_exception_handlers(updated);
+  edit.commit();
+  return {};
+}
+
+detail::CodePatch MethodEditor::code_patch(CodeNode at, Placement placement) {
+  detail::CodePatch patch;
+  if (const auto* label = std::get_if<LabelId>(&at))
+    patch.label_anchor = *label;
+  else
+    patch.anchor = std::get<InstructionId>(at);
+  patch.include_incoming = placement == Placement::BranchEntry;
+  patch.ordered = placement == Placement::BeforeNode;
+  if (placement == Placement::After)
+    patch.placement = detail::PatchPlacement::After;
+  else if (placement == Placement::Replace)
+    patch.placement = detail::PatchPlacement::Replace;
+  return patch;
+}
+
 std::expected<InstructionId, CodeEditError> MethodEditor::append(const MethodInstruction& value) {
   return detail::apply_one(*storage, code(), {.placement = detail::PatchPlacement::Append}, value);
 }
 
 std::expected<InstructionId, CodeEditError> MethodEditor::insert_before(InstructionId at, const MethodInstruction& value,
                                                                         InsertionEntry entry) {
-  return detail::apply_one(*storage, code(), {.placement = detail::PatchPlacement::Before, .anchor = at, .include_incoming = entry == InsertionEntry::IncludeIncomingBranches}, value);
+  return insert_node(at, legacy_placement(entry), value);
 }
 
 std::expected<InstructionId, CodeEditError> MethodEditor::insert_after(InstructionId at, const MethodInstruction& value) {
-  return detail::apply_one(*storage, code(), {.placement = detail::PatchPlacement::After, .anchor = at}, value);
+  return insert_node(at, Placement::After, value);
+}
+
+std::expected<InstructionId, CodeEditError> MethodEditor::insert_node(CodeNode at, Placement placement,
+                                                                      const MethodInstruction& value) {
+  return detail::apply_one(*storage, code(), code_patch(at, placement), value);
 }
 
 std::expected<InstructionId, CodeEditError> MethodEditor::insert_at(LabelId at, const MethodInstruction& value) {
@@ -774,17 +909,13 @@ std::expected<std::size_t, BlockEditError> MethodEditor::match_position(const pa
 }
 
 std::expected<std::vector<InstructionId>, BlockEditError> MethodEditor::apply_sequence(
-    InstructionId anchor, bool after, InsertionEntry entry, const pattern::Match* match,
+    CodeNode anchor, Placement placement, const pattern::Match* match,
     std::span<const MethodInstruction> instructions, const CodeBuilder* builder) {
-  detail::CodePatch patch{};
-  patch.anchor = anchor;
-  patch.placement = after ? detail::PatchPlacement::After : detail::PatchPlacement::Before;
-  patch.include_incoming = entry == InsertionEntry::IncludeIncomingBranches;
+  auto patch = code_patch(anchor, placement);
   if (match) {
     const auto start = match_position(*match);
     if (!start)
       return std::unexpected(start.error());
-    patch.placement = detail::PatchPlacement::Replace;
     patch.matched_ids = match->instruction_ids();
     patch.match_position = *start;
   }
@@ -793,6 +924,7 @@ std::expected<std::vector<InstructionId>, BlockEditError> MethodEditor::apply_se
       return std::unexpected(*error);
     instructions = detail::BuilderAccess::instructions(*builder);
     patch.label_bindings = detail::BuilderAccess::label_bindings(*builder);
+    patch.binding_order = detail::BuilderAccess::binding_order(*builder);
     patch.branch_fixups = detail::BuilderAccess::branch_fixups(*builder);
   }
   return detail::apply_edit(*storage, code(), patch, instructions);

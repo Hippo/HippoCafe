@@ -6,6 +6,7 @@
 
 #pragma once
 
+#include <concepts>
 #include <cstddef>
 #include <cstdint>
 #include <expected>
@@ -15,12 +16,14 @@
 #include <optional>
 #include <span>
 #include <string_view>
+#include <utility>
 #include <vector>
 
 #include <cafe/access_flags.hpp>
 #include <cafe/bytecode/instruction_view.hpp>
 #include <cafe/class_version.hpp>
 #include <cafe/constant_pool.hpp>
+#include <cafe/error.hpp>
 #include <cafe/field.hpp>
 #include <cafe/method.hpp>
 
@@ -39,19 +42,6 @@ enum class ClassValidity {
   ParsedRecovered, ///< Parsed with reported recoveries; output may differ from the input.
   OpaqueEssentialContent, ///< Contains preserved undecodable essential Code.
   Programmatic, ///< Constructed through model-editing APIs rather than parsed input.
-};
-/**
- * @brief Class-model edit validation failures.
- * @ingroup model
- */
-enum class ModelError {
-  InvalidVersion, ///< Declared class-file version is invalid for this operation.
-  InvalidIdentity, ///< Class name, superclass, or module identity is inconsistent.
-  InvalidReference, ///< Constant-pool reference is absent or has an incompatible tag.
-  InvalidMethod, ///< Method index, signature, or Code arrangement is invalid.
-  DuplicateCode, ///< A method already has a Code attribute.
-  LimitExceeded, ///< Configured resource ceiling or format capacity would be exceeded.
-  InvalidField, ///< Field index or signature is invalid.
 };
 
 /**
@@ -262,6 +252,14 @@ public:
    * @return Success or InvalidReference/LimitExceeded; updates the declaration revision on success.
    */
   [[nodiscard]] std::expected<void, ModelError> add_interface(CpIndex index);
+  /// Add a direct interface by JVM internal name.
+  /// @tparam Name Text convertible to string_view.
+  /// @param name Interface name in modified UTF-8.
+  /// @return Success or a declaration error.
+  template<std::convertible_to<std::string_view> Name>
+  [[nodiscard]] std::expected<void, ModelError> add_interface(Name&& name) {
+    return add_named_interface(std::forward<Name>(name));
+  }
   /**
    * @brief Append a field and transfer its attribute payloads into class storage.
    * @param flags JVM access bit mask for the declaration.
@@ -272,6 +270,18 @@ public:
    */
   [[nodiscard]] std::expected<std::size_t, ModelError> add_field(
       std::uint16_t flags, CpIndex name, CpIndex descriptor, std::vector<Attribute> attributes = {});
+  /// Add a field, resolving its name and descriptor in the owning class.
+  /// @tparam Name Text convertible to string_view.
+  /// @param flags JVM access flags for the field.
+  /// @param name Field name in modified UTF-8.
+  /// @param descriptor JVM field descriptor.
+  /// @param attributes Attributes transferred to the declaration.
+  /// @return The new field index or a declaration error.
+  template<std::convertible_to<std::string_view> Name>
+  [[nodiscard]] std::expected<std::size_t, ModelError> add_field(
+      std::uint16_t flags, Name&& name, std::string_view descriptor, std::vector<Attribute> attributes = {}) {
+    return add_named_field(flags, std::forward<Name>(name), descriptor, std::move(attributes));
+  }
   /**
    * @brief Append a method and transfer its attribute payloads into class storage.
    * @param flags JVM access bit mask for the declaration.
@@ -282,6 +292,18 @@ public:
    */
   [[nodiscard]] std::expected<std::size_t, ModelError> add_method(
       std::uint16_t flags, CpIndex name, CpIndex descriptor, std::vector<Attribute> attributes = {});
+  /// Add a method, resolving its name and descriptor in the owning class.
+  /// @tparam Name Text convertible to string_view.
+  /// @param flags JVM access flags for the method.
+  /// @param name Method name in modified UTF-8.
+  /// @param descriptor JVM method descriptor.
+  /// @param attributes Attributes transferred to the declaration.
+  /// @return An editor for the new method or a declaration error.
+  template<std::convertible_to<std::string_view> Name>
+  [[nodiscard]] std::expected<MethodEditor, ModelError> add_method(
+      std::uint16_t flags, Name&& name, std::string_view descriptor, std::vector<Attribute> attributes = {}) {
+    return add_named_method(flags, std::forward<Name>(name), descriptor, std::move(attributes));
+  }
   /**
    * @brief Erase one field in declaration order.
    *
@@ -314,12 +336,21 @@ public:
    */
   [[nodiscard]] std::expected<std::reference_wrapper<CodeAttribute>, ModelError>
   add_code(std::size_t method, CpIndex name);
+  /// Attach decoded Code, resolving the attribute name automatically.
+  /// @param method Zero-based method-table index.
+  /// @return The new body or a declaration error.
+  [[nodiscard]] std::expected<std::reference_wrapper<CodeAttribute>, ModelError> add_code(std::size_t method);
   /**
    * @brief Borrow an editor for a method table index.
    * @param index Zero-based index in the corresponding table or slot array.
    * @return An editor, or nullopt for an out-of-range index.
    */
   [[nodiscard]] std::optional<MethodEditor> edit_method(std::size_t index) noexcept;
+  /// Open the first method with the given JVM name and descriptor.
+  /// @param name Method name in modified UTF-8.
+  /// @param descriptor JVM method descriptor in modified UTF-8.
+  /// @return A borrowed editor, or nullopt when the method is absent.
+  [[nodiscard]] std::optional<MethodEditor> edit_method(std::string_view name, std::string_view descriptor) noexcept;
   /**
    * @brief Borrow mutable decoded Code from a method.
    * @param method Zero-based method-table index to inspect.
@@ -328,6 +359,30 @@ public:
   [[nodiscard]] CodeAttribute* edit_code(std::size_t method) noexcept;
 
 private:
+  friend class MethodEditor;
+  /// @param name Internal interface name to intern.
+  /// @return Success or a model error.
+  std::expected<void, ModelError> add_named_interface(std::string_view name);
+  /// @param flags Field access mask.
+  /// @param name Field name to intern.
+  /// @param descriptor Field descriptor to intern.
+  /// @param attributes Attributes to transfer to the field.
+  /// @return The field index or a model error.
+  std::expected<std::size_t, ModelError> add_named_field(
+      std::uint16_t flags, std::string_view name, std::string_view descriptor, std::vector<Attribute> attributes);
+  /// @param flags Method access mask.
+  /// @param name Method name to intern.
+  /// @param descriptor Method descriptor to intern.
+  /// @param attributes Attributes to transfer to the method.
+  /// @return An editor for the new method or a model error.
+  std::expected<MethodEditor, ModelError> add_named_method(
+      std::uint16_t flags, std::string_view name, std::string_view descriptor, std::vector<Attribute> attributes);
+  /// @param storage Class owning the method and pool.
+  /// @param method Concrete method to receive the Code attribute.
+  /// @param name Pool index of the Code attribute name.
+  /// @return The new code body or a model error.
+  static std::expected<std::reference_wrapper<CodeAttribute>, ModelError> attach_code(
+      detail::ClassStorage& storage, Method& method, CpIndex name);
   friend class detail::ClassReader;
   friend class detail::SsaCommit;
   /**

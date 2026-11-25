@@ -57,8 +57,9 @@ wire choices. Branches and switches use scoped labels while their compact stored
 operands refer to method-owned tables.
 
 Instruction slots carry generations, and a separate order vector defines traversal.
-Slot reuse invalidates stale handles. Labels identify the boundary before an
-instruction or the exclusive method end; unbound labels support forward branches.
+Slot reuse invalidates stale handles. Bound labels identify positions before
+instructions or at the exclusive method end. Labels at a shared boundary have
+an order, so an insertion can separate them. Unbound labels support forward branches.
 Switch payloads live out of line. Generation/revision exhaustion is reported rather
 than allowing stale handles to become valid again.
 
@@ -72,12 +73,12 @@ target bindings have changed since the search.
 `MethodEditor` resolves each sequence under one constant-pool and bootstrap
 checkpoint. The method stages instruction slots, switch payloads, label fixups,
 and order changes before publishing. A failed edit preserves logical contents.
-A successful sequence edit advances the revision once. By default,
-`insert_before` retains anchor labels. `IncludeIncomingBranches` rewrites
-existing branch and switch operands through a new entry label, keeping exception
-handler boundaries attached to their original instructions. `insert_at` rebinds
-only its selected label. Erasure requires every removed instruction to be free
-of bound labels.
+A successful sequence edit advances the revision once. Inserting between nodes
+sends the preceding labels to the patch and the following labels to the original
+instruction. The compatible bare-instruction `insert_before` inserts ahead of
+that instruction's labels. `insert_before_and_redirect_branches` rewrites existing
+jumps and switch operands to use a new entry label. `insert_at` rebinds its selected
+label. Erasure requires every removed instruction to be free of bound labels.
 
 ## Parsing, preservation, and emission
 

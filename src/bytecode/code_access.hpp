@@ -30,6 +30,9 @@ struct CodePatch {
   std::span<const std::optional<std::size_t>> label_bindings{}; ///< Builder label to boundary ordinal.
   std::span<const std::pair<std::size_t, std::size_t>> branch_fixups{}; ///< Ordered (instruction index, label ordinal) pairs, with each switch default preceding its cases.
   std::optional<LabelId> move_label{}; ///< Selected existing insert_at boundary to bind to the patch entry.
+  std::optional<LabelId> label_anchor{}; ///< Insert on either side of this node at a shared boundary.
+  bool ordered{}; ///< Use node order, including preceding labels for a before-instruction edit.
+  std::span<const std::size_t> binding_order{}; ///< Builder label ordinals in binding order.
 };
 
 /**

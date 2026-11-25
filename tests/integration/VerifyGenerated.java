@@ -24,10 +24,12 @@ public final class VerifyGenerated {
         Class<?> entries = Class.forName("BranchEntries");
         Method preserve = entries.getMethod("preserve", int.class);
         Method include = entries.getMethod("include", int.class);
+        Method ordered = entries.getMethod("ordered", int.class);
         // 0 takes ifeq, 1 uses a switch case, 2 falls through the patch, and 3 takes the default.
         for (int input = 0; input <= 3; input++) {
             int preserved = input == 2 ? input + 5 : input;
-            if (!preserve.invoke(null, input).equals(preserved) || !include.invoke(null, input).equals(input + 5)) {
+            if (!preserve.invoke(null, input).equals(preserved) || !include.invoke(null, input).equals(input + 5)
+                    || !ordered.invoke(null, input).equals(input + 5)) {
                 throw new AssertionError("unexpected insertion entry for input " + input);
             }
         }

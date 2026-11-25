@@ -56,12 +56,19 @@ such as `example/Widget`; method descriptors use forms such as `(I)Ljava/lang/St
 `constant_pool().get_utf8()` returns validated borrowed encoded bytes, while
 `decode_utf8()` produces Java UTF-16 code units, including unpaired surrogates.
 
-`find_method(name, descriptor)` and `find_field(name, descriptor)` return optional
-current table indices. `edit_method(index)` borrows a `MethodEditor`;
-`edit_code(index)` directly returns decoded Code or nullptr. Add/erase operations
-can invalidate views into the corresponding member table; reacquire editors after
-adding or erasing methods. Erasure shifts later indices and does not rewrite code
-that references the deleted declaration.
+Use `file.edit_method(name, descriptor)` to open a `MethodEditor`. It offers
+`instructions()`, `nodes()`, `find_first()`, and `find_all()` for that method,
+along with editing operations. Reacquire editors after adding or erasing methods.
+`find_method`, `find_field`, and `edit_code` also support table-index workflows.
+
+Use `file.add_method(flags, name, descriptor)` to create a method and get its
+editor. Call `editor.add_code()` to attach a body to a concrete method.
+`file.add_field(flags, name, descriptor)` and `file.add_interface(name)` likewise
+resolve constants from their symbolic names. To add an exception handler, use
+`editor.add_exception_handler(start, end, handler, "java/lang/Exception")`.
+Omit the catch type for a catch-all. The start is inclusive and the end is exclusive.
+Use `editor.label_before(instruction)` or `editor.label_at_end()` to create bound
+labels. A failed symbolic edit preserves the declarations and constant pool.
 
 Constant-pool appends preserve existing indices. Use `append_utf8()` for strings and
 `append()` for fixed-width entries. A `CONSTANT_String` refers to a UTF-8 slot;
@@ -116,7 +123,8 @@ instruction is erased.
 
 ## Match instruction sequences
 
-Use `cafe::pattern` to search one decoded method in linear instruction order.
+Use `editor.find_first(query)` or `editor.find_all(query)` to search a decoded
+method in linear instruction order with patterns from `cafe::pattern`.
 `opcode` and `any` match one instruction. `iload`, `istore`, and
 `int_constant` accept an optional slot or signed 32-bit value. Integer constants
 include `iconst_m1` through `iconst_5`, immediate pushes, and integer pool loads.
@@ -162,10 +170,15 @@ the search. Keep their source class alive while inspecting them.
 
 ## Edit instruction sequences
 
-Use `ClassFile::edit_method(index)` to insert raw or symbolic instructions
-relative to a stable anchor. `insert_before` and `insert_after` accept a single
-instruction, an initializer list, a standard range of `MethodInstruction`, or a
-builder. `cafe::insn` factories construct instructions with deferred symbolic
+Use a `MethodEditor` to insert raw or symbolic instructions. `insert_before` and
+`insert_after` accept a single instruction, an initializer list, a standard range
+of `MethodInstruction`, or a builder. `editor.nodes()` returns a snapshot of
+`CodeNode` handles in sequence order, including bound labels and the method's
+end labels. Use a node from that sequence, a `LabelId`, or `CodeNode{instruction}`
+to insert at the exact position in the sequence. Use `editor.instruction(id)` to
+inspect a single instruction or `editor.instructions()` to scan the whole method.
+
+`cafe::insn` factories construct instructions with deferred symbolic
 operands. This edit pushes an integer, calls `Math.abs(int)`, and discards the
 result, leaving the original operand stack intact.
 
@@ -199,7 +212,7 @@ receiver and original argument ready for the call.
 
 <!-- snippet: examples/edit_and_compute.cpp:edit-matches -->
 ```cpp
-std::expected<void, std::string> measure_printed_strings(cafe::ClassFile& file, std::size_t method_index) {
+std::expected<void, std::string> measure_printed_strings(cafe::MethodEditor& editor) {
   namespace p = cafe::pattern;
   const p::InvokePattern println{
       .opcode = cafe::Opcode::InvokeVirtual,
@@ -207,23 +220,22 @@ std::expected<void, std::string> measure_printed_strings(cafe::ClassFile& file, 
       .name = "println",
       .descriptor = "(Ljava/lang/String;)V",
   };
-  auto calls = p::find_all(file, method_index, p::invoke(println));
+  auto calls = editor.find_all(p::invoke(println));
   if (!calls)
     return std::unexpected(std::string(calls.error().detail));
 
-  auto editor = file.edit_method(method_index);
-  if (!editor)
-    return std::unexpected("method index out of range");
   for (const auto& match : *calls) {
-    auto inserted = editor->insert_before(
+    auto inserted = editor.insert_before_and_redirect_branches(
         match.start(),
-        [](auto& code) {
-          auto skip = code.label();
-          code.dup().ifnull(skip);
-          code.dup().invokevirtual("java/lang/String", "length", "()I").pop();
+        [](cafe::CodeBuilder& code) {
+          const auto skip = code.label();
+          code.dup();
+          code.ifnull(skip);
+          code.dup();
+          code.invokevirtual("java/lang/String", "length", "()I");
+          code.pop();
           code.bind(skip);
-        },
-        cafe::InsertionEntry::IncludeIncomingBranches);
+        });
     if (!inserted)
       return std::unexpected("insertion failed at instruction " + std::to_string(match.start_index()) +
                              " (edit error " + std::to_string(static_cast<int>(inserted.error().cause)) + ")");
@@ -246,10 +258,18 @@ destinations, as do the switch factories.
 For a bare `MethodInstruction` or range, keep any borrowed strings, bootstrap
 arguments, and switch data alive through the edit.
 
-The default `InsertionEntry::PreserveAnchor` keeps existing branches and switch
-edges pointed at the original anchor. With `IncludeIncomingBranches`, incoming
-branches and switch arms targeting the anchor execute the insertion first.
-Exception-handler boundaries keep their original bindings.
+For a label `entry` immediately before an instruction, use
+`editor.insert_before(entry, patch)` to let a jump to `entry` skip the patch.
+Use `editor.insert_after(entry, patch)` to have that jump enter the patch.
+If `entry` also starts a try range, insertion after it places the patch inside
+the protected range. Multiple labels at one bytecode offset can be separated
+by inserting between them.
+
+Use `insert_before_and_redirect_branches(instruction, patch)` to send existing
+jumps and switches through the patch while keeping exception boundaries at the
+original instruction. Existing calls to `insert_before` with a bare
+`InstructionId` keep their original behavior, including calls that explicitly
+pass an `InsertionEntry` policy.
 
 Use `editor.replace(match, sequence)` or `editor.erase(match)` to edit a whole
 match. The editor checks that its members still exist, are unchanged, and are
@@ -368,33 +388,23 @@ it does not waive metadata safety checks.
 
 ## Write with computed frames
 
-Use `write_class(file, options, context)` with
-`options.code_analysis = CodeAnalysisMode::ComputeFrames`. The writer computes
-max stack, max locals, and verifier frames for each decoded method and emits
-`StackMapTable` where needed.
+Use `write_class_with_frames(file, java_home, target_release)`. Pass an ordered
+range of application class directories, JARs, or JMODs as the fourth argument
+when the class needs dependencies. The writer computes max stack, max locals,
+and verifier frames for each decoded method and emits `StackMapTable` where needed.
 
-Register a runtime that matches the target Java release. `add_java_home()` supports
-JDKs with `jmods/` and legacy installations with `rt.jar`. A linked `lib/modules`
-image alone returns `UnsupportedRuntime`. Register dependencies with
-`add_directory`, `add_jar`, `add_jmod`, or `add_class` before calling `build()`.
-Frame analysis automatically adds the class being written to its hierarchy.
+Use a JDK with `jmods/` or a legacy installation with `rt.jar` that matches the
+target Java release. Frame analysis adds the class being written to its hierarchy.
+For custom classpaths or analysis limits, configure an
+`AnalysisContext` and call `write_class(file, options, context)` with
+`options.code_analysis = CodeAnalysisMode::ComputeFrames`.
 
 <!-- snippet: examples/edit_and_compute.cpp:compute-frames -->
 ```cpp
-std::expected<cafe::WriteResult, std::string> write_with_frames(
-    const cafe::ClassFile& file, const std::filesystem::path& java_home, std::uint16_t target_release) {
-  cafe::classpath::ClassPathBuilder builder;
-  builder.set_target_release(target_release);
-  if (auto added = builder.add_java_home(java_home); !added)
-    return std::unexpected(std::move(added.error().detail));
-  cafe::analysis::AnalysisContext context{
-      cafe::classpath::ClassHierarchy{cafe::classpath::ClassResolver{builder.build()}},
-  };
-  auto written = cafe::write_class(
-      file, {.code_analysis = cafe::CodeAnalysisMode::ComputeFrames}, context);
-  if (!written)
-    return std::unexpected(written.error().path + ": " + written.error().detail);
-  return std::move(*written);
+auto result = cafe::write_class_with_frames(file, argv[3], target_release, dependencies);
+if (!result) {
+  std::cerr << result.error().path << ": " << result.error().detail << '\n';
+  return 1;
 }
 ```
 <!-- end snippet -->
@@ -405,6 +415,8 @@ It reports diagnostics and saves the serialized class. This invocation targets J
 ```sh
 hippocafe_edit_and_compute input.class output.class /path/to/jdk-17 17
 ```
+
+Add application dependency paths after the target release when needed.
 
 If writing returns `ClassResolutionFailure`, check the error detail for the
 unresolved class or member and check the registered runtime and dependencies.

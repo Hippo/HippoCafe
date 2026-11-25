@@ -73,6 +73,53 @@ constexpr Bootstrap TEST_BOOTSTRAP{{MethodHandleKind::InvokeStatic, "BootstrapOw
                                     "(Ljava/lang/invoke/MethodHandles$Lookup;Ljava/lang/String;"
                                     "Ljava/lang/Class;)Ljava/lang/Object;"}};
 
+TEST(ClassModel, AddsSymbolicDeclarationsAndHandlersTransactionally) {
+  auto file = fixture({49, 0});
+  const auto initial_pool_size = file.constant_pool().size();
+  EXPECT_EQ(file.add_method(0x0009, "broken", "bad").error(), ModelError::InvalidReference);
+  EXPECT_EQ(file.add_field(0x0001, "broken", "V").error(), ModelError::InvalidReference);
+  EXPECT_EQ(file.add_interface("[Ljava/lang/Runnable;"), std::unexpected(ModelError::InvalidReference));
+  EXPECT_EQ(file.constant_pool().size(), initial_pool_size);
+  ASSERT_TRUE(file.add_interface("java/lang/Runnable"));
+  ASSERT_TRUE(file.add_field(0x0001, "count", "I"));
+
+  auto editor = file.add_method(0x0001, "run", "()V").value();
+  ASSERT_TRUE(editor.add_code());
+  EXPECT_EQ(editor.add_code().error(), ModelError::DuplicateCode);
+  const auto load = editor.append(insn::aconst_null()).value();
+  ASSERT_TRUE(editor.append(insn::athrow()));
+  const auto pop = editor.append(insn::pop()).value();
+  ASSERT_TRUE(editor.append(Instruction::return_void()));
+  const auto start = editor.label_before(load).value();
+  const auto handler = editor.label_before(pop).value();
+  const auto end = editor.label_at_end().value();
+  const auto pool_before_handlers = file.constant_pool().size();
+  EXPECT_EQ(editor.add_exception_handler(handler, start, handler, "java/lang/Exception"),
+            std::unexpected(CodeEditError::InvalidLabel));
+  EXPECT_EQ(editor.add_exception_handler(start, end, end), std::unexpected(CodeEditError::InvalidLabel));
+  EXPECT_EQ(editor.add_exception_handler(start, handler, handler, "[Ljava/lang/Exception;"),
+            std::unexpected(CodeEditError::InvalidOperand));
+  EXPECT_EQ(file.constant_pool().size(), pool_before_handlers);
+  EXPECT_TRUE(editor.code()->exception_handlers().empty());
+  ASSERT_TRUE(editor.add_exception_handler(start, handler, handler, "java/lang/Exception"));
+  ASSERT_TRUE(editor.add_exception_handler(start, handler, handler));
+  EXPECT_FALSE(file.edit_method("run", "()I"));
+
+  auto relocated = std::move(file);
+  const auto matches = editor.find_all(pattern::opcode(Opcode::Pop)).value();
+  ASSERT_EQ(matches.size(), 1u);
+  EXPECT_EQ(matches.front().start(), pop);
+  const auto output = write_class(relocated, {.code_analysis = CodeAnalysisMode::ComputeMaxs});
+  ASSERT_TRUE(output) << output.error().detail;
+  auto decoded = read_class(output->bytes, STRICT).value();
+  const auto decoded_editor = decoded.class_file.edit_method("run", "()V").value();
+  const auto handlers = decoded_editor.code()->exception_handlers();
+  ASSERT_EQ(handlers.size(), 2u);
+  const auto& pool = decoded.class_file.constant_pool();
+  EXPECT_EQ(pool.get_utf8(pool.get(handlers[0].catch_type)->first), "java/lang/Exception");
+  EXPECT_EQ(handlers[1].catch_type, CpIndex{});
+}
+
 TEST(SymbolicEdit, InsertsReplacesAndErasesWithScopedHandles) {
   auto model = fixture({55, 0});
   auto& code = with_return(model).code();

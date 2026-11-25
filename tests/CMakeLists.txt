@@ -175,6 +175,8 @@ if(Java_FOUND)
       add_test(NAME hippocafe.jvm_example COMMAND "${CMAKE_COMMAND}"
         "-DEDIT=$<TARGET_FILE:hippocafe_edit_and_compute>"
         "-DJAVA=${Java_JAVA_EXECUTABLE}"
+        "-DJAVAC=${Java_JAVAC_EXECUTABLE}"
+        "-DJAR=${Java_JAR_EXECUTABLE}"
         "-DJAVA_HOME=${java_home}"
         "-DJAVA_RELEASE=${Java_VERSION_MAJOR}"
         "-DJIMAGE=${hippocafe_jimage}"
