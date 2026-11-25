@@ -90,16 +90,20 @@ int main(int argc, char** argv) {
     std::cerr << diagnostic.path << ": " << diagnostic.detail << '\n';
   auto& file = parsed->class_file;
   for (std::size_t i = 0; i < file.methods().size(); ++i) {
-    auto editor = file.edit_method(i).value();
-    const auto instructions = editor.instructions();
+    auto editor = file.edit_method(i);
+    if (!editor) {
+      std::cerr << "methods[" << i << "]: could not open method editor\n";
+      return 1;
+    }
+    const auto instructions = editor->instructions();
     if (instructions.empty())
       continue;
     const auto anchor = (*instructions.begin()).id();
-    if (auto edited = insert_abs(editor, anchor); !edited) {
+    if (auto edited = insert_abs(*editor, anchor); !edited) {
       std::cerr << "methods[" << i << "]: block edit failed (" << static_cast<int>(edited.error().cause) << ")\n";
       return 1;
     }
-    if (auto edited = measure_printed_strings(editor); !edited) {
+    if (auto edited = measure_printed_strings(*editor); !edited) {
       std::cerr << "methods[" << i << "]: " << edited.error() << '\n';
       return 1;
     }
