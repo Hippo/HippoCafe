@@ -7,7 +7,6 @@
 #include <cafe/bytecode/pattern.hpp>
 
 #include <algorithm>
-#include <bit>
 #include <string>
 
 #include <cafe/class_file.hpp>
@@ -333,21 +332,13 @@ std::unexpected<MatchError> work_limit() {
 /// @return An integer literal, nullopt for other operands, or a validation/work error.
 std::expected<std::optional<std::int32_t>, MatchError> integer(MatchInput input, const InstructionView& instruction,
                                                                cafe::detail::ConstantOperandValidator& checked, std::size_t& budget) {
-  const auto opcode = instruction.opcode();
-  if (opcode >= Opcode::IConstM1 && opcode <= Opcode::IConst5)
-    return static_cast<std::int32_t>(opcode) - static_cast<std::int32_t>(Opcode::IConst0);
-  if (opcode != Opcode::Ldc)
-    return instruction.immediate();
+  if (auto literal = instruction.int_constant(); literal || !instruction.is(Opcode::Ldc))
+    return literal;
   const auto raw = instruction.raw();
   const auto index = raw.constant_index();
-  if (!index)
-    return bad_operand(instruction);
   const auto& pool = input.pool;
-  const auto* entry = pool.get(*index);
-  if (!entry || cafe::detail::validate_instruction(raw, input.version, pool, 0))
+  if (!index || cafe::detail::validate_instruction(raw, input.version, pool, 0))
     return bad_operand(instruction);
-  if (entry->tag == CpTag::Integer)
-    return std::bit_cast<std::int32_t>(static_cast<std::uint32_t>(entry->bits));
   const auto validity = checked.validate(*index, pool, input.version, input.attributes, &budget);
   if (validity == cafe::detail::OperandValidity::WorkLimit)
     return work_limit();

@@ -46,6 +46,63 @@ CodeAttribute& with_return(ClassFile& file, std::string_view method_name = "run"
   return code;
 }
 
+TEST(ClassModel, RenamingDeclarationsPreservesBodiesAndOverloads) {
+  auto model = fixture();
+  auto& code = with_return(model);
+  const auto id = code.code().at(0);
+  ASSERT_TRUE(model.add_method(0x0109, "renamed", "(I)V"));
+  const auto field = model.add_field(0x0008, "state", "I").value();
+  ASSERT_TRUE(model.add_field(0x0008, "renamed", "J"));
+  const auto revision = model.declaration_revision();
+  const auto pool_size = model.constant_pool().size();
+  ASSERT_TRUE(model.rename_method(0, "renamed"));
+  EXPECT_NE(model.declaration_revision(), revision);
+  const auto after_method = model.declaration_revision();
+  ASSERT_TRUE(model.rename_field(field, "renamed"));
+  EXPECT_NE(model.declaration_revision(), after_method);
+  EXPECT_EQ(model.constant_pool().size(), pool_size);
+  EXPECT_FALSE(model.find_field("state", "I"));
+  EXPECT_FALSE(model.find_method("run", "()V"));
+  EXPECT_EQ(model.find_field("renamed", "I"), field);
+  EXPECT_EQ(model.find_method("renamed", "()V"), 0U);
+  ASSERT_EQ(model.methods()[0].code(), &code);
+  EXPECT_EQ(code.code().at(0), id);
+  const auto output = write_class(model, SUPPLIED);
+  ASSERT_TRUE(output);
+  const auto reloaded = read_class(output->bytes, STRICT);
+  ASSERT_TRUE(reloaded);
+  EXPECT_EQ(reloaded->class_file.find_method("renamed", "(I)V"), 1U);
+  EXPECT_EQ(reloaded->class_file.find_method("renamed", "()V"), 0U);
+  EXPECT_EQ(reloaded->class_file.find_field("renamed", "J"), 1U);
+  EXPECT_EQ(reloaded->class_file.find_field("renamed", "I"), field);
+}
+
+TEST(ClassModel, RenameRejectsCollisionsAndInitializerChangesAtomically) {
+  auto model = fixture();
+  ASSERT_TRUE(model.add_method(0x0001, "<init>", "()V"));
+  ASSERT_TRUE(model.add_method(0x0009, "body", "()V"));
+  ASSERT_TRUE(model.add_method(0x0009, "other", "()V"));
+  ASSERT_TRUE(model.add_field(0, "x", "I"));
+  ASSERT_TRUE(model.add_field(0, "y", "I"));
+  const auto revision = model.declaration_revision();
+  const auto pool_size = model.constant_pool().size();
+  EXPECT_TRUE(model.rename_method(0, "<init>"));
+  EXPECT_TRUE(model.rename_field(0, "x"));
+  EXPECT_EQ(model.rename_method(0, "normal"), std::unexpected(ModelError::InvalidMethod));
+  EXPECT_EQ(model.rename_method(1, "<clinit>"), std::unexpected(ModelError::InvalidMethod));
+  EXPECT_EQ(model.rename_method(1, "other"), std::unexpected(ModelError::InvalidMethod));
+  EXPECT_EQ(model.rename_method(1, "bad/name"), std::unexpected(ModelError::InvalidMethod));
+  EXPECT_EQ(model.rename_method(3, "valid"), std::unexpected(ModelError::InvalidMethod));
+  EXPECT_EQ(model.rename_method(1, std::string(65536, 'x')), std::unexpected(ModelError::LimitExceeded));
+  EXPECT_EQ(model.rename_field(0, "y"), std::unexpected(ModelError::InvalidField));
+  EXPECT_EQ(model.rename_field(2, "valid"), std::unexpected(ModelError::InvalidField));
+  EXPECT_EQ(model.rename_field(0, std::string_view("x\0", 2)), std::unexpected(ModelError::InvalidReference));
+  EXPECT_EQ(model.declaration_revision(), revision);
+  EXPECT_EQ(model.constant_pool().size(), pool_size);
+  EXPECT_EQ(model.find_field("x", "I"), 0U);
+  EXPECT_EQ(model.find_method("body", "()V"), 1U);
+}
+
 class CountingResource final : public std::pmr::memory_resource {
 public:
   std::size_t live = 0;

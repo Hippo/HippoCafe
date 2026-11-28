@@ -195,6 +195,7 @@ std::expected<std::pmr::vector<std::byte>, WriteError> encode_stack_map(
     return write_error(WriteErrorKind::UnrepresentableFrame, path, "frame count exceeds the u2 limit");
   writer.u2(static_cast<std::uint16_t>(frames.size()));
   int previous = -1;
+  std::span<const analysis::VerificationType> previous_locals;
   for (const auto& [instruction, frame] : frames) {
     const auto offset = offsets.offset_of(instruction);
     if (!offset || *offset <= previous)
@@ -205,21 +206,33 @@ std::expected<std::pmr::vector<std::byte>, WriteError> encode_stack_map(
     if (locals.size() > analysis.max_locals() || frame.stack.size() > analysis.max_stack())
       return write_error(WriteErrorKind::UnrepresentableFrame, path, "stack-map frame exceeds the computed maxima");
 
-    writer.u1(255);
-    writer.u2(static_cast<std::uint16_t>(*offset - previous - 1));
-    previous = *offset;
-    const auto continuations = std::ranges::count(locals, WideContinuation, &analysis::VerificationType::kind);
-    writer.u2(static_cast<std::uint16_t>(locals.size() - static_cast<std::size_t>(continuations)));
-    for (std::size_t slot = 0; slot < locals.size(); ++slot) {
-      const auto& type = locals[slot];
-      if (auto written = write_type(writer, type, code, offsets, constants, path); !written)
-        return std::unexpected(std::move(written.error()));
-      if (type.width() == 2) {
-        if (++slot >= locals.size() || locals[slot].kind != WideContinuation)
-          return write_error(WriteErrorKind::UnrepresentableFrame, path, "wide local lacks its second slot");
+    const auto delta = static_cast<std::uint16_t>(*offset - previous - 1);
+    if (previous >= 0 && frame.stack.size() <= 1 && std::ranges::equal(previous_locals, locals)) {
+      // same_frame and same_locals_1_stack_item_frame have inline and extended offsets.
+      if (delta < 64) {
+        writer.u1(static_cast<std::uint8_t>(delta + (frame.stack.empty() ? 0 : 64)));
+      } else {
+        writer.u1(frame.stack.empty() ? 251 : 247);
+        writer.u2(delta);
       }
+    } else {
+      writer.u1(255);
+      writer.u2(delta);
+      const auto continuations = std::ranges::count(locals, WideContinuation, &analysis::VerificationType::kind);
+      writer.u2(static_cast<std::uint16_t>(locals.size() - static_cast<std::size_t>(continuations)));
+      for (std::size_t slot = 0; slot < locals.size(); ++slot) {
+        const auto& type = locals[slot];
+        if (auto written = write_type(writer, type, code, offsets, constants, path); !written)
+          return std::unexpected(std::move(written.error()));
+        if (type.width() == 2) {
+          if (++slot >= locals.size() || locals[slot].kind != WideContinuation)
+            return write_error(WriteErrorKind::UnrepresentableFrame, path, "wide local lacks its second slot");
+        }
+      }
+      writer.u2(static_cast<std::uint16_t>(frame.stack.size()));
     }
-    writer.u2(static_cast<std::uint16_t>(frame.stack.size()));
+    previous = *offset;
+    previous_locals = locals;
     unsigned slots = 0;
     for (const auto& type : frame.stack) {
       slots += type.width();

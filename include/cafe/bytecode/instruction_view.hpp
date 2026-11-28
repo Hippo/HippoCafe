@@ -59,6 +59,10 @@ public:
   [[nodiscard]] std::optional<std::int32_t> immediate() const {
     return entry.instruction.immediate_value();
   }
+  /// Read the value of an iconst, bipush, sipush, or integer ldc (including its wide encoding).
+  /// @return The signed literal, or nullopt for other instructions and unresolved pool operands.
+  ///   Reacquire a pool-backed view after compaction.
+  [[nodiscard]] std::optional<std::int32_t> int_constant() const noexcept;
   /// @return The normalized local load/store/ret index, or nullopt for another opcode.
   [[nodiscard]] std::optional<std::uint16_t> local_index() const {
     return entry.instruction.local_index();

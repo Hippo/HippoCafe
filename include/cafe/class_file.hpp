@@ -304,6 +304,21 @@ public:
       std::uint16_t flags, Name&& name, std::string_view descriptor, std::vector<Attribute> attributes = {}) {
     return add_named_method(flags, std::forward<Name>(name), descriptor, std::move(attributes));
   }
+  /// Rename a field declaration in place, preserving its index, attributes and descriptor.
+  /// The caller updates symbolic references to the field in code and metadata.
+  /// @param index Current field-table index.
+  /// @param name New unqualified JVM name in modified UTF-8.
+  /// @return Success (including an unchanged name), InvalidField for an invalid index, name
+  ///   or signature collision, or a constant-pool error. Failure preserves the model.
+  [[nodiscard]] std::expected<void, ModelError> rename_field(std::size_t index, std::string_view name);
+  /// Rename a method declaration in place, preserving its index, attributes, code and handles.
+  /// The caller updates overriding declarations and symbolic references in code and metadata.
+  /// A change to or from an initializer name is invalid.
+  /// @param index Current method-table index.
+  /// @param name New unqualified JVM method name in modified UTF-8.
+  /// @return Success (including an unchanged name), InvalidMethod for an invalid index, name
+  ///   or signature collision, or a constant-pool error. Failure preserves the model.
+  [[nodiscard]] std::expected<void, ModelError> rename_method(std::size_t index, std::string_view name);
   /**
    * @brief Erase one field in declaration order.
    *
@@ -369,6 +384,11 @@ public:
   [[nodiscard]] std::expected<std::size_t, WriteError> compact_constant_pool();
 
 private:
+  /// Intern a validated replacement name, install it, and advance the declaration revision.
+  /// @param slot Name slot of an owned declaration.
+  /// @param name Modified UTF-8 text to resolve in the class pool.
+  /// @return Success, InvalidReference for unrepresentable text, or LimitExceeded for a full pool or oversized name.
+  std::expected<void, ModelError> replace_member_name(CpIndex& slot, std::string_view name);
   friend class MethodEditor;
   friend class RawAttribute;
   /// @param name Internal interface name to intern.

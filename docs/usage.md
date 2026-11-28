@@ -79,6 +79,18 @@ Omit the catch type for a catch-all. The start is inclusive and the end is exclu
 Use `editor.label_before(instruction)` or `editor.label_at_end()` to create bound
 labels. A failed symbolic edit preserves the declarations and constant pool.
 
+Use `file.rename_field(index, name)` and `file.rename_method(index, name)` to
+change a declaration while retaining its descriptor, attributes, and table index.
+Existing method editors and instruction handles remain valid. A changed name
+advances the class declaration revision. A signature collision fails the edit.
+Constructor and class initializer names are fixed.
+
+When renaming a virtual method, apply the change to each participating declaration
+and update references throughout the affected classes. For ordinary invocation
+instructions, search the encoded owners with `find_invocations` and replace the
+symbolic calls through their method editors. Bootstrap method handles, enclosing
+method metadata, and reflective lookups can also refer to the original name.
+
 Constant-pool appends preserve existing indices. Use `append_utf8()` for strings and
 `append()` for fixed-width entries. A `CONSTANT_String` refers to a UTF-8 slot;
 it is distinct from the UTF-8 slot itself. Existing pool entry pointers may be
@@ -150,6 +162,8 @@ method in linear instruction order with patterns from `cafe::pattern`.
 `opcode` and `any` match one instruction. `iload`, `istore`, and
 `int_constant` accept an optional slot or signed 32-bit value. Integer constants
 include `iconst_m1` through `iconst_5`, immediate pushes, and integer pool loads.
+Call `int_constant()` on a captured instruction view to read the signed value
+regardless of which of those encodings the writer selected.
 `invoke` and `field` match symbolic references using the filters you supply.
 
 <!-- snippet: examples/inspect_class.cpp:capture-prefix -->

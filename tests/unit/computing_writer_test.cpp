@@ -44,6 +44,53 @@ TEST(ComputingWriter, MaximaWithoutFramesAndLegacyHeader) {
   }
 }
 
+TEST(ComputingWriter, ReusesLocalsAcrossShortAndExtendedStackMapFrames) {
+  auto owner = ClassFile::create({61, 0}, "RepeatedLocals").value();
+  auto editor = owner.add_method(0x0009, "run", "(J)V").value();
+  ASSERT_TRUE(editor.add_code());
+  const auto end = editor.append(insn::return_()).value();
+  ASSERT_TRUE(editor.insert_before(end, [](CodeBuilder& b) {
+    const auto first = b.label();
+    b.goto_(first);
+    b.bind(first);
+    for (int i = 0; i < 61; ++i)
+      b.nop();
+    const auto same = b.label();
+    b.goto_(same);
+    b.bind(same);
+    b.lconst_0();
+    const auto one = b.label();
+    b.goto_(one);
+    b.bind(one);
+    b.pop2();
+    for (int i = 0; i < 60; ++i)
+      b.nop();
+    b.lconst_0();
+    const auto far_one = b.label();
+    b.goto_(far_one);
+    b.bind(far_one);
+    b.pop2();
+    for (int i = 0; i < 61; ++i)
+      b.nop();
+    const auto far_same = b.label();
+    b.goto_(far_same);
+    b.bind(far_same);
+  }));
+  const auto written = write_class(owner, {.code_analysis = CodeAnalysisMode::ComputeFrames});
+  ASSERT_TRUE(written) << written.error().detail;
+  const auto parsed = read_class(written->bytes, {.mode = ParseMode::Strict});
+  ASSERT_TRUE(parsed);
+  const auto attributes = parsed->class_file.methods()[0].code()->attributes();
+  ASSERT_EQ(attributes.size(), 1U);
+  const auto* raw = attributes.front().get<RawAttribute>();
+  ASSERT_NE(raw, nullptr);
+  const auto bytes = raw->bytes(parsed->class_file);
+  ASSERT_TRUE(bytes);
+  // Long occupies two slots but only one verification_type_info, both on the stack and in locals.
+  const std::uint8_t expected[]{0, 5, 255, 0, 3, 0, 1, 4, 0, 0, 63, 67, 4, 247, 0, 64, 4, 251, 0, 64};
+  EXPECT_TRUE(std::ranges::equal(*bytes, std::as_bytes(std::span(expected))));
+}
+
 TEST(ComputingWriter, RequiresFramesForEditedBranchAndDropsOpaqueOnlyOnRequest) {
   auto owner = ClassFile::create({52, 0}, "Opaque").value();
   auto& pool = owner.constant_pool();

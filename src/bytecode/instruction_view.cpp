@@ -9,6 +9,7 @@
 #include "model/class_storage.hpp"
 
 #include <array>
+#include <bit>
 #include <locale>
 #include <sstream>
 
@@ -98,6 +99,18 @@ std::expected<const MethodCode*, CodeEditError> decoded_code(const ClassFile& fi
 InstructionView::InstructionView(const detail::ClassStorage* storage, std::size_t method_index,
                                  InstructionEntry entry) noexcept :
     storage(storage), pool_revision(storage->pool_revision), method_index(method_index), entry(entry) {
+}
+
+std::optional<std::int32_t> InstructionView::int_constant() const noexcept {
+  const auto op = opcode();
+  if (op >= Opcode::IConstM1 && op <= Opcode::IConst5)
+    return static_cast<std::int32_t>(op) - static_cast<std::int32_t>(Opcode::IConst0);
+  if (op != Opcode::Ldc)
+    return immediate();
+  const auto index = raw().constant_index();
+  if (const auto* literal = index ? storage->pool.get(*index) : nullptr; literal && literal->tag == CpTag::Integer)
+    return std::bit_cast<std::int32_t>(static_cast<std::uint32_t>(literal->bits));
+  return std::nullopt;
 }
 
 Instruction InstructionView::raw() const noexcept {

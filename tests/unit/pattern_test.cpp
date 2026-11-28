@@ -61,6 +61,7 @@ TEST_F(InstructionPattern, MatchesAllIntegerLiteralFormsAndSkipsOtherConstants) 
   add(Instruction::simple(Opcode::IConst5).value());
   add(Instruction::bipush(-1));
   add(Instruction::sipush(-32768));
+  ASSERT_TRUE(file.constant_pool().append_utf8("unused before pooled literal"));
   CpEntry value{};
   value.tag = CpTag::Integer;
   value.bits = std::bit_cast<std::uint32_t>(std::int32_t{-1});
@@ -68,6 +69,13 @@ TEST_F(InstructionPattern, MatchesAllIntegerLiteralFormsAndSkipsOtherConstants) 
   add(Instruction::constant(Opcode::Ldc, slot).value());
   value.tag = CpTag::Float;
   add(Instruction::constant(Opcode::Ldc, file.constant_pool().append(value).value()).value());
+  const std::array<std::optional<std::int32_t>, 6> literals{-1, 5, -1, -32768, -1, std::nullopt};
+  for (std::size_t pos = 0; pos < literals.size(); ++pos)
+    EXPECT_EQ(file.instruction({index, body.at(pos)}).value().int_constant(), literals[pos]);
+  const auto pooled = file.instruction({index, body.at(4)}).value();
+  ASSERT_TRUE(file.compact_constant_pool());
+  EXPECT_FALSE(pooled.int_constant());
+  EXPECT_EQ(file.instruction(pooled.location()).value().int_constant(), -1);
   EXPECT_EQ(find_all(file, index, int_constant()).value().size(), 5u);
   EXPECT_EQ(find_all(file, index, int_constant(-1)).value().size(), 3u);
   EXPECT_EQ(find_all(file, index, int_constant(5)).value().size(), 1u);

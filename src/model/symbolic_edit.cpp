@@ -832,6 +832,45 @@ std::expected<MethodEditor, ModelError> ClassFile::add_named_method(
   return MethodEditor(*storage, storage->method_entries[*result]);
 }
 
+std::expected<void, ModelError> ClassFile::replace_member_name(CpIndex& slot, std::string_view name) {
+  if (name.size() > std::numeric_limits<std::uint16_t>::max())
+    return std::unexpected(ModelError::LimitExceeded);
+  detail::SymbolicEdit edit(*storage);
+  const auto replacement = edit.utf8(name);
+  if (!replacement)
+    return std::unexpected(edit.model_error(replacement.error()));
+  slot = *replacement;
+  storage->declaration_stamp = detail::next_declaration_revision();
+  edit.commit();
+  return {};
+}
+
+std::expected<void, ModelError> ClassFile::rename_field(std::size_t index, std::string_view name) {
+  if (index >= fields().size() || !detail::valid_unqualified_name(name))
+    return std::unexpected(ModelError::InvalidField);
+  auto& field = storage->field_entries[index];
+  if (constant_pool().get_utf8(field.name) == name)
+    return {};
+  const auto descriptor = constant_pool().get_utf8(field.descriptor);
+  if (!descriptor || find_field(name, *descriptor))
+    return std::unexpected(ModelError::InvalidField);
+  return replace_member_name(field.name, name);
+}
+
+std::expected<void, ModelError> ClassFile::rename_method(std::size_t index, std::string_view name) {
+  if (index >= methods().size() || !detail::valid_method_name(name))
+    return std::unexpected(ModelError::InvalidMethod);
+  auto& method = storage->method_entries[index];
+  const auto original = constant_pool().get_utf8(method.name);
+  if (original == name)
+    return {};
+  const auto descriptor = constant_pool().get_utf8(method.descriptor);
+  if (original == "<init>" || original == "<clinit>" || name == "<init>" || name == "<clinit>" ||
+      !descriptor || find_method(name, *descriptor))
+    return std::unexpected(ModelError::InvalidMethod);
+  return replace_member_name(method.name, name);
+}
+
 std::expected<std::reference_wrapper<CodeAttribute>, ModelError> MethodEditor::add_code() {
   detail::SymbolicEdit edit(*storage);
   const auto name = edit.utf8("Code");

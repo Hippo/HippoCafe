@@ -63,20 +63,29 @@ WireFrames read_frames(const ClassFile& owner, const CodeAttribute& code) {
   WireFrames frames;
   const auto count = reader.u2().value();
   int previous = -1;
+  const auto read_types = [&](unsigned entries) {
+    for (unsigned entry = 0; entry < entries; ++entry) {
+      const auto kind = reader.u1().value();
+      require(kind <= 8, "invalid verification_type_info");
+      if (kind == 7)
+        frames.reference_indices.push_back(CpIndex{reader.u2().value()});
+      if (kind == 8)
+        frames.allocation_offsets.push_back(reader.u2().value());
+    }
+  };
   for (unsigned i = 0; i < count; ++i) {
-    require(reader.u1() == 255, "expected full_frame encoding");
-    previous += reader.u2().value() + 1;
+    const auto tag = reader.u1().value();
+    require(tag < 128 || tag >= 247, "reserved stack-map frame tag");
+    const auto delta = tag < 128 ? tag % 64 : reader.u2().value();
+    previous += delta + 1;
     frames.offsets.push_back(static_cast<unsigned>(previous));
-    for (unsigned area = 0; area < 2; ++area) {
-      const auto entries = reader.u2().value();
-      for (unsigned entry = 0; entry < entries; ++entry) {
-        const auto kind = reader.u1().value();
-        require(kind <= 8, "invalid verification_type_info");
-        if (kind == 7)
-          frames.reference_indices.push_back(CpIndex{reader.u2().value()});
-        if (kind == 8)
-          frames.allocation_offsets.push_back(reader.u2().value());
-      }
+    if ((tag >= 64 && tag < 128) || tag == 247) {
+      read_types(1);
+    } else if (tag >= 252 && tag <= 254) {
+      read_types(tag - 251);
+    } else if (tag == 255) {
+      read_types(reader.u2().value());
+      read_types(reader.u2().value());
     }
   }
   require(reader.remaining() == 0, "trailing StackMapTable bytes");
