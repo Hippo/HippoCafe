@@ -16,6 +16,7 @@
 #include <cafe/io/class_writer.hpp>
 
 #include "binary_writer.hpp"
+#include "constant_pool_writer.hpp"
 #include "model/budget_resource.hpp"
 #include "opaque_attribute.hpp"
 #include "stack_map_encoder.hpp"
@@ -101,6 +102,24 @@ public:
   [[nodiscard]] std::expected<WriteResult, WriteError> write();
 
 private:
+  /// Emit a constant reference using the selected pool policy.
+  /// @param index Model pool slot or zero when absent.
+  /// @return Success or a pool validation or capacity error.
+  [[nodiscard]] std::expected<void, WriteError> write_reference(CpIndex index);
+  /// Insert serialized constants and adjust diagnostics in the class body.
+  /// @param offset Pool insertion point.
+  /// @param bytes Encoded pool bytes or frame constant extension bytes.
+  void insert_pool_bytes(std::size_t offset, std::span<const std::byte> bytes);
+  /// Emit a validated raw attribute, remapping its known references in compact mode.
+  /// @param bytes Raw payload.
+  /// @param spec Attribute format rules, or null for an unknown attribute.
+  /// @param context Owning declaration or Code context.
+  /// @param code Final Code layout if the attribute is nested within Code.
+  /// @param path Attribute diagnostic path.
+  /// @return Success or an attribute validation or remapping error.
+  [[nodiscard]] std::expected<void, WriteError> write_raw_attribute(
+      std::span<const std::byte> bytes, const AttributeSpec* spec, AttributeContext context,
+      const CodeAttributeContext* code, std::string_view path);
   /**
    * @brief Validate and serialize original constants and staged frame extensions.
    * @return Success or a constant-tag/reference/version/count error.
@@ -203,6 +222,7 @@ private:
   const ConstantPool& pool; ///< Borrowed owning class constant pool used for lookup and validation.
   ClassVersion version; ///< Exact class-file major and minor version.
   BudgetResource analysis_budget; ///< Shared writer analysis allocation budget.
+  std::optional<CompactConstantPool> compact_pool; ///< Writer-local pool built from emitted references.
   StackMapConstants stack_map_constants; ///< Writer-local constant-pool extension for frame reference names.
   WriteResult result; ///< Owned serialized bytes and diagnostics accumulated for the final result.
   BinaryWriter<std::vector<std::byte>> output; ///< Byte writer borrowing result.bytes.

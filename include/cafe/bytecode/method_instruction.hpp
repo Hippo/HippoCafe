@@ -182,9 +182,9 @@ struct InstructionLocation {
 /**
  * @brief A symbolic operand obtained by inspecting a field access, call, or dynamic load.
  *
- * Text borrows stable storage from the source class. Bootstrap argument spans borrow this
- * result's storage, which moves with it and survives edits to the source class. Keep both owners
- * alive while using any borrowed operand, and use the destination after moving the result.
+ * Text borrows storage from the source class until the pool is compacted. Bootstrap argument
+ * spans borrow this result's storage. Keep both owners alive while using any borrowed operand,
+ * and use the destination after moving the result.
  * Parsed bootstrap argument graphs can contain cycles.
  * @ingroup bytecode
  */

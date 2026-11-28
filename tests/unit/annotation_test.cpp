@@ -141,7 +141,7 @@ void verify_recovery(AttributeContext context, std::string_view name, std::span<
   ASSERT_EQ(compatible->diagnostics.size(), 1u);
   EXPECT_EQ(compatible->diagnostics.front().action, RecoveryAction::Dropped);
   EXPECT_EQ(compatible->diagnostics.front().code, DiagnosticCode::DroppedMalformedAttribute);
-  const auto output = write_class(compatible->class_file);
+  const auto output = write_class(compatible->class_file, {.constant_pool = ConstantPoolWritePolicy::Preserve});
   ASSERT_TRUE(output) << output.error().detail;
   EXPECT_EQ(output->bytes, fixture(context, name, std::nullopt));
   EXPECT_TRUE(read_class(output->bytes, strict_options()));
@@ -204,7 +204,7 @@ TEST(OpaqueAttributes, RejectsAnnotationDefaultOnOrdinaryMethod) {
   ASSERT_TRUE(compatible);
   ASSERT_EQ(compatible->diagnostics.size(), 1u);
   EXPECT_EQ(compatible->diagnostics.front().code, DiagnosticCode::InvalidAttributeContext);
-  const auto output = write_class(compatible->class_file);
+  const auto output = write_class(compatible->class_file, {.constant_pool = ConstantPoolWritePolicy::Preserve});
   ASSERT_TRUE(output);
   EXPECT_EQ(output->bytes, fixture(AttributeContext::Method, "AnnotationDefault", std::nullopt));
 }
@@ -228,7 +228,7 @@ TEST(OpaqueAttributes, ChecksStackMapOffsetsAndFrameTypes) {
   const auto input = fixture(AttributeContext::Code, "StackMapTable", bytes({0, 1, 66, 1}));
   const auto parsed = read_class(input, strict_options());
   ASSERT_TRUE(parsed) << parsed.error().detail;
-  const auto output = write_class(parsed->class_file, WriteOptions{.force_reencode = true});
+  const auto output = write_class(parsed->class_file, {.force_reencode = true, .constant_pool = ConstantPoolWritePolicy::Preserve});
   ASSERT_TRUE(output) << output.error().detail;
   EXPECT_EQ(output->bytes, input);
 }
@@ -260,7 +260,7 @@ TEST(OpaqueAttributes, BoundsDeepAnnotationNesting) {
   const auto accepted = read_class(input, limits);
   ASSERT_TRUE(accepted) << accepted.error().detail;
   EXPECT_TRUE(accepted->diagnostics.empty());
-  const auto output = write_class(accepted->class_file);
+  const auto output = write_class(accepted->class_file, {.constant_pool = ConstantPoolWritePolicy::Preserve});
   ASSERT_TRUE(output) << output.error().detail;
   EXPECT_EQ(output->bytes, input);
 }

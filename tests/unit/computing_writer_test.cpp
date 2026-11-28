@@ -97,7 +97,7 @@ TEST(ComputingWriter, SubroutinesOnlyUsePreservation) {
   const std::vector<char> bytes((std::istreambuf_iterator<char>(input)), {});
   const auto parsed = read_class(std::as_bytes(std::span(bytes)), {.mode = ParseMode::Strict});
   ASSERT_TRUE(parsed) << parsed.error().detail;
-  const auto preserve = write_class(parsed->class_file);
+  const auto preserve = write_class(parsed->class_file, {.constant_pool = ConstantPoolWritePolicy::Preserve});
   ASSERT_TRUE(preserve) << preserve.error().detail;
   EXPECT_TRUE(std::ranges::equal(preserve->bytes, std::as_bytes(std::span(bytes))));
   for (const auto mode : {CodeAnalysisMode::ComputeMaxs, CodeAnalysisMode::ComputeFrames}) {

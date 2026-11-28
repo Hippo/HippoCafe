@@ -28,7 +28,7 @@ int main(int argc, char** argv) {
   }
   for (const auto& warning : parsed->diagnostics)
     std::cerr << warning.path << " at byte " << warning.offset << ": " << warning.detail << '\n';
-  const auto written = cafe::write_class(parsed->class_file);
+  const auto written = cafe::write_class(parsed->class_file, {.constant_pool = cafe::ConstantPoolWritePolicy::Preserve});
   if (!written) {
     std::cerr << written.error().path << ": " << written.error().detail << '\n';
     return 1;

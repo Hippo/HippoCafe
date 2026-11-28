@@ -72,7 +72,8 @@ Opcode select_encoding(Instruction instruction, bool preserve) {
       break;
     }
     case OperandForm::ConstantByte:
-      if (instruction.constant_index()->value > 255 || hint == EncodingHint::Wide) // NOLINT(bugprone-unchecked-optional-access)
+      if (instruction.constant_index()->value > 255 || hint == EncodingHint::Wide || // NOLINT(bugprone-unchecked-optional-access)
+          BytecodeAccess::pinned_wide_ldc(instruction))
         return Opcode::LdcW;
       break;
     case OperandForm::BranchShort:

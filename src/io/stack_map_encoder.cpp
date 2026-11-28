@@ -117,6 +117,8 @@ void StackMapConstants::index_original_pool() {
 }
 
 std::expected<CpIndex, WriteError> StackMapConstants::utf8(std::string_view text, std::string_view path) {
+  if (compact)
+    return compact->utf8(text, path);
   index_original_pool();
   if (const auto existing = utf8_indices.find(text); existing != utf8_indices.end())
     return existing->second;
@@ -136,6 +138,11 @@ std::expected<CpIndex, WriteError> StackMapConstants::utf8(std::string_view text
 }
 
 std::expected<CpIndex, WriteError> StackMapConstants::class_reference(std::string_view name, std::string_view path) {
+  if (compact) {
+    if (!(name.starts_with('[') ? valid_field_descriptor(name) : valid_class_name(name)))
+      return write_error(WriteErrorKind::UnrepresentableFrame, path, "invalid reference in a stack-map frame");
+    return compact->class_reference(name, path);
+  }
   index_original_pool();
   if (const auto existing = class_indices.find(name); existing != class_indices.end())
     return existing->second;

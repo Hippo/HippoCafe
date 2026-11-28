@@ -26,6 +26,25 @@ ClassWriter::ClassWriter(const ClassFile& model, const WriteOptions& options, an
     stack_map_constants(pool, &analysis_budget), output(result.bytes) {
 }
 
+std::expected<void, WriteError> ClassWriter::write_reference(CpIndex index) {
+  if (compact_pool) {
+    const auto mapped = compact_pool->index(index);
+    if (!mapped)
+      return std::unexpected(mapped.error());
+    index = *mapped;
+  }
+  output.u2(static_cast<std::uint16_t>(index.value));
+  return {};
+}
+
+void ClassWriter::insert_pool_bytes(std::size_t offset, std::span<const std::byte> bytes) {
+  result.bytes.insert(result.bytes.begin() + static_cast<std::ptrdiff_t>(offset), bytes.begin(), bytes.end());
+  for (auto& diagnostic : result.diagnostics) {
+    if (diagnostic.offset >= offset)
+      diagnostic.offset += bytes.size();
+  }
+}
+
 std::expected<WriteResult, WriteError> ClassWriter::write() try {
   if (version.major < 45 || !version.has_legal_minor())
     return write_error(WriteErrorKind::UnsupportedDialect, "class.version", "unsupported declared class version");
@@ -50,18 +69,33 @@ std::expected<WriteResult, WriteError> ClassWriter::write() try {
   output.u4(CLASS_MAGIC);
   output.u2(version.minor);
   output.u2(version.major);
-  if (auto written = write_constant_pool(); !written)
+  if (options.constant_pool == ConstantPoolWritePolicy::Compact) {
+    std::span<const BootstrapMethod> bootstraps;
+    for (const auto& attribute : model.attributes()) {
+      if (const auto* table = attribute.get<BootstrapMethods>())
+        bootstraps = table->methods;
+    }
+    compact_pool.emplace(pool, version, is_module(version, model.access_flags()), bootstraps,
+                         std::pmr::get_default_resource());
+    stack_map_constants.use_compact_pool(*compact_pool);
+    if (auto reserved = compact_pool->reserve_narrow_constants(model.methods(), options.preserve_original_encodings); !reserved)
+      return std::unexpected(std::move(reserved.error()));
+  } else if (auto written = write_constant_pool(); !written) {
     return std::unexpected(std::move(written.error()));
+  }
   const auto constant_pool_end = output.size();
   output.u2(model.access_flags());
-  output.u2(model.this_class().value);
-  output.u2(model.super_class().value);
+  if (auto written = write_reference(model.this_class()); !written)
+    return std::unexpected(std::move(written.error()));
+  if (auto written = write_reference(model.super_class()); !written)
+    return std::unexpected(std::move(written.error()));
   output.u2(static_cast<std::uint16_t>(interfaces.size()));
   for (std::size_t i = 0; i < interfaces.size(); ++i) {
     if (!class_name(pool, interfaces[i]))
       return write_error(WriteErrorKind::InvalidConstantPoolReference, index_path("interfaces", i),
                          "interface index must name a non-array class");
-    output.u2(interfaces[i].value);
+    if (auto written = write_reference(interfaces[i]); !written)
+      return std::unexpected(std::move(written.error()));
   }
   if (auto written = write_members(model.fields()); !written)
     return std::unexpected(std::move(written.error()));
@@ -69,16 +103,19 @@ std::expected<WriteResult, WriteError> ClassWriter::write() try {
     return std::unexpected(std::move(written.error()));
   if (auto written = write_attributes(model.attributes(), {AttributeContext::Class, ""}); !written)
     return std::unexpected(std::move(written.error()));
-  if (const auto extra = stack_map_constants.bytes(); !extra.empty()) {
-    result.bytes.insert(result.bytes.begin() + static_cast<std::ptrdiff_t>(constant_pool_end),
-                        extra.begin(), extra.end());
+  if (compact_pool) {
+    std::optional<Diagnostic> invalid_utf8;
+    auto constants = compact_pool->finish(constant_pool_end, invalid_utf8);
+    if (!constants)
+      return std::unexpected(std::move(constants.error()));
+    insert_pool_bytes(constant_pool_end, *constants);
+    if (invalid_utf8)
+      result.diagnostics.insert(result.diagnostics.begin(), std::move(*invalid_utf8));
+  } else if (const auto extra = stack_map_constants.bytes(); !extra.empty()) {
+    insert_pool_bytes(constant_pool_end, extra);
     constexpr std::size_t CONSTANT_POOL_COUNT_OFFSET = 8;
     if (!output.patch_u2(CONSTANT_POOL_COUNT_OFFSET, stack_map_constants.count()))
       return write_error(WriteErrorKind::InvalidClassModel, "constant_pool", "could not finalize constant pool count");
-    for (auto& diagnostic : result.diagnostics) {
-      if (diagnostic.offset >= constant_pool_end)
-        diagnostic.offset += extra.size();
-    }
   }
   return std::move(result);
 } catch (const BudgetExceeded&) {
@@ -117,8 +154,10 @@ std::expected<void, WriteError> ClassWriter::write_members(std::span<const Membe
         return write_error(WriteErrorKind::InvalidClassModel, path, "concrete method lacks Code");
     }
     output.u2(member.access_flags());
-    output.u2(member.name_index().value);
-    output.u2(member.descriptor_index().value);
+    if (auto written = write_reference(member.name_index()); !written)
+      return written;
+    if (auto written = write_reference(member.descriptor_index()); !written)
+      return written;
     if (auto written = write_attributes(member.attributes(),
                                         {.context = METHOD ? AttributeContext::Method : AttributeContext::Field,
                                          .path = path,
@@ -144,6 +183,8 @@ std::expected<void, WriteError> ClassWriter::write_constant_pool() {
   for (const auto& attribute : model.attributes())
     if (const auto* bootstraps = attribute.get<BootstrapMethods>())
       bootstrap_count = bootstraps->methods.size();
+  if (bootstrap_count > MAX_COUNT)
+    return write_error(WriteErrorKind::AttributeTooLarge, "BootstrapMethods", "bootstrap method count does not fit u2");
 
   output.u2(static_cast<std::uint16_t>(pool.size()));
   bool invalid_utf8_reported = false;
@@ -163,45 +204,24 @@ std::expected<void, WriteError> ClassWriter::write_constant_pool() {
     if (dynamic_constant(entry->tag) && entry->first.value >= bootstrap_count)
       return fail(WriteErrorKind::InvalidConstantPoolReference, "invalid bootstrap method index");
 
-    output.u1(static_cast<std::uint8_t>(entry->tag));
-    switch (form) {
-      case CpForm::Utf8: {
-        const auto text = pool.utf8_bytes(index);
-        if (!text || text->size() > MAX_COUNT)
-          return fail(WriteErrorKind::InvalidClassModel, "invalid Utf8 constant size");
-        if (!invalid_utf8_reported && !pool.get_utf8(index)) {
-          invalid_utf8_reported = true;
-          result.diagnostics.push_back({Severity::Warning, DiagnosticCode::InvalidModifiedUtf8, output.size() - 1,
-                                        index_path("constant_pool", i), "retained invalid modified UTF-8 bytes",
-                                        RecoveryAction::RetainedRaw});
-        }
-        output.u2(static_cast<std::uint16_t>(text->size()));
-        output.bytes(std::as_bytes(std::span(*text)));
-        break;
+    std::string_view text;
+    if (form == CpForm::Utf8) {
+      const auto bytes = pool.utf8_bytes(index);
+      if (!bytes || bytes->size() > MAX_COUNT)
+        return fail(WriteErrorKind::InvalidClassModel, "invalid Utf8 constant size");
+      text = *bytes;
+      if (!invalid_utf8_reported && !pool.get_utf8(index)) {
+        invalid_utf8_reported = true;
+        result.diagnostics.push_back({Severity::Warning, DiagnosticCode::InvalidModifiedUtf8, output.size(),
+                                      index_path("constant_pool", i), "retained invalid modified UTF-8 bytes",
+                                      RecoveryAction::RetainedRaw});
       }
-      case CpForm::Bits32:
-        output.u4(static_cast<std::uint32_t>(entry->bits));
-        break;
-      case CpForm::Bits64:
-        if (i + 1 >= pool.size() || pool.get(CpIndex{static_cast<std::uint16_t>(i + 1)}))
-          return fail(WriteErrorKind::InvalidClassModel, "Long or Double is missing its reserved slot");
-        output.u8(entry->bits);
-        ++i;
-        break;
-      case CpForm::Index:
-        output.u2(entry->first.value);
-        break;
-      case CpForm::Pair:
-        output.u2(entry->first.value);
-        output.u2(entry->second.value);
-        break;
-      case CpForm::Handle:
-        output.u1(entry->reference_kind);
-        output.u2(entry->first.value);
-        break;
-      case CpForm::Invalid:
-        return fail(WriteErrorKind::InvalidClassModel, "unknown constant-pool tag");
+    } else if (form == CpForm::Bits64) {
+      if (i + 1 >= pool.size() || pool.get(CpIndex{static_cast<std::uint16_t>(i + 1)}))
+        return fail(WriteErrorKind::InvalidClassModel, "Long or Double is missing its reserved slot");
+      ++i;
     }
+    write_constant(output, *entry, form, text);
   }
   return {};
 }

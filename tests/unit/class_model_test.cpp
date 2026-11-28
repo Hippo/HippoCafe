@@ -22,7 +22,10 @@ namespace cafe {
 namespace {
 
 const ReadOptions STRICT{.mode = ParseMode::Strict};
+const WriteOptions PRESERVE{.constant_pool = ConstantPoolWritePolicy::Preserve};
 const WriteOptions SUPPLIED{.code_policy = CodeWritePolicy::CallerSuppliedMetadata};
+const WriteOptions SUPPLIED_PRESERVE{.code_policy = CodeWritePolicy::CallerSuppliedMetadata,
+                                     .constant_pool = ConstantPoolWritePolicy::Preserve};
 
 ClassFile fixture(ClassVersion version = {52, 0}) {
   return ClassFile::create(version, "Fixture").value();
@@ -493,7 +496,7 @@ TEST(ConstantPool, PreservesDuplicateIndicesAndBitsAndDecodesModifiedUtf8) {
     indices.push_back(pool.append(number).value());
   EXPECT_EQ(saved_view, SPECIAL);
   EXPECT_FALSE(pool.get(CpIndex{0}));
-  const auto output = write_class(model);
+  const auto output = write_class(model, PRESERVE);
   ASSERT_TRUE(output) << output.error().detail;
   const auto parsed = read_class(output->bytes, STRICT);
   ASSERT_TRUE(parsed) << parsed.error().detail;
@@ -518,9 +521,145 @@ TEST(ConstantPool, PreservesDuplicateIndicesAndBitsAndDecodesModifiedUtf8) {
   EXPECT_EQ(pool.append_utf8("\xc1\x81").error(), CpError::InvalidModifiedUtf8);
 }
 
+TEST(ConstantPool, CompactsEquivalentStringsAndKeepsLoadWidths) {
+  auto model = fixture();
+  auto& code = with_return(model).code();
+  const auto anchor = code.at(0);
+  auto& pool = model.constant_pool();
+  const auto first = pool.append({CpTag::String, 0, text(model, "Hello"), {}}).value();
+  for (unsigned i = 0; i < 256; ++i)
+    (void)text(model, "unused filler");
+  const auto duplicate = pool.append({CpTag::String, 0, text(model, "Hello"), {}}).value();
+  const auto other = pool.append({CpTag::String, 0, text(model, "World"), {}}).value();
+  for (const auto index : {first, duplicate, other}) {
+    ASSERT_TRUE(code.insert_before(anchor, Instruction::constant(Opcode::Ldc, index).value()));
+    ASSERT_TRUE(code.insert_before(anchor, Instruction::pop()));
+  }
+
+  const auto written = write_class(model, {.code_analysis = CodeAnalysisMode::ComputeMaxs});
+  ASSERT_TRUE(written) << written.error().detail;
+  const auto reopened = read_class(written->bytes, STRICT);
+  ASSERT_TRUE(reopened) << reopened.error().detail;
+  const auto& output = reopened->class_file;
+  const auto& emitted = output.methods()[0].code()->code();
+  const auto load = emitted.get(emitted.at(0)).value();
+  const auto wide = emitted.get(emitted.at(2)).value();
+  const auto distinct = emitted.get(emitted.at(4)).value();
+  EXPECT_EQ(load.constant_index(), wide.constant_index());
+  EXPECT_NE(load.constant_index(), distinct.constant_index());
+  EXPECT_EQ(load.encoding_hint(), EncodingHint::Explicit);
+  EXPECT_EQ(wide.encoding_hint(), EncodingHint::Wide);
+  EXPECT_LT(output.constant_pool().size(), 20u);
+}
+
+TEST(ConstantPool, AutomaticallyReclaimsSlotsAfterRepeatedReplacements) {
+  auto model = fixture();
+  auto editor = model.add_method(0x0009, "value", "()Ljava/lang/String;").value();
+  ASSERT_TRUE(editor.add_code());
+  const auto load = editor.append(insn::ldc(std::string_view("original"))).value();
+  const auto ret = editor.append(Instruction::simple(Opcode::AReturn).value()).value();
+  const auto label = editor.label_before(ret).value();
+
+  constexpr unsigned REPLACEMENTS = 33'000;
+  bool reclaimed = false;
+  for (unsigned i = 0; i < REPLACEMENTS; ++i) {
+    const auto value = std::to_string(i);
+    const auto before = model.constant_pool().size();
+    ASSERT_TRUE(editor.replace(load, insn::ldc(std::string_view(value)))) << i;
+    reclaimed |= model.constant_pool().size() < before;
+  }
+  EXPECT_TRUE(reclaimed);
+  EXPECT_EQ(editor.code()->code().label_position(label), CodePosition{ret});
+  const auto written = write_class(model, {.code_analysis = CodeAnalysisMode::ComputeMaxs});
+  ASSERT_TRUE(written) << written.error().detail;
+  const auto reopened = read_class(written->bytes, STRICT);
+  ASSERT_TRUE(reopened) << reopened.error().detail;
+  const auto& emitted_pool = reopened->class_file.constant_pool();
+  EXPECT_LT(emitted_pool.size(), 20u);
+  const auto& emitted = reopened->class_file.methods()[0].code()->code();
+  const auto operand = emitted.get(emitted.at(0))->constant_index().value();
+  const auto* constant = emitted_pool.get(operand);
+  ASSERT_NE(constant, nullptr);
+  EXPECT_EQ(constant->tag, CpTag::String);
+  EXPECT_EQ(emitted_pool.get_utf8(constant->first), std::to_string(REPLACEMENTS - 1));
+}
+
+TEST(ConstantPool, InMemoryCompactionKeepsCallerSuppliedCodeWidths) {
+  auto model = fixture();
+  auto editor = model.add_method(0x0009, "value", "()I").value();
+  ASSERT_TRUE(editor.add_code());
+  for (unsigned i = 0; i < 256; ++i)
+    (void)text(model, "unused");
+  const auto load = editor.append(insn::ldc(41)).value();
+  ASSERT_GT(editor.code()->code().get(load)->constant_index()->value, UINT8_MAX);
+  ASSERT_TRUE(editor.append(Instruction::simple(Opcode::IReturn).value()));
+  editor.code()->supply_metadata(1, 0, {}, {}, false);
+
+  const auto compacted = model.compact_constant_pool();
+  ASSERT_TRUE(compacted) << compacted.error().detail;
+  EXPECT_GE(*compacted, 256u);
+  EXPECT_LE(editor.code()->code().get(load)->constant_index()->value, UINT8_MAX);
+  const auto output = write_class(model, {.code_policy = CodeWritePolicy::CallerSuppliedMetadata,
+                                          .preserve_original_encodings = false,
+                                          .constant_pool = ConstantPoolWritePolicy::Preserve});
+  ASSERT_TRUE(output) << output.error().detail;
+  const auto parsed = read_class(output->bytes, STRICT);
+  ASSERT_TRUE(parsed) << parsed.error().detail;
+  const auto& code = parsed->class_file.methods()[0].code()->code();
+  EXPECT_EQ(code.get(code.at(0))->encoding_hint(), EncodingHint::Wide);
+}
+
+TEST(ConstantPool, ChecksUtf8LengthOnlyForEmittedConstants) {
+  auto model = fixture();
+  auto editor = model.add_method(0x0009, "value", "()Ljava/lang/String;").value();
+  ASSERT_TRUE(editor.add_code());
+  const std::string oversized(std::size_t{UINT16_MAX} + 1, 'x');
+  const auto load = editor.append(insn::ldc(std::string_view(oversized))).value();
+  ASSERT_TRUE(editor.append(Instruction::simple(Opcode::AReturn).value()));
+  const WriteOptions computed{.code_analysis = CodeAnalysisMode::ComputeMaxs};
+  const auto rejected = write_class(model, computed);
+  ASSERT_FALSE(rejected);
+  EXPECT_EQ(rejected.error().kind, WriteErrorKind::InvalidClassModel);
+  EXPECT_EQ(rejected.error().detail, "Utf8 constant length does not fit u2");
+  ASSERT_TRUE(editor.replace(load, insn::ldc(std::string_view("short"))));
+  EXPECT_TRUE(write_class(model, computed));
+}
+
+TEST(ConstantPool, PrunesUnusedBootstrapRowsAndArguments) {
+  auto model = fixture({55, 0});
+  auto& code = with_return(model).code();
+  auto editor = model.edit_method(0).value();
+  const auto anchor = code.at(0);
+  const std::array unused_args{BootstrapArgument{std::string_view("unused bootstrap argument")}};
+  const auto removed = editor.insert_before(
+      anchor, DynamicConstant{"discarded", "I", {TEST_BOOTSTRAP.handle, unused_args}}).value();
+  ASSERT_TRUE(editor.insert_before(anchor, DynamicConstant{"kept", "I", TEST_BOOTSTRAP}));
+  ASSERT_TRUE(editor.insert_before(anchor, Instruction::pop()));
+  ASSERT_TRUE(editor.erase(removed));
+
+  const auto written = write_class(model, {.code_analysis = CodeAnalysisMode::ComputeMaxs});
+  ASSERT_TRUE(written) << written.error().detail;
+  const auto reopened = read_class(written->bytes, STRICT);
+  ASSERT_TRUE(reopened) << reopened.error().detail;
+  const auto& output = reopened->class_file;
+  ASSERT_EQ(output.attributes().size(), 1u);
+  ASSERT_EQ(output.attributes()[0].get<BootstrapMethods>()->methods.size(), 1u);
+  EXPECT_TRUE(output.attributes()[0].get<BootstrapMethods>()->methods[0].arguments.empty());
+  for (std::size_t i = 1; i < output.constant_pool().size(); ++i)
+    EXPECT_NE(output.constant_pool().get_utf8(CpIndex{static_cast<std::uint16_t>(i)}), "unused bootstrap argument");
+
+  const auto compacted = model.compact_constant_pool();
+  ASSERT_TRUE(compacted) << compacted.error().detail;
+  EXPECT_GT(*compacted, 0u);
+  ASSERT_EQ(model.attributes()[0].get<BootstrapMethods>()->methods.size(), 1u);
+  const auto kept = model.inspect_instruction({0, code.at(0)});
+  ASSERT_TRUE(kept);
+  EXPECT_EQ(std::get<DynamicConstant>(kept->operand()).name, "kept");
+}
+
 TEST(ConstantPool, HandlesUnknownTagsWrongReferencesAndTerminalLong) {
   auto model = fixture();
-  const auto output = write_class(model).value();
+  const auto output = write_class(model, PRESERVE).value();
   auto bytes = output.bytes;
   bytes[10] = std::byte{99}; // tag of first Utf8
   EXPECT_EQ(read_class(bytes).error().kind, ReadErrorKind::UnknownConstantTag);
@@ -535,13 +674,13 @@ TEST(ConstantPool, HandlesUnknownTagsWrongReferencesAndTerminalLong) {
   invalid.tag = CpTag::Class;
   invalid.first = model.this_class();
   ASSERT_TRUE(model.constant_pool().append(invalid));
-  EXPECT_EQ(write_class(model).error().kind, WriteErrorKind::InvalidConstantPoolReference);
+  EXPECT_EQ(write_class(model, PRESERVE).error().kind, WriteErrorKind::InvalidConstantPoolReference);
 }
 
 TEST(ConstantPool, PreservesMalformedUnusedModifiedUtf8WithDiagnostics) {
   auto model = fixture();
   const auto index = text(model, "zyx-unused-utf8");
-  auto bytes = write_class(model).value().bytes;
+  auto bytes = write_class(model, PRESERVE).value().bytes;
   constexpr std::array PREFIX{std::byte{'z'}, std::byte{'y'}, std::byte{'x'}};
   const auto found = std::ranges::search(bytes, PREFIX);
   ASSERT_FALSE(found.empty());
@@ -554,7 +693,7 @@ TEST(ConstantPool, PreservesMalformedUnusedModifiedUtf8WithDiagnostics) {
   ASSERT_EQ(compatible->diagnostics.size(), 1u);
   EXPECT_EQ(compatible->class_file.constant_pool().get_utf8(index).error(), CpError::InvalidModifiedUtf8);
   EXPECT_EQ(compatible->class_file.constant_pool().utf8_bytes(index).value().front(), '\0');
-  const auto wrote = write_class(compatible->class_file);
+  const auto wrote = write_class(compatible->class_file, PRESERVE);
   ASSERT_TRUE(wrote) << wrote.error().detail;
   EXPECT_EQ(wrote->bytes, bytes);
   EXPECT_EQ(wrote->diagnostics.size(), 1u);
@@ -566,7 +705,7 @@ TEST(ConstantPool, VersionInapplicableTagsHaveControlledWriting) {
   type.tag = CpTag::MethodType;
   type.first = text(model, "()V");
   ASSERT_TRUE(model.constant_pool().append(type));
-  auto bytes = write_class(model).value().bytes;
+  auto bytes = write_class(model, PRESERVE).value().bytes;
   bytes[7] = std::byte{49};
   const auto strict = read_class(bytes, STRICT);
   ASSERT_FALSE(strict);
@@ -575,7 +714,7 @@ TEST(ConstantPool, VersionInapplicableTagsHaveControlledWriting) {
   ASSERT_TRUE(compatible) << compatible.error().detail;
   ASSERT_EQ(compatible->diagnostics.size(), 1u);
   EXPECT_EQ(compatible->diagnostics[0].action, RecoveryAction::RetainedRaw);
-  EXPECT_EQ(write_class(compatible->class_file).error().kind, WriteErrorKind::UnsupportedDialect);
+  EXPECT_EQ(write_class(compatible->class_file, PRESERVE).error().kind, WriteErrorKind::UnsupportedDialect);
 }
 
 TEST(ClassOwnership, MovesSourceWithoutCopyingAndPreservesOpaquePayloadOnAppend) {
@@ -585,7 +724,7 @@ TEST(ClassOwnership, MovesSourceWithoutCopyingAndPreservesOpaquePayloadOnAppend)
     (void)with_return(model);
     const auto name = text(model, "Vendor");
     ASSERT_TRUE(model.add_attribute(Attribute::raw(name, {std::byte{0}, std::byte{4}})));
-    auto written = write_class(model, SUPPLIED).value();
+    auto written = write_class(model, SUPPLIED_PRESERVE).value();
     const auto* source = written.bytes.data();
     auto read = read_class(std::move(written.bytes), {.upstream_resource = &upstream});
     ASSERT_TRUE(read) << read.error().detail;
@@ -598,7 +737,17 @@ TEST(ClassOwnership, MovesSourceWithoutCopyingAndPreservesOpaquePayloadOnAppend)
     const auto original = raw->bytes(moved).value();
     EXPECT_EQ(original.data(), source + raw->source_slice()->offset);
     (void)text(moved, "appended");
-    const auto output = write_class(moved).value();
+    const auto size = moved.constant_pool().size();
+    const auto revision = moved.declaration_revision();
+    const auto reclaimed = moved.compact_constant_pool();
+    ASSERT_FALSE(reclaimed);
+    EXPECT_EQ(reclaimed.error().kind, WriteErrorKind::UnsafeOpaqueAttribute);
+    EXPECT_EQ(moved.constant_pool().size(), size);
+    EXPECT_EQ(moved.declaration_revision(), revision);
+    const auto compact = write_class(moved);
+    ASSERT_FALSE(compact);
+    EXPECT_EQ(compact.error().kind, WriteErrorKind::UnsafeOpaqueAttribute);
+    const auto output = write_class(moved, PRESERVE).value();
     const auto reparsed = read_class(output.bytes, STRICT);
     ASSERT_TRUE(reparsed);
     const auto& after = reparsed->class_file;
@@ -668,7 +817,7 @@ TEST(ClassReader, DropsInvalidNamesDuplicateAndMalformedBodiesWithBoundedDiagnos
   const auto file_name = text(model, "Fixture.java");
   const auto unknown = text(model, "UnknownAttribute");
   const auto deprecated = text(model, "Deprecated");
-  auto bytes = write_class(model).value().bytes;
+  auto bytes = write_class(model, PRESERVE).value().bytes;
   bytes.resize(bytes.size() - 2);
   detail::BinaryWriter wire(bytes);
   wire.u2(5);
@@ -699,7 +848,7 @@ TEST(ClassReader, DropsInvalidNamesDuplicateAndMalformedBodiesWithBoundedDiagnos
   EXPECT_EQ(read->diagnostics[1].code, DiagnosticCode::DuplicateAttribute);
   EXPECT_EQ(read->diagnostics[2].code, DiagnosticCode::DiagnosticsSuppressed);
   EXPECT_EQ(read->class_file.validity(), ClassValidity::ParsedRecovered);
-  const auto wrote = write_class(read->class_file).value();
+  const auto wrote = write_class(read->class_file, PRESERVE).value();
   const auto reparsed = read_class(wrote.bytes, STRICT);
   ASSERT_TRUE(reparsed);
   const auto attributes = reparsed->class_file.attributes();
@@ -730,7 +879,7 @@ TEST(ClassReader, DropsMalformedFieldConstantValueAndPreservesNeighbors) {
   const auto before = text(model, "VendorBefore");
   const auto value = text(model, "ConstantValue");
   const auto after = text(model, "VendorAfter");
-  auto bytes = write_class(model).value().bytes;
+  auto bytes = write_class(model, PRESERVE).value().bytes;
   bytes.resize(bytes.size() - 6);
   detail::BinaryWriter wire(bytes);
   wire.u2(1);
@@ -755,7 +904,7 @@ TEST(ClassReader, DropsMalformedFieldConstantValueAndPreservesNeighbors) {
   const auto compatible = read_class(bytes);
   ASSERT_TRUE(compatible) << compatible.error().detail;
   ASSERT_EQ(compatible->diagnostics.size(), 1u);
-  const auto repaired = write_class(compatible->class_file).value();
+  const auto repaired = write_class(compatible->class_file, PRESERVE).value();
   const auto reparsed = read_class(repaired.bytes, STRICT);
   ASSERT_TRUE(reparsed) << reparsed.error().detail;
   ASSERT_EQ(reparsed->class_file.fields().size(), 1u);
@@ -775,7 +924,7 @@ TEST(ClassReader, DuplicateMembersAreComparedByUtf8Contents) {
     const auto type2 = text(model, method ? "()V" : "I");
     ASSERT_NE(name1, name2);
     ASSERT_NE(type1, type2);
-    auto bytes = write_class(model).value().bytes;
+    auto bytes = write_class(model, PRESERVE).value().bytes;
     bytes.resize(bytes.size() - 6);
     detail::BinaryWriter wire(bytes);
     if (method)
@@ -815,7 +964,7 @@ TEST(ClassReader, DuplicateMembersAreComparedByUtf8Contents) {
 TEST(ClassReader, GatesClassDependentAttributesBeforeReadingTheirBodies) {
   auto model = ClassFile::create({61, 0}, "Final", "java/lang/Object", 0x0031).value();
   const auto permitted = text(model, "PermittedSubclasses");
-  const auto original = write_class(model).value().bytes;
+  const auto original = write_class(model, PRESERVE).value().bytes;
   auto bytes = original;
   bytes.back() = std::byte{1}; // one class attribute
   detail::BinaryWriter wire(bytes);
@@ -828,7 +977,7 @@ TEST(ClassReader, GatesClassDependentAttributesBeforeReadingTheirBodies) {
   ASSERT_TRUE(compatible);
   ASSERT_EQ(compatible->diagnostics.size(), 1u);
   EXPECT_EQ(compatible->diagnostics[0].code, DiagnosticCode::InvalidAttributeContext);
-  EXPECT_EQ(write_class(compatible->class_file).value().bytes, original);
+  EXPECT_EQ(write_class(compatible->class_file, PRESERVE).value().bytes, original);
   ASSERT_TRUE(model.add_attribute(Attribute::raw(permitted, {std::byte{0}, std::byte{0}})));
   EXPECT_EQ(write_class(model).error().kind, WriteErrorKind::InvalidClassModel);
 }
@@ -900,7 +1049,7 @@ TEST(ClassModel, ErasingMembersPreservesOrderAndSymbolicIndices) {
                                                   CpEntry{CpTag::NameAndType, 0, model.methods()[1].name_index(), model.methods()[1].descriptor_index()})
                              .value();
   const auto reference = model.constant_pool().append(CpEntry{CpTag::Methodref, 0, model.this_class(), signature}).value();
-  const auto input = write_class(model, SUPPLIED).value().bytes;
+  const auto input = write_class(model, SUPPLIED_PRESERVE).value().bytes;
   auto parsed = read_class(input, STRICT);
   ASSERT_TRUE(parsed);
   auto& file = parsed->class_file;
@@ -918,7 +1067,7 @@ TEST(ClassModel, ErasingMembersPreservesOrderAndSymbolicIndices) {
   EXPECT_EQ(file.find_field("last", "I"), 1u);
   EXPECT_EQ(file.find_method("last", "()V"), 1u);
 
-  const auto written = write_class(file);
+  const auto written = write_class(file, PRESERVE);
   ASSERT_TRUE(written) << written.error().detail;
   const auto roundtrip = read_class(written->bytes, STRICT);
   ASSERT_TRUE(roundtrip) << roundtrip.error().detail;
@@ -978,7 +1127,7 @@ TEST(CodeWriting, RequiresFreshExplicitMetadataAndRejectsOpaqueOffsetData) {
   (void)with_return(model);
   const auto custom = text(model, "VendorOffsets");
   const auto frames = text(model, "StackMapTable");
-  const auto golden = write_class(model, SUPPLIED).value().bytes;
+  const auto golden = write_class(model, SUPPLIED_PRESERVE).value().bytes;
   auto read = read_class(golden, STRICT);
   ASSERT_TRUE(read);
   auto& parsed = read->class_file;
@@ -1020,7 +1169,7 @@ TEST(CodeWriting, CanonicalEncodingRequiresMetadataWhenBoundariesChange) {
   const auto name = text(model, "run");
   const auto descriptor = text(model, "(I)V");
   const auto code_name = text(model, "Code");
-  auto bytes = write_class(model).value().bytes;
+  auto bytes = write_class(model, PRESERVE).value().bytes;
   bytes.resize(bytes.size() - 4); // methods_count and attributes_count
   detail::BinaryWriter wire(bytes);
   wire.u2(1);
@@ -1044,7 +1193,7 @@ TEST(CodeWriting, CanonicalEncodingRequiresMetadataWhenBoundariesChange) {
   auto read = read_class(bytes, STRICT);
   ASSERT_TRUE(read) << read.error().detail;
   auto& parsed = read->class_file;
-  EXPECT_EQ(write_class(parsed, {.force_reencode = true}).value().bytes, bytes);
+  EXPECT_EQ(write_class(parsed, {.force_reencode = true, .constant_pool = ConstantPoolWritePolicy::Preserve}).value().bytes, bytes);
   EXPECT_EQ(write_class(parsed, {.preserve_original_encodings = false}).error().kind, WriteErrorKind::StaleCodeMetadata);
   const WriteOptions canonical{.code_policy = CodeWritePolicy::CallerSuppliedMetadata,
                                .preserve_original_encodings = false};

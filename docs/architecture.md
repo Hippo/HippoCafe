@@ -31,11 +31,12 @@ Declaration order ensures the resources outlive their containers. Move construct
 transfers ownership without relocating that storage; assignment is deliberately
 restricted for allocator-bound model objects.
 
-Constant-pool indices never change. Long and double constants occupy two slots.
+Constant-pool indices remain stable between model compactions. Long and double constants occupy two slots.
 Numeric payloads preserve their exact bits. Original modified UTF-8 views borrow the
 source; programmatic UTF-8 appends use separately allocated stable buffers, including
 short strings. Entry pointers can be invalidated by pool growth even though string
-views and indices remain stable.
+views and indices remain stable across appends. Model compaction stages a replacement
+pool and updated references before publishing either change.
 
 Mutable buffers allocate directly through the budget resource, so failed speculative
 decodes and discarded payloads release their charged storage. The parser translates
@@ -80,6 +81,11 @@ that instruction's labels. `insert_before_and_redirect_branches` rewrites existi
 jumps and switch operands to use a new entry label. `insert_at` rebinds its selected
 label. Erasure requires every removed instruction to be free of bound labels.
 
+If a symbolic instruction or exception-handler edit runs out of pool slots, the
+retry uses a compacted pool with any pending raw operands marked as additional roots.
+The original pool stays available to borrowed strings until the edit succeeds.
+A failed retry restores the indices and payloads from the original model.
+
 ## Parsing, preservation, and emission
 
 Binary readers use bounded spans and explicit big-endian operations. Attribute
@@ -88,9 +94,13 @@ location rules; codecs do not attempt to interpret version-inapplicable bodies.
 Optional malformed data can be dropped in compatible mode, while essential failures
 remain fatal unless a fully framed Code body qualifies for explicit opaque recovery.
 
-The writer retains constant-pool indices and attribute order. Unchanged Code can use
-its original bytes, avoiding unnecessary reconstruction of verifier/debug metadata.
-Re-encoding validates operands, chooses local/load widths, resolves labels, and
+The writer allocates a separate constant pool from the references in emitted
+instructions, declarations, and attributes. It assigns slots to narrow `ldc`
+operands first so relinking keeps the chosen bytecode offsets. It preserves distinct
+dynamic entries and follows their reachable bootstrap arguments.
+Selecting index preservation allows unchanged Code to use its original bytes.
+
+Re-encoding validates operands, chooses local and load widths, resolves labels, and
 iterates branch layout to convergence. Computed frame emission can expand conditional
 branches and add the resulting frame boundaries. Every offset-bearing attribute must
 be safely remapped or explicitly dropped with a diagnostic.

@@ -68,6 +68,28 @@ struct BytecodeAccess {
     return value;
   }
 
+  /// Update a constant operand while retaining the width of an existing ldc.
+  /// @param value Constant-bearing instruction.
+  /// @param index Replacement model constant index.
+  /// @return Instruction with the remapped operand and compatible encoding.
+  static Instruction with_constant_index(Instruction value, CpIndex index) noexcept {
+    if (value.operation == Opcode::Ldc && value.operand_bits > 255 && index.value <= 255)
+      value.secondary = 1;
+    value.operand_bits = index.value;
+    return value;
+  }
+
+  /// @param value Instruction being laid out.
+  /// @return Whether model compaction pinned this ldc to its prior wide encoding.
+  static bool pinned_wide_ldc(Instruction value) noexcept {
+    return value.operation == Opcode::Ldc && value.secondary != 0;
+  }
+
+  /// Exchange constant-bearing instructions with their saved equivalents.
+  /// @param code Method to update.
+  /// @param entries Replacements addressed by live instruction handles.
+  static void swap_constant_instructions(MethodCode& code, std::span<InstructionEntry> entries) noexcept;
+
   /**
    * @brief Read the owning method's label/switch identity scope.
    * @param code Decoded instruction sequence or associated Code attribute.

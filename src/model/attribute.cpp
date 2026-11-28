@@ -23,16 +23,31 @@ RawAttribute::RawAttribute(SourceSlice slice) noexcept : storage(slice) {
 RawAttribute::RawAttribute(std::vector<std::byte> bytes) noexcept : storage(std::move(bytes)) {
 }
 
-// Storage is only constructed, copied, or moved. Both alternatives have nonthrowing
+RawAttribute::RawAttribute(SourceSlice source, std::vector<std::byte> bytes)
+    : storage(std::make_shared<const RemappedPayload>(RemappedPayload{source, std::move(bytes)})) {
+}
+
+std::optional<std::span<const std::byte>> RawAttribute::bytes(const ClassFile& owner) const noexcept {
+  return bytes(owner.source_bytes());
+}
+
+// Storage is only constructed, copied, or moved. All alternatives have nonthrowing
 // moves, so variant stages a potentially throwing vector copy before changing alternatives.
 // NOLINTNEXTLINE(bugprone-exception-escape)
-std::optional<std::span<const std::byte>> RawAttribute::bytes(const ClassFile& owner) const noexcept {
-  if (const auto* slice = source_slice())
-    return owner.source_slice(*slice);
+std::optional<std::span<const std::byte>> RawAttribute::bytes(std::span<const std::byte> source) const noexcept {
+  if (const auto* remapped = std::get_if<std::shared_ptr<const RemappedPayload>>(&storage))
+    return *remapped ? std::optional{std::span<const std::byte>((*remapped)->bytes)} : std::nullopt;
+  if (const auto* slice = source_slice()) {
+    if (slice->offset > source.size() || slice->length > source.size() - slice->offset)
+      return std::nullopt;
+    return source.subspan(slice->offset, slice->length);
+  }
   return std::span<const std::byte>(std::get<std::vector<std::byte>>(storage));
 }
 
 const SourceSlice* RawAttribute::source_slice() const noexcept {
+  if (const auto* remapped = std::get_if<std::shared_ptr<const RemappedPayload>>(&storage))
+    return *remapped ? &(*remapped)->source : nullptr;
   return std::get_if<SourceSlice>(&storage);
 }
 

@@ -279,15 +279,15 @@ std::expected<void, WriteError> ClassWriter::write_analyzed_code(
   auto max_locals = *needed_locals;
   std::uint16_t max_stack = 0;
   std::pmr::monotonic_buffer_resource scratch(&analysis_budget);
-  // CP extension for frames is append-only, so these choices of ldc width
-  // remain valid when the staged pool entries are committed.
+  // Lay out and analyze against the model's indices. Output remapping preserves
+  // the chosen widths and happens only when the code array is copied.
   auto encoded = encode_code(instructions, version, pool, max_locals,
                              options.preserve_original_encodings, &scratch, path, frames);
   if (!encoded)
     return std::unexpected(std::move(encoded.error()));
   const auto original_bytes = code.original ? model.source_slice(code.original->code) : std::nullopt;
   const bool rewritten = !original_bytes || instructions.edited() || code.original_handlers || code.supplied_metadata ||
-                         !std::ranges::equal(*original_bytes, encoded->bytes());
+                         !encoded->matches_source(*original_bytes, instructions, code.original && code.original->pool_remapped);
 
   CpIndex stack_map_name;
   std::pmr::vector<std::byte> stack_map(&scratch);
@@ -392,13 +392,12 @@ std::expected<void, WriteError> ClassWriter::write_analyzed_code_attributes(
   const bool supplied = code.supplied_metadata && code.supplied_metadata->revision == code.instructions.revision() &&
                         code.supplied_metadata->preserve_original_encodings == options.preserve_original_encodings &&
                         !encoded.has_expanded_conditionals();
-  const auto emit = [&](CpIndex name, std::span<const std::byte> bytes) -> std::expected<void, WriteError> {
+  const auto emit_header = [&](CpIndex name, std::span<const std::byte> bytes) -> std::expected<void, WriteError> {
     if (count >= MAX_COUNT || bytes.size() > std::numeric_limits<std::uint32_t>::max())
       return write_error(WriteErrorKind::AttributeTooLarge, path, "Code attribute count or payload exceeds the class-file limit");
     ++count;
-    output.u2(name.value);
+    output.u2(static_cast<std::uint16_t>(name.value));
     output.u4(static_cast<std::uint32_t>(bytes.size()));
-    output.bytes(bytes);
     return {};
   };
 
@@ -480,8 +479,10 @@ std::expected<void, WriteError> ClassWriter::write_analyzed_code_attributes(
       already_seen = true;
       if (replace_frames && spec->kind == AttributeKind::StackMapTable) {
         if (stack_map_name) {
-          if (auto written = emit(attribute.name_index(), stack_map); !written)
+          const auto output_name = compact_pool ? stack_map_name : attribute.name_index();
+          if (auto written = emit_header(output_name, stack_map); !written)
             return written;
+          output.bytes(stack_map);
           stack_map_name = {};
         }
         continue;
@@ -502,6 +503,13 @@ std::expected<void, WriteError> ClassWriter::write_analyzed_code_attributes(
       return {};
     };
     const bool anchored = raw->source_slice() || code.owned_origin_code_size.has_value();
+    if (compact_pool && !spec) {
+      if (auto handled = unsafe(WriteErrorKind::UnsafeOpaqueAttribute,
+                                "opaque Code attribute may refer to original constant-pool indices. Use ConstantPoolWritePolicy::Preserve");
+          !handled)
+        return handled;
+      continue;
+    }
     if (rewritten && (!spec || (!anchored && !supplied))) {
       if (auto handled = unsafe(WriteErrorKind::UnsafeOpaqueAttribute,
                                 "code attribute may depend on stale offsets or handler indices");
@@ -534,12 +542,22 @@ std::expected<void, WriteError> ClassWriter::write_analyzed_code_attributes(
         continue;
       }
     }
-    if (auto written = emit(attribute.name_index(), final_bytes); !written)
+    auto name_index = attribute.name_index();
+    if (compact_pool) {
+      const auto mapped = compact_pool->index(name_index);
+      if (!mapped)
+        return std::unexpected(mapped.error());
+      name_index = *mapped;
+    }
+    if (auto written = emit_header(name_index, final_bytes); !written)
+      return written;
+    if (auto written = write_raw_attribute(final_bytes, spec, AttributeContext::Code, &context, attribute_path); !written)
       return written;
   }
   if (stack_map_name) {
-    if (auto written = emit(stack_map_name, stack_map); !written)
+    if (auto written = emit_header(stack_map_name, stack_map); !written)
       return written;
+    output.bytes(stack_map);
   }
   if (!output.patch_u2(count_offset, static_cast<std::uint16_t>(count)))
     return write_error(WriteErrorKind::InvalidCodeLayout, path, "could not finalize Code attribute count");

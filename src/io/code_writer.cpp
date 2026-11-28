@@ -41,7 +41,7 @@ std::expected<void, WriteError> ClassWriter::write_code(
   const auto& original = code.original;
   const bool rewritten = !original || code.instructions.edited() || code.supplied_metadata || code.original_handlers;
   const bool force = options.force_reencode || !options.preserve_original_encodings;
-  if (!rewritten && !force) {
+  if (!rewritten && !force && !compact_pool && !original->pool_remapped) {
     if (!original->nested_recovered) {
       const auto bytes = model.source_slice(original->body);
       if (!bytes)
@@ -81,9 +81,9 @@ std::expected<void, WriteError> ClassWriter::write_code(
     const auto original_bytes = model.source_slice(original->code);
     if (!original_bytes)
       return write_error(WriteErrorKind::InvalidClassModel, path, "original code array is out of bounds");
-    if (!std::ranges::equal(*original_bytes, encoded->bytes())) {
+    if (!encoded->matches_source(*original_bytes, code.instructions, original->pool_remapped)) {
       const auto hinted = encode_code(code.instructions, version, pool, code.locals_limit, true, &scratch, path);
-      if (!hinted || !std::ranges::equal(*original_bytes, hinted->bytes()) ||
+      if (!hinted || !hinted->matches_source(*original_bytes, code.instructions, original->pool_remapped) ||
           !std::ranges::equal(encoded->instruction_offsets(), hinted->instruction_offsets()))
         return write_error(WriteErrorKind::StaleCodeMetadata, path, "re-encoding would change instruction boundaries");
     }
@@ -118,7 +118,27 @@ std::expected<CodeAttributeContext, WriteError> ClassWriter::write_code_array(
   if (code.handlers.size() > MAX_COUNT)
     return write_error(WriteErrorKind::InvalidCodeLayout, path, "exception table count does not fit u2");
   write_code_header(max_stack, max_locals, encoded.bytes().size());
+  const auto code_start = output.size();
   output.bytes(encoded.bytes());
+  if (compact_pool) {
+    for (std::size_t i = 0; i < code.instructions.size(); ++i) {
+      const auto instruction = code.instructions.get(code.instructions.at(i));
+      const auto index = instruction->constant_index();
+      if (!index)
+        continue;
+      const auto mapped = compact_pool->index(*index);
+      if (!mapped)
+        return std::unexpected(mapped.error());
+      const auto offset = encoded.instruction_offsets()[i];
+      if (encoded.bytes()[offset] == std::byte{std::to_underlying(Opcode::Ldc)}) {
+        if (!std::in_range<std::uint8_t>(mapped->value))
+          return write_error(WriteErrorKind::InvalidCodeLayout, path, "remapped ldc index exceeds its operand width");
+        result.bytes[code_start + offset + 1] = static_cast<std::byte>(mapped->value);
+      } else if (!output.patch_u2(code_start + offset + 1, static_cast<std::uint16_t>(mapped->value))) {
+        return write_error(WriteErrorKind::InvalidCodeLayout, path, "cannot remap an instruction's constant operand");
+      }
+    }
+  }
   const auto count = static_cast<std::uint16_t>(code.handlers.size());
   output.u2(count);
   for (const auto& handler : code.handlers) {
@@ -128,7 +148,8 @@ std::expected<CodeAttributeContext, WriteError> ClassWriter::write_code_array(
     output.u2(wire->start);
     output.u2(wire->end);
     output.u2(wire->handler);
-    output.u2(wire->catch_type.value);
+    if (auto written = write_reference(wire->catch_type); !written)
+      return std::unexpected(std::move(written.error()));
   }
   return CodeAttributeContext{encoded.bytes(), encoded.instruction_starts(), max_locals, count};
 }

@@ -39,8 +39,8 @@ physical number of exception-table rows. Existing constant-pool operands retain 
 indices. The lowerer rebuilds verification metadata and relocates known debug
 tables and code type annotations when their destinations are representable.
 Unmappable metadata fails lowering unless dropping is explicitly enabled.
-A lowered method must fit the original class version's code, local, stack,
-constant-pool, and exception-table limits.
+A lowered method must fit the original class version's code, local, stack, and
+exception-table limits. The model and emitted pools each have a 65,535-slot limit.
 
 ## Attribute representation
 
@@ -73,19 +73,21 @@ annotation-depth, switch, method, and code-size limits are independent ceilings.
 
 ## Writer guarantees
 
-Unchanged, clean classes retain constant-pool indices, attribute order, and original
-Code bytes, including debug/verifier metadata and unusual permitted encodings.
-Compatible recoveries intentionally change output. The library does not claim
-byte-identical output for repaired, edited, or force-reencoded classes.
+The default writer compacts the constant pool and remaps references in standard
+attributes. It retains attribute order and preserves the selected bytecode offsets
+during constant-pool remapping. Use `ConstantPoolWritePolicy::Preserve` with the
+default Code options for byte-for-byte round trips of unchanged, clean classes.
+Compatible recoveries may change output in either mode.
 
 Editing Code requires freshly computed or explicitly supplied metadata unless the
 writer can establish safe reuse. Maxima-only computation does not replace required
 modern stack maps; reused stack maps can require preserving larger declared bounds.
-Opaque Code emission needs a separate writer opt-in. Unsafe Code attributes are
+Opaque Code emission requires both index preservation and the writer's
+`allow_opaque_code` opt-in. Unsafe Code attributes are
 rejected unless analysis-mode dropping was explicitly requested.
 
-Unknown attribute bytes may contain private constant-pool or offset dependencies.
-Retaining their bytes is not proof of semantic validity after arbitrary edits.
+Unknown attributes require index preservation when emitted. Their bytes may refer
+to original code offsets, which can become stale after edits.
 
 ## Archive and resolution profile
 

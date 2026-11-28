@@ -30,6 +30,7 @@ struct DeclaredFrameAccess;
 }
 
 namespace detail {
+class ClassPoolCompaction;
 class ClassReader;
 class ClassWriter;
 class SsaCommit;
@@ -66,13 +67,14 @@ public:
    */
   [[nodiscard]] std::optional<std::span<const std::byte>> bytes(const ClassFile& owner) const noexcept;
   /**
-   * @brief Inspect whether the payload borrows original source bytes.
-   * @return A borrowed slice pointer, or nullptr for independently owned bytes.
+   * @brief Inspect whether the payload originates from the class source.
+   * @return Its original slice, or nullptr for programmatically supplied bytes.
    */
   [[nodiscard]] const SourceSlice* source_slice() const noexcept;
 
 private:
   friend class Attribute;
+  friend class detail::ClassPoolCompaction;
   friend class detail::ClassReader;
   /**
    * @brief Retain a source slice or take ownership of an independent opaque payload.
@@ -85,7 +87,22 @@ private:
    */
   explicit RawAttribute(std::vector<std::byte> bytes) noexcept;
 
-  std::variant<SourceSlice, std::vector<std::byte>> storage; ///< Source slice into the owning class or independently owned byte vector.
+  /// Remapped bytes retaining provenance for offset-based metadata relocation.
+  struct RemappedPayload {
+    SourceSlice source; ///< Original payload location.
+    std::vector<std::byte> bytes; ///< Payload with updated constant references.
+  };
+
+  /// Retain remapped bytes and their source provenance.
+  /// @param source Original payload location.
+  /// @param bytes Body containing remapped constant references.
+  RawAttribute(SourceSlice source, std::vector<std::byte> bytes);
+
+  /// @param source Original class bytes supplying any retained slice.
+  /// @return Payload bytes or nullopt for an out-of-bounds slice.
+  [[nodiscard]] std::optional<std::span<const std::byte>> bytes(std::span<const std::byte> source) const noexcept;
+
+  std::variant<SourceSlice, std::vector<std::byte>, std::shared_ptr<const RemappedPayload>> storage; ///< Borrowed or owned payload.
 };
 
 /**
@@ -271,6 +288,7 @@ public:
 private:
   friend class ClassFile;
   friend class MethodEditor;
+  friend class detail::ClassPoolCompaction;
   friend class detail::ClassReader;
   friend class detail::ClassWriter;
   friend class detail::SymbolicEdit;
@@ -439,6 +457,7 @@ public:
 
 private:
   friend class Attribute;
+  friend class detail::ClassPoolCompaction;
   friend class detail::ClassReader;
   friend class detail::ClassWriter;
   friend class detail::SsaCommit;
@@ -454,6 +473,7 @@ private:
     SourceSlice code; ///< Original code-array source slice, excluding the Code envelope.
     SourceSlice exceptions; ///< Original exception-table bytes, including the count.
     bool nested_recovered; ///< Whether malformed nested attributes were dropped during reading.
+    bool pool_remapped = false; ///< Source bytes may contain pre-compaction constant indices.
   };
 
   /**

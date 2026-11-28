@@ -14,6 +14,7 @@
 #include <string_view>
 
 #include <cafe/error.hpp>
+#include <cafe/ids.hpp>
 
 #include "attribute_registry.hpp"
 
@@ -77,6 +78,12 @@ struct CodeOffsetVisitor {
   void (*local_slot)(void*, std::uint16_t, std::uint16_t) = nullptr; ///< Receives each referenced local slot and its descriptor width.
 };
 
+/// Visit validated constant references at absolute positions in the supplied reader.
+struct ConstantIndexVisitor {
+  void* state = nullptr; ///< Borrowed callback state.
+  bool (*visit)(void*, std::size_t, CpIndex) = nullptr; ///< Returns false when a reference cannot be remapped.
+};
+
 /**
  * @brief Validate a bounded recognized opaque body and optionally visit code-offset fields.
  * @param body Length-bounded attribute body reader.
@@ -89,6 +96,8 @@ struct CodeOffsetVisitor {
  *   context.
  * @param scratch Temporary allocator that must outlive any returned allocator-backed views.
  * @param offsets Optional callback for inspecting offset-bearing fields during validation.
+ * @param constants Optional callback for remapping constant-pool references.
+ * @param references_only Check framing and references independently of the current Code layout.
  * @return Success or a structural read error; the original bytes remain the retained payload.
  * @ingroup implementation
  *
@@ -100,7 +109,7 @@ struct CodeOffsetVisitor {
     const ConstantPool& cp, const ReadLimits& limits, std::string_view path,
     const CodeAttributeContext* code = nullptr,
     std::pmr::memory_resource* scratch = std::pmr::get_default_resource(),
-    CodeOffsetVisitor offsets = {});
+    CodeOffsetVisitor offsets = {}, ConstantIndexVisitor constants = {}, bool references_only = false);
 
 } // namespace detail
 } // namespace cafe

@@ -105,6 +105,11 @@ void rewrite_compiled(const path& fixture_dir, const path& output_dir, analysis:
   require(handlers->exception_handlers().size() == 2, "expected two compiled catch entries");
   const auto reversed = std::array{handlers->exception_handlers()[1], handlers->exception_handlers()[0]};
   handlers->set_exception_handlers(reversed);
+  owner.constant_pool().append_utf8("unused before reclamation").value();
+  const auto compacted = owner.compact_constant_pool();
+  if (!compacted)
+    throw std::runtime_error(compacted.error().path + " " + compacted.error().detail);
+  require(*compacted != 0, "expected reclaimed pool slots");
   const auto file = output_dir / "AnalysisFixture.class";
   write(owner, context, file);
   const auto rewritten = parse(load(file));
@@ -242,8 +247,7 @@ void generate(const path& output_dir, analysis::AnalysisContext& context) {
               alloc_frames.allocation_offsets == std::vector<unsigned>{1, 1},
           "allocation offsets did not follow new");
   const auto array_frames = read_frames(emitted, method_code(emitted, "array", "(Z)[I"));
-  require(array_frames.reference_indices.size() == 1 && array_frames.reference_indices[0].value >= pool_size,
-          "expected an appended Class constant for the array frame");
+  require(array_frames.reference_indices.size() == 1, "expected one Class reference in the array frame");
   const auto& out_pool = emitted.constant_pool();
   const auto* array_type = out_pool.get(array_frames.reference_indices[0]);
   require(array_type && array_type->tag == CpTag::Class && out_pool.get_utf8(array_type->first) == "[I",

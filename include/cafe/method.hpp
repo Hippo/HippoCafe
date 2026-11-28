@@ -115,6 +115,7 @@ public:
 private:
   friend class ClassFile;
   friend class MethodEditor;
+  friend class detail::ClassPoolCompaction;
   friend class detail::ClassReader;
 
   /**
@@ -136,6 +137,10 @@ private:
 /**
  * @brief Borrowed mutable access to one ClassFile method. Acquire a new editor after adding or
  * erasing a method; the owning class must outlive the editor.
+ *
+ * Symbolic instruction and exception-handler edits retry once after pool compaction if they
+ * exhaust the model's constant slots. A successful retry can renumber pool indices and
+ * invalidate borrowed constant data. Instruction handles and labels survive compaction.
  *
  * Symbolic edits validate operand structure and version rules. Frame analysis can check stack
  * usage, and the JVM resolves targets and invokes bootstrap methods at linkage. An allocation

@@ -16,6 +16,108 @@ ClassFile one_method(ClassVersion version = {55, 0}) {
   return file;
 }
 
+void fill_pool(ConstantPool& pool) {
+  while (pool.size() < UINT16_MAX) {
+    const auto bits = pool.size();
+    pool.append({.tag = CpTag::Integer, .first = {}, .second = {}, .bits = bits}).value();
+  }
+}
+
+TEST(SequenceResolution, CompactedRetryRemapsRawOperandsAndRetainsBorrowedText) {
+  auto file = one_method();
+  auto& pool = file.constant_pool();
+  const auto borrowed = pool.append_utf8("borrowed utf8").value();
+  const auto raw_text = pool.append_utf8("raw operand").value();
+  const auto raw_slot = pool.append({CpTag::String, 0, raw_text, {}}).value();
+  const auto raw = Instruction::constant(Opcode::Ldc, raw_slot).value();
+  fill_pool(pool);
+  auto editor = file.edit_method(0).value();
+  auto& code = editor.code()->code();
+  const auto ret = code.at(0);
+  const auto result = editor.insert_before(ret, {insn::ldc(pool.get_utf8(borrowed).value()), insn::pop(), raw, insn::pop()});
+  ASSERT_TRUE(result);
+  ASSERT_EQ(result->size(), 4u);
+  EXPECT_LT(pool.size(), 20u);
+  EXPECT_EQ(code.at(4), ret);
+  const auto literal = [&](InstructionId id) {
+    const auto index = code.get(id)->constant_index().value();
+    return pool.get_utf8(pool.get(index)->first);
+  };
+  EXPECT_EQ(literal((*result)[0]), "borrowed utf8");
+  EXPECT_EQ(literal((*result)[2]), "raw operand");
+}
+
+TEST(SequenceResolution, FailedRetryRestoresThePoolAndClassAttributes) {
+  auto file = one_method();
+  auto& pool = file.constant_pool();
+  const auto source = pool.append_utf8("SourceFile").value();
+  const auto filename = pool.append_utf8("Edited.java").value();
+  ASSERT_TRUE(file.add_attribute(Attribute(source, SourceFile{filename})));
+  const auto saved_text = pool.get_utf8(filename).value();
+  const auto scope = file.declaration_revision();
+  auto editor = file.edit_method(0).value();
+  auto& code = editor.code()->code();
+  const auto ret = code.at(0);
+  while (pool.size() <= UINT8_MAX)
+    pool.append_utf8("unused").value();
+  const auto live_constant = pool.append({CpTag::String, 0, filename, {}}).value();
+  const auto live = Instruction::constant(Opcode::Ldc, live_constant).value();
+  const auto load = code.insert_before(ret, live).value();
+  code.insert_before(ret, Instruction::pop()).value();
+  const auto revision = code.revision();
+  fill_pool(pool);
+  const Bootstrap bootstrap{{MethodHandleKind::InvokeStatic, "Bootstraps", "link", "()V"}, {}};
+  const auto result = editor.insert_before(ret, {DynamicInvocation{"invoke", "()V", bootstrap}, insn::iload(UINT16_MAX)});
+  ASSERT_FALSE(result);
+  EXPECT_EQ(result.error().cause, CodeEditError::InvalidOperand);
+  EXPECT_EQ(result.error().instruction_index, 1u);
+  EXPECT_EQ(pool.size(), UINT16_MAX);
+  EXPECT_EQ(pool.get_utf8(filename).value().data(), saved_text.data());
+  EXPECT_EQ(file.declaration_revision(), scope);
+  EXPECT_EQ(code.revision(), revision);
+  EXPECT_EQ(code.size(), 3u);
+  EXPECT_EQ(code.get(load), live);
+  EXPECT_EQ(code.at(2), ret);
+  ASSERT_EQ(file.attributes().size(), 1u);
+  EXPECT_EQ(file.attributes().front().name_index(), source);
+  EXPECT_EQ(file.attributes().front().get<SourceFile>()->file_name, filename);
+}
+
+TEST(SequenceResolution, OpaqueReferencesLeaveTheOriginalPoolLimitError) {
+  auto file = one_method();
+  auto& pool = file.constant_pool();
+  const auto name = pool.append_utf8("PrivateAttribute").value();
+  ASSERT_TRUE(file.add_attribute(Attribute::raw(name, {std::byte{0}, std::byte{1}})));
+  fill_pool(pool);
+  const auto revision = file.declaration_revision();
+  auto editor = file.edit_method(0).value();
+  const auto ret = editor.code()->code().at(0);
+  EXPECT_EQ(editor.insert_before(ret, insn::ldc(0x12345)), std::unexpected(CodeEditError::ConstantPoolLimit));
+  EXPECT_EQ(pool.size(), UINT16_MAX);
+  EXPECT_EQ(file.declaration_revision(), revision);
+  EXPECT_EQ(editor.code()->code().at(0), ret);
+  EXPECT_EQ(file.attributes().front().name_index(), name);
+}
+
+TEST(SequenceResolution, RetriesSymbolicExceptionHandlerInsertion) {
+  auto file = one_method();
+  auto editor = file.edit_method(0).value();
+  auto& code = editor.code()->code();
+  const auto start = code.append(Instruction::nop()).value();
+  const auto target = code.append(Instruction::return_void()).value();
+  const auto start_label = editor.label_before(start).value();
+  const auto target_label = editor.label_before(target).value();
+  auto& pool = file.constant_pool();
+  const auto name = pool.append_utf8("java/lang/Exception").value();
+  fill_pool(pool);
+  ASSERT_TRUE(editor.add_exception_handler(start_label, target_label, target_label, pool.get_utf8(name).value()));
+  const auto handlers = editor.code()->exception_handlers();
+  ASSERT_EQ(handlers.size(), 1u);
+  EXPECT_EQ(handlers.front().handler, target_label);
+  EXPECT_EQ(pool.get_utf8(pool.get(handlers.front().catch_type)->first), "java/lang/Exception");
+  EXPECT_LT(pool.size(), 20u);
+}
+
 TEST(SequenceResolution, ValidatesNestedReferencesAndRollsBackEarlierOperands) {
   auto file = one_method();
   auto editor = file.edit_method(0).value();

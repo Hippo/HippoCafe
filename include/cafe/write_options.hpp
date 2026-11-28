@@ -28,15 +28,24 @@ enum class CodeAnalysisMode {
 };
 
 /**
- * @brief Class emission, metadata computation, and preservation policy. Defaults preserve original
- * encodings and reject edits without safe metadata.
+ * @brief Policy for allocating constant-pool indices in the emitted class.
+ * @ingroup model
+ */
+enum class ConstantPoolWritePolicy {
+  Compact, ///< Emit reachable constants and deduplicate them where their JVM identity permits it.
+  Preserve, ///< Retain existing slots and indices, including unused entries.
+};
+
+/**
+ * @brief Class emission, metadata computation, and preservation policy. Defaults compact the
+ * constant pool, honor bytecode encoding hints, and reject edits without safe metadata.
  * @ingroup model
  */
 struct WriteOptions {
   CodeWritePolicy code_policy = CodeWritePolicy::RequireUnchangedOrSafe; ///< Policy governing metadata after instruction/handler changes.
   bool preserve_original_encodings = true; ///< Whether layout should honor retained wire-encoding hints.
   bool force_reencode = false; ///< Exercise instruction encoding even for otherwise unchanged Code.
-  bool allow_opaque_code = false; ///< Permit verbatim emission of preserved undecodable Code.
+  bool allow_opaque_code = false; ///< Permit verbatim emission of undecodable Code with constant-pool preservation.
   /**
    * @brief Metadata computation mode applied to every decoded Code attribute.
    * @see @ref cafe::write_class(const ClassFile&,const WriteOptions&,analysis::AnalysisContext&) "Writing with computed frames"
@@ -49,6 +58,7 @@ struct WriteOptions {
    * be relocated safely. Applies only when code analysis is requested.
    */
   bool drop_unsafe_code_attributes = false;
+  ConstantPoolWritePolicy constant_pool = ConstantPoolWritePolicy::Compact; ///< Selects how the output constant pool is built.
 };
 
 } // namespace cafe

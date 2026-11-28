@@ -16,7 +16,7 @@ namespace cafe {
  * @ingroup model
  */
 struct CpIndex {
-  std::uint16_t value = 0; ///< Wire slot index; zero denotes absence where allowed.
+  std::uint16_t value = 0; ///< Slot index in the owning pool. Zero denotes absence where allowed.
   /**
    * @brief Test whether this index denotes a nonzero slot.
    * @return True for nonzero; pool membership and tag validity are not checked.

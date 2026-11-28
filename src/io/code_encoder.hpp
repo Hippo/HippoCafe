@@ -56,6 +56,13 @@ public:
     return !layout.expanded_conditionals.empty();
   }
 
+  /// Compare with a retained code array that may use pre-compaction indices.
+  /// @param source Original bytecode array.
+  /// @param code Method corresponding to this encoding.
+  /// @param pool_remapped Whether to ignore constant operand bytes.
+  /// @return Whether the encodings match outside any remapped operands.
+  [[nodiscard]] bool matches_source(std::span<const std::byte> source, const MethodCode& code, bool pool_remapped) const;
+
 private:
   /**
    * @brief Initialize scratch-owned emitted bytes and final layout maps

@@ -1153,6 +1153,11 @@ void BytecodeAccess::mark_clean(MethodCode& code) {
   code.storage->changes.clear();
 }
 
+void BytecodeAccess::swap_constant_instructions(MethodCode& code, std::span<InstructionEntry> entries) noexcept {
+  for (auto& [id, instruction] : entries)
+    std::swap(code.storage->slots[id.index].instruction, instruction);
+}
+
 void BytecodeAccess::set_original_switch_padding(MethodCode& code, InstructionId id, std::span<const std::byte> padding) {
   auto payload = code.switch_id(id).value();
   auto& slot = code.storage->switches[switch_index(payload.value)];

@@ -18,6 +18,7 @@
 #include "bytecode/builder_access.hpp"
 #include "bytecode/code_access.hpp"
 #include "cafe/bytecode/pattern.hpp"
+#include "class_pool_compaction.hpp"
 #include "class_storage.hpp"
 #include "constant_validation.hpp"
 #include "detail/descriptor.hpp"
@@ -709,27 +710,63 @@ using PatchResult = std::expected<std::vector<InstructionId>, BlockEditError>;
 /// @param code Decoded target method, or null when unavailable.
 /// @param patch Placement, matched IDs and label fixups.
 /// @param values Ordered raw and symbolic instructions.
+/// @param mapping Original pool indices to translate during a compacted retry.
 /// @return Inserted IDs or a failure with the offending element index when available.
-PatchResult apply_edit(ClassStorage& storage, CodeAttribute* code, const CodePatch& patch,
-                       std::span<const MethodInstruction> values) {
-  if (!code)
-    return std::unexpected(BlockEditError{CodeEditError::NoCode, std::nullopt});
-
+PatchResult apply_edit_once(ClassStorage& storage, MethodCode& code, const CodePatch& patch,
+                           std::span<const MethodInstruction> values, std::span<const CpIndex> mapping = {}) {
   SymbolicEdit edit(storage);
   std::pmr::vector<InstructionBuilder> instructions(&storage.budget);
   instructions.reserve(values.size());
   for (const auto& value : values) {
-    auto instruction = edit.resolve(value);
+    const auto resolve = [&]() -> EditResult<InstructionBuilder> {
+      if (!mapping.empty()) {
+        if (const auto* raw = std::get_if<Instruction>(&value)) {
+          if (const auto index = raw->constant_index())
+            return BytecodeAccess::with_constant_index(*raw, mapping[index->value]);
+        }
+      }
+      return edit.resolve(value);
+    };
+    auto instruction = resolve();
     if (!instruction)
       return std::unexpected(BlockEditError{instruction.error(), instructions.size()});
     if (const auto valid = edit.validate(*instruction); !valid)
       return std::unexpected(BlockEditError{valid.error(), instructions.size()});
     instructions.push_back(*instruction);
   }
-  auto inserted = BytecodeAccess::apply_patch(code->code(), patch, instructions);
+  auto inserted = BytecodeAccess::apply_patch(code, patch, instructions);
   if (inserted)
     edit.commit();
   return inserted;
+}
+
+/// Apply a symbolic patch and retry once after pool compaction if it runs out of slots.
+/// @param storage Class whose symbolic operands are resolved.
+/// @param code Decoded target method, or null when unavailable.
+/// @param patch Placement, matched IDs and label fixups.
+/// @param values Ordered raw and symbolic instructions.
+/// @return Inserted IDs or a failure with the offending element index when available.
+PatchResult apply_edit(ClassStorage& storage, CodeAttribute* code, const CodePatch& patch,
+                       std::span<const MethodInstruction> values) {
+  if (!code)
+    return std::unexpected(BlockEditError{CodeEditError::NoCode, std::nullopt});
+
+  auto result = apply_edit_once(storage, code->code(), patch, values);
+  if (result || result.error().cause != CodeEditError::ConstantPoolLimit)
+    return result;
+
+  std::vector<CpIndex> roots;
+  for (const auto& value : values) {
+    if (const auto* raw = std::get_if<Instruction>(&value)) {
+      if (const auto index = raw->constant_index())
+        roots.push_back(*index);
+    }
+  }
+  retry_with_compact_pool(storage, roots, [&](std::span<const CpIndex> mapping) {
+    result = apply_edit_once(storage, code->code(), patch, values, mapping);
+    return result.has_value();
+  });
+  return result;
 }
 
 /// Preserve the original single-instruction result while using the same patch checks.
@@ -823,25 +860,35 @@ std::expected<void, CodeEditError> MethodEditor::add_exception_handler(
       return std::unexpected(CodeEditError::InvalidLabel);
   }
 
-  detail::SymbolicEdit edit(*storage);
-  CpIndex catch_index;
-  if (catch_type) {
-    if (!detail::valid_class_name(*catch_type))
-      return std::unexpected(CodeEditError::InvalidOperand);
-    const auto index = edit.class_constant(*catch_type);
-    if (!index)
-      return std::unexpected(index.error());
-    catch_index = *index;
+  const auto add = [&]() -> std::expected<void, CodeEditError> {
+    detail::SymbolicEdit edit(*storage);
+    CpIndex catch_index;
+    if (catch_type) {
+      if (!detail::valid_class_name(*catch_type))
+        return std::unexpected(CodeEditError::InvalidOperand);
+      const auto index = edit.class_constant(*catch_type);
+      if (!index)
+        return std::unexpected(index.error());
+      catch_index = *index;
+    }
+    const auto existing = body->exception_handlers();
+    std::pmr::vector<ExceptionHandler> updated(&storage->budget);
+    updated.reserve(existing.size() + 1);
+    if (!existing.empty())
+      updated.insert(updated.end(), existing.begin(), existing.end());
+    updated.push_back({start, end, handler, catch_index});
+    body->set_exception_handlers(updated);
+    edit.commit();
+    return {};
+  };
+  auto result = add();
+  if (!result && result.error() == CodeEditError::ConstantPoolLimit) {
+    detail::retry_with_compact_pool(*storage, {}, [&](std::span<const CpIndex>) {
+      result = add();
+      return result.has_value();
+    });
   }
-  const auto existing = body->exception_handlers();
-  std::pmr::vector<ExceptionHandler> updated(&storage->budget);
-  updated.reserve(existing.size() + 1);
-  if (!existing.empty())
-    updated.insert(updated.end(), existing.begin(), existing.end());
-  updated.push_back({start, end, handler, catch_index});
-  body->set_exception_handlers(updated);
-  edit.commit();
-  return {};
+  return result;
 }
 
 detail::CodePatch MethodEditor::code_patch(CodeNode at, Placement placement) {

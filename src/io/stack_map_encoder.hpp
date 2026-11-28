@@ -30,6 +30,8 @@ class FrameAnalysis;
 
 namespace cafe::detail {
 
+class CompactConstantPool;
+
 /**
  * @brief Writer-local append-only extension of the original constant pool for frame reference
  * types. Existing indices remain unchanged and the canonical pool is never mutated.
@@ -47,6 +49,10 @@ public:
    * @param resource PMR resource that must outlive the allocated object or returned storage.
    */
   StackMapConstants(const ConstantPool& pool, std::pmr::memory_resource* resource);
+
+  /// Write frame references through the selected compact output pool.
+  /// @param compact_pool Output pool that must outlive the frame encoder.
+  void use_compact_pool(CompactConstantPool& compact_pool) { compact = &compact_pool; }
 
   /**
    * @brief Borrow encoded constant-pool extension bytes.
@@ -82,6 +88,7 @@ private:
   void index_original_pool();
 
   const ConstantPool& pool; ///< Borrowed owning class constant pool used for lookup and validation.
+  CompactConstantPool* compact = nullptr; ///< Optional output pool for direct frame constant allocation.
   std::pmr::monotonic_buffer_resource names; ///< Monotonic backing storage for stable writer-local reference-name views.
   std::pmr::unordered_map<std::string_view, CpIndex> utf8_indices; ///< Reusable UTF-8 constant indices keyed by encoded text.
   std::pmr::unordered_map<std::string_view, CpIndex> class_indices; ///< Reusable Class constant indices keyed by internal name.

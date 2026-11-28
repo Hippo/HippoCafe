@@ -52,8 +52,10 @@ struct BuilderLookupPair {
  *
  * Mnemonics use the same operands as cafe::insn. Emission copies text, switch data, and bootstrap
  * arguments immediately. A method editor resolves constants and branch targets when applying the
- * sequence. Builder-local labels survive moves. Method-scoped LabelId and raw pool indices remain
- * specific to their original owners. The editor reports the first construction error.
+ * sequence. Builder-local labels survive moves. Method-scoped LabelId values are specific to
+ * their original method, and raw pool indices are valid for their original pool until compaction.
+ * Rebuild sequences that cache raw pool indices after compaction. The editor reports the first
+ * construction error.
  * @ingroup bytecode
  */
 class CodeBuilder {

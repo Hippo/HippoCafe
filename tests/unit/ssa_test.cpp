@@ -683,7 +683,7 @@ TEST(SsaLowering, ReportsOpaqueCodeAttributeBeforeCommitAndDropsItOnlyByRequest)
   EXPECT_EQ(body->code().get(original), simple(Opcode::IConst1));
   EXPECT_EQ(body->code().revision(), original_revision);
   EXPECT_TRUE(graph->is_current(owner, fixture.context));
-  const auto after = write_class(owner, {.force_reencode = true});
+  const auto after = write_class(owner, {.force_reencode = true, .constant_pool = ConstantPoolWritePolicy::Preserve});
   ASSERT_TRUE(after) << after.error().detail;
   EXPECT_EQ(after->bytes, before->bytes);
   auto preserved = body->attributes();
@@ -693,6 +693,11 @@ TEST(SsaLowering, ReportsOpaqueCodeAttributeBeforeCommitAndDropsItOnlyByRequest)
   const auto raw_bytes = raw->bytes(owner);
   ASSERT_TRUE(raw_bytes);
   EXPECT_TRUE(std::ranges::equal(*raw_bytes, std::array{std::byte{0}, std::byte{0}}));
+  const auto compact = write_class(owner, {.code_analysis = CodeAnalysisMode::ComputeMaxs,
+                                           .drop_unsafe_code_attributes = true});
+  ASSERT_TRUE(compact) << compact.error().detail;
+  ASSERT_EQ(compact->diagnostics.size(), 1u);
+  EXPECT_EQ(compact->diagnostics[0].code, DiagnosticCode::DroppedUnsafeCodeAttribute);
   auto dropped = lower_ssa(owner, *graph, fixture.context, {.drop_unsafe_code_attributes = true});
   ASSERT_TRUE(dropped) << dropped.error().detail;
   ASSERT_TRUE(std::ranges::any_of(dropped->diagnostics, [](const Diagnostic& diagnostic) {
@@ -837,7 +842,11 @@ TEST(SsaLowering, PreservesDistinctConstantDynamicResolutionEntriesWithIdentical
         constants.push_back(*operand);
     }
   }
-  EXPECT_TRUE(std::ranges::equal(constants, std::array{duplicate, index}));
+  ASSERT_EQ(constants.size(), 2u);
+  EXPECT_NE(constants[0], constants[1]);
+  const auto& pool = reparsed->class_file.constant_pool();
+  EXPECT_EQ(pool.get(constants[0])->first, pool.get(constants[1])->first);
+  EXPECT_EQ(pool.get(constants[0])->second, pool.get(constants[1])->second);
 }
 
 } // namespace

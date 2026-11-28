@@ -20,6 +20,8 @@ namespace cafe {
 
 namespace detail {
 class ClassReader;
+class CompactConstantPool;
+class ClassPoolCompaction;
 class SymbolicEdit;
 } // namespace detail
 
@@ -53,7 +55,7 @@ enum class CpTag : std::uint8_t {
  * bytes are held separately by ConstantPool.
  * @ingroup model
  *
- * first/second are wire indices in declaration order. For Dynamic and
+ * first/second are indices in the owning pool. For Dynamic and
  * InvokeDynamic first.value is a bootstrap table ordinal (zero is valid).
  * bits carries exact numeric bits or an internal UTF-8 record index; reference_kind is for
  * MethodHandle only.
@@ -61,8 +63,8 @@ enum class CpTag : std::uint8_t {
 struct CpEntry {
   CpTag tag = CpTag::Reserved; ///< Class-file constant tag selecting the entry payload form.
   std::uint8_t reference_kind = 0; ///< MethodHandle reference kind (1 through 9); unused for other tags.
-  CpIndex first; ///< First wire index; for Dynamic/InvokeDynamic this is a zero-based bootstrap ordinal.
-  CpIndex second; ///< Second wire index, usually a descriptor or NameAndType reference.
+  CpIndex first; ///< First model index. For Dynamic and InvokeDynamic this is a zero-based bootstrap ordinal.
+  CpIndex second; ///< Second model index, usually a descriptor or NameAndType reference.
   std::uint64_t bits = 0; ///< Exact numeric bits, or an internal UTF-8 record index for Utf8 entries.
 };
 
@@ -75,15 +77,17 @@ enum class CpError {
   WrongTag, ///< Constant tag does not match the requested operation.
   InvalidModifiedUtf8, ///< Bytes are not valid Java modified UTF-8.
   InvalidEntry, ///< Constant payload is invalid for its tag.
-  PoolFull, ///< The constant-pool slot count would exceed the wire limit.
-  StringTooLong, ///< Encoded UTF-8 payload exceeds the u2 byte-length limit.
+  PoolFull, ///< The model pool has no free JVM constant slots.
+  StringTooLong, ///< Legacy error for a UTF-8 length restriction.
 };
 
 /**
- * @brief Append-only constant-pool slots with stable wire indices and modified UTF-8 storage. Slot
+ * @brief Constant-pool slots with stable model indices between compactions. Slot
  * zero and the second slot of long/double entries are reserved. Appending can invalidate entry
- * pointers; string views retain stable backing storage until pool destruction. Allocator resources
- * must outlive the pool; mutation requires external synchronization.
+ * pointers. String views retain stable backing storage until pool compaction or destruction.
+ * Allocator resources must outlive the pool. Mutation requires external synchronization.
+ *
+ * The model holds up to 65,535 slots. UTF-8 byte lengths are checked when emitting a class.
  * @ingroup model
  */
 class ConstantPool {
@@ -112,10 +116,10 @@ public:
 
   /**
    * @brief Read the constant-pool slot count.
-   * @return The wire constant_pool_count, including slot zero and reserved wide-entry slots.
+   * @return The number of model slots, including slot zero and reserved wide-entry slots.
    *
    * Pointers returned by get() may be invalidated by appending. UTF-8 views
-   * keep their backing storage until the owning class or pool is destroyed.
+   * keep their backing storage until the pool is compacted or destroyed.
    */
   [[nodiscard]] std::size_t size() const noexcept;
   /**
@@ -165,22 +169,23 @@ public:
   /**
    * @brief Append a fixed-width constant while preserving all existing indices.
    * @param entry Constant-pool payload to append.
-   * @return Its new index, or a tag/entry/pool-capacity error. Cross-references are checked on
-   *   write.
+   * @return Its new index, or an invalid entry or capacity error.
    *
-   * Indices never change. Append supports fixed-width entries; use append_utf8
+   * Appending preserves indices. Append supports fixed-width entries. Use append_utf8
    * for MUTF-8. Cross-references may point forward and are checked on write.
    */
   [[nodiscard]] std::expected<CpIndex, CpError> append(CpEntry entry);
   /**
    * @brief Copy validated modified UTF-8 into stable owned storage.
    * @param modified_utf8 Java modified UTF-8 bytes to validate and copy.
-   * @return Its new index, or an encoding, length, or pool-capacity error.
+   * @return Its new index, or an invalid encoding or capacity error.
    */
   [[nodiscard]] std::expected<CpIndex, CpError> append_utf8(std::string_view modified_utf8);
 
 private:
   friend class detail::ClassReader;
+  friend class detail::CompactConstantPool;
+  friend class detail::ClassPoolCompaction;
   friend class detail::SymbolicEdit;
 
   /**
@@ -199,6 +204,14 @@ private:
    * @return The new index; caller supplies the known encoding validity.
    */
   [[nodiscard]] CpIndex append_utf8_view(std::string_view bytes, bool valid);
+  /// Copy bytes into owned storage, preserving a known UTF-8 validation result.
+  /// @param bytes Modified UTF-8 bytes to copy.
+  /// @param valid Whether the bytes passed UTF-8 validation.
+  /// @return New slot or a capacity error.
+  [[nodiscard]] std::expected<CpIndex, CpError> append_utf8_copy(std::string_view bytes, bool valid);
+  /// Exchange contents with a pool using the same resources.
+  /// @param replacement Staged pool contents.
+  void swap_contents(ConstantPool& replacement) noexcept;
   /**
    * @brief Reserve constant-pool slots before publishing an append.
    * @param extra Additional constant-pool slots to reserve before publication.

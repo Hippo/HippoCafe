@@ -77,7 +77,8 @@ std::expected<void, WriteError> ClassWriter::write_attributes(
       nest_attribute_seen |= nest_attribute;
     }
 
-    output.u2(attribute.name_index().value);
+    if (auto name_written = write_reference(attribute.name_index()); !name_written)
+      return name_written;
     const auto length_offset = output.size();
     output.u4(0);
     const auto start = output.size();
@@ -88,6 +89,44 @@ std::expected<void, WriteError> ClassWriter::write_attributes(
     if (length > std::numeric_limits<std::uint32_t>::max() ||
         !output.patch_u4(length_offset, static_cast<std::uint32_t>(length)))
       return write_error(WriteErrorKind::AttributeTooLarge, path, "attribute length does not fit u4");
+  }
+  return {};
+}
+
+std::expected<void, WriteError> ClassWriter::write_raw_attribute(
+    std::span<const std::byte> bytes, const AttributeSpec* spec, AttributeContext context,
+    const CodeAttributeContext* code, std::string_view path) {
+  if (compact_pool && !spec)
+    return write_error(WriteErrorKind::UnsafeOpaqueAttribute, path,
+                       "opaque attribute may refer to original constant-pool indices. Use ConstantPoolWritePolicy::Preserve");
+  const auto start = output.size();
+  output.bytes(bytes);
+  if (!compact_pool)
+    return {};
+
+  struct Remapping {
+    ClassWriter& writer;
+    std::optional<WriteError> error;
+  } remapping{*this, std::nullopt};
+  const ConstantIndexVisitor constants{&remapping, [](void* state, std::size_t offset, CpIndex index) {
+    auto& remapping = *static_cast<Remapping*>(state);
+    const auto mapped = remapping.writer.compact_pool->index(index);
+    if (!mapped) {
+      remapping.error = mapped.error();
+      return false;
+    }
+    return remapping.writer.output.patch_u2(offset, static_cast<std::uint16_t>(mapped->value));
+  }};
+  BinaryReader reader(bytes, start);
+  const auto checked = validate_opaque_attribute(reader, *spec, context, pool, ReadLimits{}, path, code,
+                                                 std::pmr::get_default_resource(), {}, constants);
+  if (remapping.error)
+    return std::unexpected(std::move(*remapping.error));
+  if (!checked) {
+    if (checked.error().kind == ReadErrorKind::UnsupportedDialect)
+      return write_error(WriteErrorKind::UnsafeOpaqueAttribute, path,
+                         "opaque record component attribute may refer to original constant-pool indices. Use ConstantPoolWritePolicy::Preserve");
+    return write_error(WriteErrorKind::InvalidClassModel, path, checked.error().detail);
   }
   return {};
 }
@@ -105,15 +144,14 @@ std::expected<void, WriteError> ClassWriter::write_attribute_body(
       return write_error(WriteErrorKind::InvalidClassModel, path, "raw attribute slice is out of bounds");
     if (bytes->size() > std::numeric_limits<std::uint32_t>::max())
       return write_error(WriteErrorKind::AttributeTooLarge, path, "raw attribute length does not fit u4");
-    if (spec && !raw->source_slice()) {
+    if (!compact_pool && spec && !raw->source_slice()) {
       BinaryReader reader(*bytes);
       if (const auto checked = validate_opaque_attribute(reader, *spec, location.context, pool, ReadLimits{},
                                                          path, location.code);
           !checked)
         return write_error(WriteErrorKind::InvalidClassModel, path, checked.error().detail);
     }
-    output.bytes(*bytes);
-    return {};
+    return write_raw_attribute(*bytes, spec, location.context, location.code, path);
   }
 
   if (kind != attribute.kind())
@@ -126,15 +164,13 @@ std::expected<void, WriteError> ClassWriter::write_attribute_body(
                                                            : attribute.get<Signature>()->signature;
       if (!pool.get_utf8(index))
         return write_error(WriteErrorKind::InvalidConstantPoolReference, path, "attribute must refer to valid Utf8");
-      output.u2(index.value);
-      return {};
+      return write_reference(index);
     }
     case AttributeKind::ConstantValue: {
       const auto index = attribute.get<ConstantValue>()->constant;
       if (!pool.has(index, constant_value_tag(location.descriptor)))
         return write_error(WriteErrorKind::InvalidConstantPoolReference, path, "ConstantValue does not match its field descriptor");
-      output.u2(index.value);
-      return {};
+      return write_reference(index);
     }
     case AttributeKind::Synthetic:
     case AttributeKind::Deprecated:
@@ -147,27 +183,46 @@ std::expected<void, WriteError> ClassWriter::write_attribute_body(
       for (const auto type : types) {
         if (!class_name(pool, type))
           return write_error(WriteErrorKind::InvalidConstantPoolReference, path, "exception index must name a non-array class");
-        output.u2(type.value);
+        if (auto written = write_reference(type); !written)
+          return written;
       }
       return {};
     }
     case AttributeKind::BootstrapMethods: {
       const auto& methods = attribute.get<BootstrapMethods>()->methods;
-      if (methods.size() > MAX_COUNT)
-        return write_error(WriteErrorKind::AttributeTooLarge, path, "BootstrapMethods count does not fit u2");
-      output.u2(static_cast<std::uint16_t>(methods.size()));
-      for (const auto& method : methods) {
+      const auto write_method = [&](const BootstrapMethod& method) -> std::expected<void, WriteError> {
         if (!pool.has(method.method_handle, CpTag::MethodHandle))
           return write_error(WriteErrorKind::InvalidConstantPoolReference, path, "bootstrap method requires a MethodHandle constant");
         if (method.arguments.size() > MAX_COUNT)
           return write_error(WriteErrorKind::AttributeTooLarge, path, "bootstrap argument count does not fit u2");
-        output.u2(method.method_handle.value);
+        if (auto written = write_reference(method.method_handle); !written)
+          return written;
         output.u2(static_cast<std::uint16_t>(method.arguments.size()));
         for (const auto argument : method.arguments) {
           const auto* entry = pool.get(argument);
           if (!entry || !loadable_constant(entry->tag, version))
             return write_error(WriteErrorKind::InvalidConstantPoolReference, path, "bootstrap argument requires a loadable constant");
-          output.u2(argument.value);
+          if (auto written = write_reference(argument); !written)
+            return written;
+        }
+        return {};
+      };
+      if (compact_pool) {
+        // All bytecode has been written, and only bytecode and bootstrap
+        // arguments can reference Dynamic or InvokeDynamic constants.
+        const auto live = compact_pool->require_bootstraps(path);
+        if (!live)
+          return std::unexpected(live.error());
+        output.u2(static_cast<std::uint16_t>(live->size()));
+        for (const auto ordinal : *live) {
+          if (auto written = write_method(methods[ordinal]); !written)
+            return written;
+        }
+      } else {
+        output.u2(static_cast<std::uint16_t>(methods.size()));
+        for (const auto& method : methods) {
+          if (auto written = write_method(method); !written)
+            return written;
         }
       }
       return {};
@@ -180,6 +235,9 @@ std::expected<void, WriteError> ClassWriter::write_attribute_body(
           return write_error(WriteErrorKind::UnsupportedOpaqueCode, path, "opaque Code cannot be analyzed");
         if (!options.allow_opaque_code || options.force_reencode || !options.preserve_original_encodings)
           return write_error(WriteErrorKind::UnsupportedOpaqueCode, path, "opaque Code requires explicit verbatim emission");
+        if (compact_pool)
+          return write_error(WriteErrorKind::UnsupportedOpaqueCode, path,
+                             "opaque Code requires ConstantPoolWritePolicy::Preserve");
         const auto bytes = model.source_slice(opaque->body);
         if (!bytes)
           return write_error(WriteErrorKind::InvalidClassModel, path, "opaque Code slice is out of bounds");

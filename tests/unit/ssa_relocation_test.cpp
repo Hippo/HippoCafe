@@ -216,7 +216,8 @@ TEST(SsaRelocation, RewritesDebugSlotsInstructionTargetsAndDuplicatedCatchRows) 
   expect_body(3, AttributeKind::RuntimeVisibleTypeAnnotations, annotations(true));
   EXPECT_TRUE(diagnostics.empty());
 
-  const auto wire = write_class(owner, {.code_policy = CodeWritePolicy::CallerSuppliedMetadata});
+  const auto wire = write_class(owner, {.code_policy = CodeWritePolicy::CallerSuppliedMetadata,
+                                        .constant_pool = ConstantPoolWritePolicy::Preserve});
   ASSERT_TRUE(wire) << wire.error().detail;
   auto parsed = read_class(wire->bytes, {.mode = ParseMode::Strict});
   ASSERT_TRUE(parsed) << parsed.error().detail;

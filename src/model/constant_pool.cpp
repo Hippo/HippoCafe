@@ -137,12 +137,14 @@ CpIndex ConstantPool::append_utf8_view(std::string_view bytes, bool valid) {
 }
 
 std::expected<CpIndex, CpError> ConstantPool::append_utf8(std::string_view modified_utf8) {
-  if (modified_utf8.size() > MAX_POOL_COUNT)
-    return std::unexpected(CpError::StringTooLong);
-  if (entries.size() == MAX_POOL_COUNT)
-    return std::unexpected(CpError::PoolFull);
   if (!detail::valid_modified_utf8(modified_utf8))
     return std::unexpected(CpError::InvalidModifiedUtf8);
+  return append_utf8_copy(modified_utf8, true);
+}
+
+std::expected<CpIndex, CpError> ConstantPool::append_utf8_copy(std::string_view modified_utf8, bool valid) {
+  if (entries.size() == MAX_POOL_COUNT)
+    return std::unexpected(CpError::PoolFull);
   std::pmr::vector<char> buffer{string_resource};
   if (!modified_utf8.empty())
     buffer.assign(modified_utf8.begin(), modified_utf8.end());
@@ -150,11 +152,17 @@ std::expected<CpIndex, CpError> ConstantPool::append_utf8(std::string_view modif
   const auto& stored = owned_strings.back();
   const auto bytes = stored.empty() ? std::string_view{} : std::string_view(stored.data(), stored.size());
   try {
-    return append_utf8_view(bytes, true);
+    return append_utf8_view(bytes, valid);
   } catch (...) {
     owned_strings.pop_back();
     throw;
   }
+}
+
+void ConstantPool::swap_contents(ConstantPool& replacement) noexcept {
+  entries.swap(replacement.entries);
+  utf8_values.swap(replacement.utf8_values);
+  owned_strings.swap(replacement.owned_strings);
 }
 
 } // namespace cafe

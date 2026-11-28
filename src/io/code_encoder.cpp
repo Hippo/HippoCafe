@@ -6,6 +6,7 @@
 
 #include "code_encoder.hpp"
 
+#include <algorithm>
 #include <utility>
 
 #include "cafe/bytecode/code.hpp"
@@ -40,6 +41,28 @@ std::optional<Opcode> inverse_condition(Opcode opcode) {
 EncodedCode::EncodedCode(CodeLayout layout, std::pmr::memory_resource* scratch) :
     layout(std::move(layout)), output(scratch), starts(this->layout.offsets.back(), scratch) {
   output.reserve(starts.size());
+}
+
+bool EncodedCode::matches_source(std::span<const std::byte> source, const MethodCode& code, bool pool_remapped) const {
+  const auto emitted = bytes();
+  if (source.size() != emitted.size())
+    return false;
+  if (!pool_remapped)
+    return std::ranges::equal(source, emitted);
+
+  // Keep the opcode and every non-constant operand in the comparison. Equal
+  // opcodes and non-constant bytes establish identical instruction boundaries.
+  std::size_t begin = 0;
+  for (std::size_t i = 0; i < code.size(); ++i) {
+    if (!code.get(code.at(i))->constant_index())
+      continue;
+    const auto opcode = instruction_offsets()[i];
+    const std::size_t operand = opcode + 1;
+    if (!std::ranges::equal(source.subspan(begin, operand - begin), emitted.subspan(begin, operand - begin)))
+      return false;
+    begin = operand + (emitted[opcode] == std::byte{std::to_underlying(Opcode::Ldc)} ? 1u : 2u);
+  }
+  return std::ranges::equal(source.subspan(begin), emitted.subspan(begin));
 }
 
 // layout_code validates instructions and operands; emission selects accessors by the immutable opcode.

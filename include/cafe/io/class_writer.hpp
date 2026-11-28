@@ -35,6 +35,10 @@ struct WriteResult {
 /**
  * @brief Serialize a class using the default analysis environment.
  *
+ * By default, the writer rebuilds the output constant pool from reachable references.
+ * Set WriteOptions::constant_pool to ConstantPoolWritePolicy::Preserve when an
+ * opaque attribute depends on its original indices or a byte-preserving round trip is needed.
+ *
  * CodeAnalysisMode::ComputeMaxs can compute stack and local limits without a hierarchy.
  * CodeAnalysisMode::ComputeFrames starts with an empty classpath. If a required class
  * cannot be found, the writer returns WriteErrorKind::MissingAnalysisContext. Use

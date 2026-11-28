@@ -49,6 +49,15 @@ The caller saves `WriteResult::bytes` and handles its diagnostics. The complete
 `hippocafe_roundtrip input.class output.class`. Use `hippocafe_inspect_class input.class`
 for structural inspection.
 
+`write_class(file)` emits a compact constant pool. It omits unused constants and
+bootstrap rows and reuses equivalent entries. An index obtained from a class model
+belongs to that model. Resolve indices again after reading the emitted bytes.
+The writer checks the JVM slot count and modified UTF-8 byte lengths on the pool it emits.
+
+Set `WriteOptions::constant_pool` to `ConstantPoolWritePolicy::Preserve` to keep the
+original indices and entries. Use this option to retain unknown attributes whose
+payloads may contain private references to the pool. The round-trip CLI uses this mode.
+
 ## Inspect and edit declarations
 
 Names and descriptors use JVM modified UTF-8. Class names use internal spelling,
@@ -74,6 +83,17 @@ Constant-pool appends preserve existing indices. Use `append_utf8()` for strings
 `append()` for fixed-width entries. A `CONSTANT_String` refers to a UTF-8 slot;
 it is distinct from the UTF-8 slot itself. Existing pool entry pointers may be
 invalidated by appends, so retain indices or value copies when editing.
+
+`file.compact_constant_pool()` reclaims unused slots and bootstrap rows directly
+in the class, including while Code edits still need fresh metadata.
+`MethodEditor` retries symbolic instruction and exception-handler edits once if
+they run out of pool slots and compaction can free space. It retains references
+used by that edit. If compaction is unsafe or cannot free slots, the edit returns
+`CodeEditError::ConstantPoolLimit`.
+
+Compaction keeps instruction handles, labels, and existing code offsets. Both
+manual compaction and a successful retry can renumber pool indices and invalidate
+borrowed constant data. Reacquire them before constructing another edit.
 
 ## Inspect instructions
 
@@ -199,9 +219,9 @@ A single insertion returns an instruction ID. A sequence returns IDs in the
 order supplied, or a `BlockEditError` whose `instruction_index` identifies the
 failing element when known. A failed edit preserves instruction order, labels,
 constants, and bootstrap entries. An empty sequence at a valid anchor succeeds
-with an empty ID list. Keep pool indices across edits and reacquire borrowed pool
-entry pointers and class attribute spans after a symbolic edit attempt, since
-temporary growth can relocate their storage. Both single-instruction and
+with an empty ID list. Cached pool indices are valid until compaction. Reacquire
+borrowed pool entry pointers and class attribute spans after a symbolic edit
+attempt, since temporary growth can relocate their storage. Both single-instruction and
 sequence edits validate raw pool references against the class and require bound
 executable branch targets. Use a builder-local label for a forward branch
 within a sequence.
@@ -363,6 +383,7 @@ handle can come from `MethodCode::instructions()` or `MethodCode::at()`. Ordinar
 loads and other unrelated opcodes return `WrongOperandForm`.
 
 Keep the source class and the inspection result alive while using its operands.
+Reacquire inspected operands after the source pool is compacted.
 You can pass `result->operand()` directly to a method editor. Inspection preserves
 shared bootstrap rows and cycles. The editor rejects cyclic arguments on insertion
 or replacement.

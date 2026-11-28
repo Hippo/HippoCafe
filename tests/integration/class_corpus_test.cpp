@@ -15,7 +15,8 @@ namespace {
 
 const std::filesystem::path FIXTURES(HIPPOCAFE_FIXTURE_DIR);
 const cafe::ReadOptions STRICT{.mode = cafe::ParseMode::Strict};
-const cafe::WriteOptions REENCODE{.force_reencode = true};
+const cafe::WriteOptions PRESERVE{.constant_pool = cafe::ConstantPoolWritePolicy::Preserve};
+const cafe::WriteOptions REENCODE{.force_reencode = true, .constant_pool = cafe::ConstantPoolWritePolicy::Preserve};
 
 std::vector<std::byte> load_file(const std::filesystem::path& path) {
   const auto size = static_cast<std::size_t>(std::filesystem::file_size(path));
@@ -46,9 +47,9 @@ void check_roundtrip(const std::filesystem::path& path) {
   EXPECT_EQ(parsed->class_file.validity(), cafe::ClassValidity::ParsedClean);
   EXPECT_TRUE(parsed->diagnostics.empty());
 
-  const auto output = cafe::write_class(parsed->class_file);
+  const auto output = cafe::write_class(parsed->class_file, PRESERVE);
   ASSERT_TRUE(output) << output.error().path << ": " << output.error().detail;
-  EXPECT_TRUE(output->bytes == bytes) << "Default writer changed a clean fixture";
+  EXPECT_TRUE(output->bytes == bytes) << "Preservation mode changed a clean fixture";
 
   const auto reencoded = cafe::write_class(parsed->class_file, REENCODE);
   ASSERT_TRUE(reencoded) << reencoded.error().path << ": " << reencoded.error().detail;
@@ -77,6 +78,36 @@ TEST(ClassCorpus, supplied_fixtures_roundtrip) {
   for (const auto& file : files) {
     check_roundtrip(file);
   }
+}
+
+TEST(ClassCorpus, drops_replaced_literal_from_emitted_pool) {
+  using namespace cafe;
+  auto parsed = read_class(load_file(FIXTURES / "supplied/classes/HelloWorld.class"), STRICT);
+  ASSERT_TRUE(parsed) << parsed.error().detail;
+  auto& file = parsed->class_file;
+  auto main = file.edit_method("main", "([Ljava/lang/String;)V").value();
+  const auto original = main.find_first(pattern::opcode(Opcode::Ldc)).value()->start();
+  const auto source_index = main.code()->code().get(original)->constant_index().value();
+  constexpr std::string_view REPLACEMENT = "axecueOEc8290";
+  ASSERT_TRUE(main.replace(original, insn::ldc(REPLACEMENT)));
+  const auto written = write_class(file, {.code_analysis = CodeAnalysisMode::ComputeMaxs});
+  ASSERT_TRUE(written) << written.error().detail;
+  const auto reopened = read_class(written->bytes, STRICT);
+  ASSERT_TRUE(reopened) << reopened.error().detail;
+
+  const auto& output = reopened->class_file;
+  const auto method = output.find_method("main", "([Ljava/lang/String;)V").value();
+  const auto match = pattern::find_first(output, method, pattern::opcode(Opcode::Ldc)).value();
+  const auto load = output.instruction({method, match->start()}).value().raw();
+  const auto& pool = output.constant_pool();
+  const auto* replacement = pool.get(*load.constant_index());
+  ASSERT_NE(replacement, nullptr);
+  EXPECT_EQ(replacement->tag, CpTag::String);
+  EXPECT_EQ(pool.get_utf8(replacement->first), REPLACEMENT);
+  for (std::size_t i = 1; i < pool.size(); ++i)
+    EXPECT_NE(pool.get_utf8(CpIndex{static_cast<std::uint16_t>(i)}), "Hello World");
+  const auto& source_pool = file.constant_pool();
+  EXPECT_EQ(source_pool.get_utf8(source_pool.get(source_index)->first), "Hello World");
 }
 
 TEST(ClassCorpus, supported_methods_lower_and_relift) {
@@ -184,7 +215,7 @@ TEST(ClassCorpus, old_and_modern_poisoned_annotation_payloads_recover) {
     EXPECT_EQ(diagnostic.action, cafe::RecoveryAction::Dropped);
     EXPECT_EQ(diagnostic.code, old ? cafe::DiagnosticCode::VersionInapplicable : cafe::DiagnosticCode::DroppedMalformedAttribute);
 
-    const auto output = cafe::write_class(compatible->class_file);
+    const auto output = cafe::write_class(compatible->class_file, PRESERVE);
     ASSERT_TRUE(output) << output.error().detail;
     EXPECT_EQ(output->bytes.size() + 10, bytes.size());
     const auto reparsed = cafe::read_class(output->bytes, STRICT);
@@ -224,7 +255,11 @@ TEST(ClassCorpus, reserved_opcode_requires_explicit_opaque_read_and_write) {
   const auto refused = cafe::write_class(opaque->class_file);
   ASSERT_FALSE(refused);
   EXPECT_EQ(refused.error().kind, cafe::WriteErrorKind::UnsupportedOpaqueCode);
-  const auto preserved = cafe::write_class(opaque->class_file, cafe::WriteOptions{.allow_opaque_code = true});
+  const auto compact = cafe::write_class(opaque->class_file, {.allow_opaque_code = true});
+  ASSERT_FALSE(compact);
+  EXPECT_EQ(compact.error().kind, cafe::WriteErrorKind::UnsupportedOpaqueCode);
+  const auto preserved = cafe::write_class(opaque->class_file, {.allow_opaque_code = true,
+                                                               .constant_pool = cafe::ConstantPoolWritePolicy::Preserve});
   ASSERT_TRUE(preserved) << preserved.error().detail;
   EXPECT_TRUE(preserved->bytes == bytes);
 }
@@ -268,6 +303,26 @@ TEST(ClassCorpus, javac_modern_features_roundtrip) {
   ASSERT_EQ(files.size(), 6u);
   for (const auto& path : files) {
     check_roundtrip(path);
+
+    SCOPED_TRACE(path.string());
+    auto parsed = cafe::read_class(load_file(path), STRICT);
+    ASSERT_TRUE(parsed) << parsed.error().detail;
+    const auto compact = cafe::write_class(parsed->class_file);
+    ASSERT_TRUE(compact) << compact.error().path << ": " << compact.error().detail;
+    const auto reopened = cafe::read_class(compact->bytes, STRICT);
+    ASSERT_TRUE(reopened) << reopened.error().path << ": " << reopened.error().detail;
+    EXPECT_EQ(cafe::write_class(reopened->class_file).value().bytes, compact->bytes);
+
+    auto& model = parsed->class_file;
+    ASSERT_TRUE(model.constant_pool().append_utf8("unused before reclamation"));
+    const auto reclaimed = model.compact_constant_pool();
+    ASSERT_TRUE(reclaimed) << reclaimed.error().path << ": " << reclaimed.error().detail;
+    ASSERT_GT(*reclaimed, 0u);
+    const auto preserved = cafe::write_class(model, PRESERVE);
+    ASSERT_TRUE(preserved) << preserved.error().path << ": " << preserved.error().detail;
+    const auto reparsed = cafe::read_class(preserved->bytes, STRICT);
+    ASSERT_TRUE(reparsed) << reparsed.error().path << ": " << reparsed.error().detail;
+    EXPECT_EQ(cafe::write_class(reparsed->class_file).value().bytes, compact->bytes);
   }
 }
 #endif

@@ -545,7 +545,7 @@ TEST(SsaLift, RegistryOperandsSurviveLoweringAndStrictReparse) {
     ASSERT_NO_FATAL_FAILURE(inspect(*graph, false));
     const auto lowered = lower_ssa(test.owner, *graph, context);
     ASSERT_TRUE(lowered) << lowered.error().detail;
-    const auto emitted = write_class(test.owner);
+    const auto emitted = write_class(test.owner, {.constant_pool = ConstantPoolWritePolicy::Preserve});
     ASSERT_TRUE(emitted) << emitted.error().detail;
     const auto parsed = read_class(emitted->bytes, {.mode = ParseMode::Strict});
     ASSERT_TRUE(parsed) << parsed.error().detail;

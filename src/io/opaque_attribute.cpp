@@ -45,13 +45,16 @@ public:
    *   handler-count context.
    * @param scratch_resource Temporary PMR resource that must outlive scratch-backed returned views.
    * @param offset_visitor Optional borrowed callback invoked for validated code-offset fields.
+   * @param constant_visitor Optional borrowed callback invoked for validated constant references.
+   * @param references_only Whether Code-relative fields can be left for later layout validation.
    * @ingroup implementation
    */
   OpaqueValidator(BinaryReader& body, const ConstantPool& constant_pool, const ReadLimits& read_limits,
                   std::string_view attribute_path, const CodeAttributeContext* code_context,
-                  std::pmr::memory_resource* scratch_resource, CodeOffsetVisitor offset_visitor) :
+                  std::pmr::memory_resource* scratch_resource, CodeOffsetVisitor offset_visitor,
+                  ConstantIndexVisitor constant_visitor, bool references_only) :
       reader(body), cp(constant_pool), limits(read_limits), path(attribute_path), code(code_context),
-      scratch(scratch_resource), offsets(offset_visitor) {
+      scratch(scratch_resource), offsets(offset_visitor), constants(constant_visitor), references_only(references_only) {
   }
 
   /**
@@ -101,7 +104,10 @@ public:
         return module();
       case ModulePackages:
         return indices(CpTag::Package);
+      case Signature:
+        return index(CpTag::Utf8);
       case Record:
+        return constants.visit ? record() : skip(reader.remaining());
       case SourceDebugExtension:
       case Unknown:
         return skip(reader.remaining());
@@ -160,9 +166,11 @@ private:
       return failure("truncated attribute constant pool index");
     }
     const CpIndex index{*value};
-    if (!(*value == 0 && zero_allowed) && !cp.has(index, tag)) {
+    if ((index || !zero_allowed) && !cp.has(index, tag)) {
       return failure_at(offset, ReadErrorKind::InvalidIndex, "attribute refers to an invalid constant pool entry");
     }
+    if (constants.visit && !constants.visit(constants.state, offset, index))
+      return failure_at(offset, ReadErrorKind::InvalidIndex, "cannot remap attribute constant reference");
     return index;
   }
 
@@ -237,7 +245,8 @@ private:
     if (offsets.visit && !offsets.visit(offsets.state, field))
       return failure_at(offset, ReadErrorKind::MalformedAttribute, "cannot relocate local variable range");
     const auto end = std::size_t(field.value) + field.length;
-    if (!code || !instruction_start(field.value) || (end != code->bytes.size() && !instruction_start(end))) {
+    if (!references_only && (!code || !instruction_start(field.value) ||
+                             (end != code->bytes.size() && !instruction_start(end)))) {
       return failure_at(offset, ReadErrorKind::MalformedAttribute, "local variable range must use code boundaries");
     }
     return {};
@@ -252,7 +261,7 @@ private:
   Validation local_index(std::uint16_t width = 1) {
     const auto offset = reader.offset();
     const auto slot = reader.u2();
-    if (!slot || !code || std::size_t(*slot) + width > code->max_locals) {
+    if (!slot || (!references_only && (!code || std::size_t(*slot) + width > code->max_locals))) {
       return failure_at(offset, ReadErrorKind::MalformedAttribute, "invalid local variable slot");
     }
     if (offsets.local_slot)
@@ -275,7 +284,7 @@ private:
       CodeOffsetField field{CodeOffsetField::Kind::Line, position, *start};
       if (offsets.visit && !offsets.visit(offsets.state, field))
         return failure_at(offset, ReadErrorKind::MalformedAttribute, "cannot relocate line number offset");
-      if (!code || field.value >= code->bytes.size()) {
+      if (!references_only && (!code || field.value >= code->bytes.size())) {
         return failure_at(offset, ReadErrorKind::MalformedAttribute, "line number offset outside the code array");
       }
       return skip(2);
@@ -337,7 +346,8 @@ private:
     }
     if (tag == 8) {
       const auto offset = reader.u2();
-      if (offset && instruction_start(*offset) && code->bytes[*offset] == std::byte{std::to_underlying(Opcode::New)}) {
+      if (offset && (references_only ||
+                     (instruction_start(*offset) && code->bytes[*offset] == std::byte{std::to_underlying(Opcode::New)}))) {
         return {};
       }
       return failure_at(start, ReadErrorKind::MalformedAttribute, "uninitialized verification type must refer to a new instruction");
@@ -365,7 +375,7 @@ private:
       }
       frame_offset += *delta + std::size_t(subsequent_frame);
       subsequent_frame = true;
-      if (!instruction_start(frame_offset)) {
+      if (!references_only && !instruction_start(frame_offset)) {
         return failure_at(start, ReadErrorKind::MalformedAttribute, "stack map frame offset is not an instruction boundary");
       }
       if ((*type >= 64 && *type < 128) || *type == 247) {
@@ -635,12 +645,12 @@ private:
     if (offsets.visit && !offsets.visit(offsets.state, field))
       return failure_at(offset, ReadErrorKind::MalformedAttribute, "cannot relocate Code type annotation target");
     if (target == 0x42) {
-      if (!code || field.value >= code->exception_count) {
+      if (!references_only && (!code || field.value >= code->exception_count)) {
         return failure_at(offset, ReadErrorKind::MalformedAttribute, "type annotation refers to an invalid exception handler");
       }
       return {};
     }
-    if (!instruction_start(field.value)) {
+    if (!references_only && !instruction_start(field.value)) {
       return failure_at(offset, ReadErrorKind::MalformedAttribute, "type annotation offset is not an instruction boundary");
     }
     return target >= 0x47 ? skip(1) : Validation{};
@@ -663,6 +673,9 @@ private:
       }
       if (inner->value == outer->value) {
         return failure_at(reader.offset() - 2, ReadErrorKind::MalformedAttribute, "class cannot be its own enclosing class");
+      }
+      if (constants.visit && *outer && cp.get_utf8(cp.get(*inner)->first) == cp.get_utf8(cp.get(*outer)->first)) {
+        return failure_at(reader.offset() - 2, ReadErrorKind::MalformedAttribute, "duplicate Class entries name the same inner and outer class");
       }
       return index(CpTag::Utf8, true).and_then([this] { return skip(2); });
     });
@@ -708,6 +721,31 @@ private:
     });
   }
 
+  /// Visit component names, descriptors and references in recognized component attributes.
+  /// @return Success or a bounded record attribute validation error.
+  Validation record() {
+    return repeat(reader.u2(), 6, [this]() -> Validation {
+      if (auto header = index(CpTag::Utf8).and_then([this] { return index(CpTag::Utf8); }); !header)
+        return header;
+      return repeat(reader.u2(), 6, [this]() -> Validation {
+        const auto name_index = read_index(CpTag::Utf8);
+        if (!name_index)
+          return std::unexpected(name_index.error());
+        const auto name = cp.get_utf8(*name_index);
+        const auto* spec = name ? find_attribute(*name) : nullptr;
+        if (!spec || !spec->context_applies(AttributeContext::RecordComponent))
+          return failure_at(reader.offset() - 2, ReadErrorKind::UnsupportedDialect,
+                            "opaque record component attribute may contain constant references");
+        const auto length = reader.u4();
+        auto body = length ? reader.sub_reader(*length) : std::nullopt;
+        if (!body)
+          return failure("truncated record component attribute");
+        return validate_opaque_attribute(*body, *spec, AttributeContext::RecordComponent, cp, limits, path,
+                                         nullptr, scratch, {}, constants);
+      });
+    });
+  }
+
   BinaryReader& reader; ///< Borrowed bounded input cursor advanced by validation.
   const ConstantPool& cp; ///< Borrowed owning constant pool used for reference validation.
   const ReadLimits& limits; ///< Configured resource ceilings.
@@ -715,6 +753,8 @@ private:
   const CodeAttributeContext* code; ///< Optional borrowed bounded Code context for nested-attribute validation.
   std::pmr::memory_resource* scratch; ///< Borrowed temporary allocator for work buffers and interned names.
   CodeOffsetVisitor offsets; ///< Callback visiting offset fields while validating nested Code attributes.
+  ConstantIndexVisitor constants; ///< Callback visiting pool references for compact emission.
+  bool references_only; ///< Allow scanning pool references even when Code layout is stale or unavailable.
 };
 
 } // namespace
@@ -722,8 +762,10 @@ private:
 Validation validate_opaque_attribute(
     BinaryReader& body, const AttributeSpec& spec, AttributeContext context,
     const ConstantPool& cp, const ReadLimits& limits, std::string_view path,
-    const CodeAttributeContext* code, std::pmr::memory_resource* scratch, CodeOffsetVisitor offsets) {
-  auto result = OpaqueValidator(body, cp, limits, path, code, scratch, offsets).validate(spec.kind, context);
+    const CodeAttributeContext* code, std::pmr::memory_resource* scratch, CodeOffsetVisitor offsets,
+    ConstantIndexVisitor constants, bool references_only) {
+  auto result = OpaqueValidator(body, cp, limits, path, code, scratch, offsets, constants, references_only)
+                    .validate(spec.kind, context);
   if (result && body.remaining() != 0) {
     return std::unexpected(ReadError{
         ReadErrorKind::MalformedAttribute, body.offset(), std::string(path), "trailing bytes in attribute body"});

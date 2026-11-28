@@ -66,6 +66,7 @@ public:
 
 private:
   friend class ClassFile;
+  friend class detail::ClassPoolCompaction;
   friend class detail::ClassReader;
 
   /**

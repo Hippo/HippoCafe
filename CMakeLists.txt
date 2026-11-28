@@ -118,12 +118,14 @@ add_library(hippocafe STATIC
   src/io/code_operands.cpp
   src/io/code_writer.cpp
   src/io/constant_pool_reader.cpp
+  src/io/constant_pool_writer.cpp
   src/io/opaque_attribute.cpp
   src/io/ssa_commit.cpp
   src/io/ssa_relocation.cpp
   src/io/stack_map_encoder.cpp
   src/model/attribute.cpp
   src/model/class_file.cpp
+  src/model/class_pool_compaction.cpp
   src/model/constant_pool.cpp
   src/model/constant_validation.cpp
   src/model/symbol_storage.cpp

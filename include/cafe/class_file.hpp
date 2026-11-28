@@ -30,6 +30,7 @@
 namespace cafe {
 
 namespace detail {
+class ClassPoolCompaction;
 struct ClassStorage;
 }
 
@@ -125,17 +126,16 @@ public:
   [[nodiscard]] ClassValidity validity() const noexcept;
   /**
    * @brief Read the declaration identity stamp.
-   * @return A stamp for class identity, interfaces, and member declarations; code and attributes
-   *   have separate tracking.
+   * @return A stamp for class identity, interfaces, member declarations, and pool compaction.
    */
   [[nodiscard]] std::uint64_t declaration_revision() const noexcept;
   /**
-   * @brief Access the class-owned append-only constant pool.
+   * @brief Access the class-owned constant pool.
    * @return A borrowed pool reference valid until class storage destruction.
    */
   [[nodiscard]] ConstantPool& constant_pool() noexcept;
   /**
-   * @brief Access the class-owned append-only constant pool.
+   * @brief Access the class-owned constant pool.
    * @return A borrowed pool reference valid until class storage destruction.
    */
   [[nodiscard]] const ConstantPool& constant_pool() const noexcept;
@@ -357,6 +357,16 @@ public:
    * @return The CodeAttribute pointer, or nullptr for an invalid index or absent/opaque Code.
    */
   [[nodiscard]] CodeAttribute* edit_code(std::size_t method) noexcept;
+
+  /**
+   * @brief Reclaim unused constants and bootstrap rows directly in the class model.
+   * @return Number of reclaimed pool slots, or an error that leaves the model unchanged.
+   *
+   * Instruction handles and labels remain valid. Reacquire pool indices, copied operands,
+   * and borrowed constant or attribute payloads after a successful compaction.
+   * An opaque payload whose references cannot be determined prevents compaction.
+   */
+  [[nodiscard]] std::expected<std::size_t, WriteError> compact_constant_pool();
 
 private:
   friend class MethodEditor;
