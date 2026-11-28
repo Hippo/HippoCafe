@@ -17,27 +17,29 @@
 
 namespace cafe {
 
-RawAttribute::RawAttribute(SourceSlice slice) noexcept : storage(slice) {
+RawAttribute::RawAttribute(SourceSlice slice, std::uint64_t revision) noexcept : storage(slice), pool_revision(revision) {
 }
 
 RawAttribute::RawAttribute(std::vector<std::byte> bytes) noexcept : storage(std::move(bytes)) {
 }
 
-RawAttribute::RawAttribute(SourceSlice source, std::vector<std::byte> bytes)
-    : storage(std::make_shared<const RemappedPayload>(RemappedPayload{source, std::move(bytes)})) {
+RawAttribute::RawAttribute(SourceSlice source, std::vector<std::byte> bytes) : storage(std::make_shared<const RemappedPayload>(RemappedPayload{source, std::move(bytes)})) {
 }
 
 std::optional<std::span<const std::byte>> RawAttribute::bytes(const ClassFile& owner) const noexcept {
-  return bytes(owner.source_bytes());
+  return bytes(*owner.storage);
 }
 
 // Storage is only constructed, copied, or moved. All alternatives have nonthrowing
 // moves, so variant stages a potentially throwing vector copy before changing alternatives.
 // NOLINTNEXTLINE(bugprone-exception-escape)
-std::optional<std::span<const std::byte>> RawAttribute::bytes(std::span<const std::byte> source) const noexcept {
+std::optional<std::span<const std::byte>> RawAttribute::bytes(const detail::ClassStorage& owner) const noexcept {
+  if (pool_revision && pool_revision != owner.pool_revision)
+    return std::nullopt;
   if (const auto* remapped = std::get_if<std::shared_ptr<const RemappedPayload>>(&storage))
     return *remapped ? std::optional{std::span<const std::byte>((*remapped)->bytes)} : std::nullopt;
   if (const auto* slice = source_slice()) {
+    const std::span<const std::byte> source(owner.source);
     if (slice->offset > source.size() || slice->length > source.size() - slice->offset)
       return std::nullopt;
     return source.subspan(slice->offset, slice->length);
@@ -88,16 +90,21 @@ Attribute Attribute::bootstrap_methods(CpIndex name, std::span<const BootstrapMe
   return Attribute(name, AttributeKind::BootstrapMethods, std::move(table));
 }
 
-Attribute Attribute::new_code(CpIndex name, std::pmr::memory_resource* resource) {
-  std::pmr::polymorphic_allocator<CodeAttribute> allocator(resource);
+Attribute Attribute::new_code(CpIndex name, detail::ClassStorage& owner) {
+  std::pmr::polymorphic_allocator<CodeAttribute> allocator(&owner.budget);
   CodeAttribute* value = allocator.allocate(1);
   try {
-    ::new (static_cast<void*>(value)) CodeAttribute(resource);
+    ::new (static_cast<void*>(value)) CodeAttribute(owner);
   } catch (...) {
     allocator.deallocate(value, 1);
     throw;
   }
   return Attribute(name, AttributeKind::Code, CodeOwner(value));
+}
+
+void Attribute::bind_pool(std::uint64_t revision) noexcept {
+  if (auto* raw = std::get_if<RawAttribute>(&payload))
+    raw->pool_revision = revision;
 }
 
 void Attribute::CodeDeleter::operator()(CodeAttribute* value) const noexcept {
@@ -111,8 +118,9 @@ CodeAttribute* Attribute::mutable_code() noexcept {
   return owner ? owner->get() : nullptr;
 }
 
-CodeAttribute::CodeAttribute(std::pmr::memory_resource* resource) :
-    instructions(resource), handlers(resource), nested_attributes(resource), original_boundaries(resource) {
+CodeAttribute::CodeAttribute(detail::ClassStorage& owner) :
+    owner(owner), instructions(&owner.budget), handlers(&owner.budget), nested_attributes(&owner.budget),
+    original_boundaries(&owner.budget) {
 }
 
 void CodeAttribute::set_exception_handlers(std::span<const ExceptionHandler> new_handlers) {
@@ -136,8 +144,10 @@ void CodeAttribute::supply_metadata(std::uint16_t max_stack, std::uint16_t max_l
     updated_handlers.assign(new_handlers.begin(), new_handlers.end());
   std::pmr::vector<Attribute> updated_attributes(nested_attributes.get_allocator());
   updated_attributes.reserve(new_attributes.size());
-  for (auto& attribute : new_attributes)
+  for (auto& attribute : new_attributes) {
+    attribute.bind_pool(owner.pool_revision);
     updated_attributes.push_back(std::move(attribute));
+  }
 
   handlers.swap(updated_handlers);
   nested_attributes.swap(updated_attributes);

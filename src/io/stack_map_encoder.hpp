@@ -52,7 +52,9 @@ public:
 
   /// Write frame references through the selected compact output pool.
   /// @param compact_pool Output pool that must outlive the frame encoder.
-  void use_compact_pool(CompactConstantPool& compact_pool) { compact = &compact_pool; }
+  void use_compact_pool(CompactConstantPool& compact_pool) {
+    compact = &compact_pool;
+  }
 
   /**
    * @brief Borrow encoded constant-pool extension bytes.

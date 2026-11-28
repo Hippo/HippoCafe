@@ -21,28 +21,6 @@ namespace {
 
 constexpr auto MAX_COUNT = std::numeric_limits<std::uint16_t>::max(); ///< Largest u2 table count accepted by the class-file format.
 
-/**
- * @brief Check whether an attribute stores a typed alternative.
- * @param kind Payload or error discriminator.
- * @return True for payloads emitted through a typed codec.
- * @ingroup implementation
- */
-bool typed_payload(AttributeKind kind) noexcept {
-  switch (kind) {
-    case AttributeKind::Code:
-    case AttributeKind::SourceFile:
-    case AttributeKind::Signature:
-    case AttributeKind::ConstantValue:
-    case AttributeKind::Synthetic:
-    case AttributeKind::Deprecated:
-    case AttributeKind::Exceptions:
-    case AttributeKind::BootstrapMethods:
-      return true;
-    default:
-      return false;
-  }
-}
-
 } // namespace
 
 std::expected<void, WriteError> ClassWriter::write_attributes(
@@ -95,7 +73,7 @@ std::expected<void, WriteError> ClassWriter::write_attributes(
 
 std::expected<void, WriteError> ClassWriter::write_raw_attribute(
     std::span<const std::byte> bytes, const AttributeSpec* spec, AttributeContext context,
-    const CodeAttributeContext* code, std::string_view path) {
+    const CodeAttributeContext* code, std::string_view path, bool source_backed) {
   if (compact_pool && !spec)
     return write_error(WriteErrorKind::UnsafeOpaqueAttribute, path,
                        "opaque attribute may refer to original constant-pool indices. Use ConstantPoolWritePolicy::Preserve");
@@ -109,17 +87,20 @@ std::expected<void, WriteError> ClassWriter::write_raw_attribute(
     std::optional<WriteError> error;
   } remapping{*this, std::nullopt};
   const ConstantIndexVisitor constants{&remapping, [](void* state, std::size_t offset, CpIndex index) {
-    auto& remapping = *static_cast<Remapping*>(state);
-    const auto mapped = remapping.writer.compact_pool->index(index);
-    if (!mapped) {
-      remapping.error = mapped.error();
-      return false;
-    }
-    return remapping.writer.output.patch_u2(offset, static_cast<std::uint16_t>(mapped->value));
-  }};
+                                         auto& remapping = *static_cast<Remapping*>(state);
+                                         const auto mapped = remapping.writer.compact_pool->index(index);
+                                         if (!mapped) {
+                                           remapping.error = mapped.error();
+                                           return false;
+                                         }
+                                         return remapping.writer.output.patch_u2(offset, static_cast<std::uint16_t>(mapped->value));
+                                       }};
   BinaryReader reader(bytes, start);
-  const auto checked = validate_opaque_attribute(reader, *spec, context, pool, ReadLimits{}, path, code,
-                                                 std::pmr::get_default_resource(), {}, constants);
+  ReadLimits limits;
+  if (source_backed)
+    limits.max_annotation_depth = bytes.size();
+  auto* scratch = options.code_analysis == CodeAnalysisMode::Preserve ? std::pmr::get_default_resource() : &analysis_budget;
+  const auto checked = validate_opaque_attribute(reader, *spec, context, pool, limits, path, code, scratch, {}, constants);
   if (remapping.error)
     return std::unexpected(std::move(*remapping.error));
   if (!checked) {
@@ -135,7 +116,7 @@ std::expected<void, WriteError> ClassWriter::write_attribute_body(
     const Attribute& attribute, const AttributeSpec* spec, WriteLocation location, std::string_view path) {
   const auto kind = spec ? spec->kind : AttributeKind::Unknown;
   if (const auto* raw = attribute.get<RawAttribute>()) {
-    if (typed_payload(kind))
+    if (requires_typed_payload(kind))
       return write_error(WriteErrorKind::InvalidClassModel, path, "this attribute requires a typed payload");
     if (location.rewritten_code && (!spec || raw->source_slice()))
       return write_error(WriteErrorKind::UnsafeOpaqueAttribute, path, "original or unknown Code attribute may contain stale offsets");
@@ -151,7 +132,7 @@ std::expected<void, WriteError> ClassWriter::write_attribute_body(
           !checked)
         return write_error(WriteErrorKind::InvalidClassModel, path, checked.error().detail);
     }
-    return write_raw_attribute(*bytes, spec, location.context, location.code, path);
+    return write_raw_attribute(*bytes, spec, location.context, location.code, path, raw->source_slice() != nullptr);
   }
 
   if (kind != attribute.kind())

@@ -27,10 +27,10 @@ struct ClassStorage;
  * @brief An instruction snapshot with its location and borrowed class context.
  *
  * The instruction and its handle are copied. Symbolic text borrows the class's
- * append-only pool. Keep the class storage alive, including after moving its
- * owner. A saved view describes the instruction as observed. Use its location
- * to look up the current instruction after editing. Erasing methods can shift
- * method indices, and erasing instructions invalidates their handles.
+ * pool until compaction. Keep the class storage alive, including after moving
+ * its owner. Use the location to reacquire the instruction after compaction.
+ * Erasing methods can shift method indices, and erasing instructions invalidates
+ * their handles.
  * @ingroup bytecode
  */
 class InstructionView {
@@ -83,10 +83,8 @@ public:
    *   or InvalidOperand for an invalid constant reference.
    */
   [[nodiscard]] std::expected<FieldAccess, CodeEditError> field_access() const;
-  /// @return A copy of the raw instruction, including its original encoding hint.
-  [[nodiscard]] Instruction raw() const noexcept {
-    return entry.instruction;
-  }
+  /// @return The observed instruction and encoding hint. After pool compaction, a constant operand is zero.
+  [[nodiscard]] Instruction raw() const noexcept;
 
 private:
   friend class ClassFile;
@@ -97,11 +95,10 @@ private:
   /// @param storage Move-stable class storage owning the constant pool.
   /// @param method_index Source method ordinal.
   /// @param entry Copied raw instruction and handle.
-  InstructionView(const detail::ClassStorage* storage, std::size_t method_index, InstructionEntry entry) noexcept :
-      storage(storage), method_index(method_index), entry(entry) {
-  }
+  InstructionView(const detail::ClassStorage* storage, std::size_t method_index, InstructionEntry entry) noexcept;
 
   const detail::ClassStorage* storage; ///< Borrowed class storage, stable across moves of the owner.
+  std::uint64_t pool_revision; ///< Class pool numbering at observation.
   std::size_t method_index; ///< Method-table position when the instruction was observed.
   InstructionEntry entry; ///< Copied raw instruction and its stable handle.
 };

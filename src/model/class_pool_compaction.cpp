@@ -16,6 +16,7 @@
 #include "class_storage.hpp"
 #include "io/binary_reader.hpp"
 #include "io/class_writer_impl.hpp"
+#include "io/code_operands.hpp"
 
 namespace cafe::detail {
 
@@ -42,11 +43,10 @@ public:
 private:
   /// @param storage Mutable declaration storage.
   /// @param bootstraps Typed BootstrapMethods payload, if present.
-  ClassPoolCompaction(ClassStorage& storage, BootstrapMethods* bootstraps)
-      : storage(storage), bootstraps(bootstraps),
-        compact(storage.pool, storage.version, is_module(storage.version, storage.flags),
-                bootstraps ? std::span<const BootstrapMethod>(bootstraps->methods) : std::span<const BootstrapMethod>{},
-                std::pmr::get_default_resource()) {
+  ClassPoolCompaction(ClassStorage& storage, BootstrapMethods* bootstraps) : storage(storage), bootstraps(bootstraps),
+                                                                             compact(storage.pool, storage.version, is_module(storage.version, storage.flags),
+                                                                                     bootstraps ? std::span<const BootstrapMethod>(bootstraps->methods) : std::span<const BootstrapMethod>{},
+                                                                                     std::pmr::get_default_resource()) {
   }
 
   /// @param roots Extra constant references needed by a pending edit.
@@ -72,7 +72,7 @@ private:
     if (auto built = compact.build_model(replacement); !built)
       return std::unexpected(built.error());
     const auto reclaimed = storage.pool.size() - replacement.size();
-    if (reclaimed == 0 && (attempt || !bootstraps || live_bootstraps->size() == bootstraps->methods.size()))
+    if (reclaimed == 0 && (!bootstraps || live_bootstraps->size() == bootstraps->methods.size()))
       return reclaimed;
 
     std::optional<std::pmr::vector<BootstrapMethod>> new_bootstraps;
@@ -95,10 +95,12 @@ private:
     stage_historical_references(mapping);
     decltype(storage.constant_lookup) old_lookup(&storage.budget);
     std::size_t indexed_constants = 1;
+    auto pool_revision = next_declaration_revision();
 
     // Swapping holds the original pool (including borrowed strings) alive
     // throughout the retry. The same swaps restore it if the edit fails.
     const auto exchange = [&]() noexcept {
+      std::swap(storage.pool_revision, pool_revision);
       for (auto& [slot, index] : references)
         std::swap(*slot, index);
       for (auto& update : attribute_updates) {
@@ -114,6 +116,7 @@ private:
           assert(raw);
           std::swap(*raw, *update.raw);
         }
+        attribute.bind_pool(storage.pool_revision);
       }
       for (auto& update : codes) {
         BytecodeAccess::swap_constant_instructions(update.code->instructions, update.instructions);
@@ -141,7 +144,7 @@ private:
         throw;
       }
     }
-    storage.declaration_stamp = next_declaration_revision();
+    storage.declaration_stamp = storage.pool_revision;
     return reclaimed;
   }
 
@@ -211,7 +214,11 @@ private:
         return status;
       if (auto status = stage(member.descriptor); !status)
         return status;
-      if (auto status = attributes(member.attribute_entries, context, index_path(path, i)); !status)
+      const auto descriptor = storage.pool.get_utf8(member.descriptor);
+      if (!descriptor)
+        return write_error(WriteErrorKind::InvalidConstantPoolReference, index_path(path, i),
+                           "member descriptor must refer to valid Utf8");
+      if (auto status = attributes(member.attribute_entries, context, index_path(path, i), *descriptor); !status)
         return status;
     }
     return {};
@@ -231,8 +238,10 @@ private:
   /// @param entries Model attributes to collect.
   /// @param context Location in the class model.
   /// @param path Diagnostic path of the surrounding declaration or Code attribute.
+  /// @param descriptor Owning member descriptor, used to validate ConstantValue.
   /// @return Success or an unsupported attribute or invalid reference error.
-  Status attributes(std::span<Attribute> entries, AttributeContext context, std::string_view path) {
+  Status attributes(std::span<Attribute> entries, AttributeContext context, std::string_view path,
+                    std::string_view descriptor = {}) {
     for (std::size_t i = 0; i < entries.size(); ++i) {
       auto& attribute = entries[i];
       const auto name = storage.pool.get_utf8(attribute.name);
@@ -241,24 +250,42 @@ private:
         return write_error(WriteErrorKind::InvalidConstantPoolReference, location, "attribute name must refer to valid Utf8");
       location += ".";
       location += *name;
+      const auto* spec = find_attribute(*name);
+      if (!spec)
+        return write_error(WriteErrorKind::UnsafeOpaqueAttribute, location, "unknown attribute prevents pool compaction");
+      if (!spec->applicable_to(storage.version, context))
+        return write_error(WriteErrorKind::InvalidClassModel, location, "attribute does not apply to the declared version or context");
       const auto mapped = compact.index(attribute.name);
       if (!mapped)
         return std::unexpected(mapped.error());
       AttributeUpdate update{&attribute, context == AttributeContext::Class ? std::optional{i} : std::nullopt,
                              *mapped, std::nullopt, std::nullopt};
       if (auto* raw = std::get_if<RawAttribute>(&attribute.payload)) {
-        if (auto status = raw_attribute(*raw, find_attribute(*name), context, location, update.raw); !status)
+        if (requires_typed_payload(spec->kind))
+          return write_error(WriteErrorKind::InvalidClassModel, location, "this attribute requires a typed payload");
+        if (auto status = raw_attribute(*raw, *spec, context, location, update.raw); !status)
           return status;
+      } else if (attribute.kind() != spec->kind) {
+        return write_error(WriteErrorKind::InvalidClassModel, location, "attribute name and typed payload disagree");
       } else if (auto* code = attribute.mutable_code()) {
         if (auto status = code_attribute(*code, location); !status)
           return status;
       } else if (const auto* scalar = scalar_reference(attribute)) {
+        const bool valid = spec->kind == AttributeKind::ConstantValue
+                               ? storage.pool.has(*scalar, constant_value_tag(descriptor))
+                               : storage.pool.get_utf8(*scalar).has_value();
+        if (!valid)
+          return write_error(WriteErrorKind::InvalidConstantPoolReference, location,
+                             "attribute refers to a missing or incompatible constant");
         const auto index = compact.index(*scalar);
         if (!index)
           return std::unexpected(index.error());
         update.constant = *index;
       } else if (auto* exceptions = std::get_if<Exceptions>(&attribute.payload)) {
         for (auto& type : exceptions->types) {
+          if (!class_name(storage.pool, type))
+            return write_error(WriteErrorKind::InvalidConstantPoolReference, location,
+                               "exception index must name a non-array class");
           if (auto status = stage(type); !status)
             return status;
         }
@@ -282,6 +309,10 @@ private:
     auto& update = codes.emplace_back(CodeUpdate{&code, {}});
     for (const auto& entry : code.instructions.instructions()) {
       if (const auto index = entry.instruction.constant_index()) {
+        if (const auto issue = validate_instruction(entry.instruction, storage.version, storage.pool, 0))
+          return write_error(issue->constant_pool ? WriteErrorKind::InvalidConstantPoolReference
+                                                  : WriteErrorKind::InvalidCodeLayout,
+                             path, issue->reason);
         const auto mapped = compact.index(*index);
         if (!mapped)
           return std::unexpected(mapped.error());
@@ -290,6 +321,8 @@ private:
       }
     }
     for (auto& handler : code.handlers) {
+      if (handler.catch_type && !class_name(storage.pool, handler.catch_type))
+        return write_error(WriteErrorKind::InvalidConstantPoolReference, path, "catch type must name a non-array class");
       if (auto status = stage(handler.catch_type); !status)
         return status;
     }
@@ -297,16 +330,14 @@ private:
   }
 
   /// @param raw Attribute bytes to scan for pool references.
-  /// @param spec Format definition, or null for an unknown attribute.
+  /// @param spec Format definition for the recognized attribute.
   /// @param context Location in the class model.
   /// @param path Diagnostic attribute path.
   /// @param replacement Receives a replacement body if an index changed.
   /// @return Success or an error that prevents safe compaction.
-  Status raw_attribute(const RawAttribute& raw, const AttributeSpec* spec, AttributeContext context, std::string_view path,
+  Status raw_attribute(const RawAttribute& raw, const AttributeSpec& spec, AttributeContext context, std::string_view path,
                        std::optional<RawAttribute>& replacement) {
-    if (!spec)
-      return write_error(WriteErrorKind::UnsafeOpaqueAttribute, path, "unknown attribute prevents pool compaction");
-    const auto bytes = raw.bytes(storage.source);
+    const auto bytes = raw.bytes(storage);
     if (!bytes)
       return write_error(WriteErrorKind::InvalidClassModel, path, "raw attribute slice is out of bounds");
 
@@ -317,28 +348,28 @@ private:
       std::optional<WriteError> error;
     } rewrite{compact, *bytes, {}, {}};
     const ConstantIndexVisitor references{&rewrite, [](void* state, std::size_t offset, CpIndex source) {
-      auto& rewrite = *static_cast<Rewrite*>(state);
-      const auto index = rewrite.compact.index(source);
-      if (!index) {
-        rewrite.error = index.error();
-        return false;
-      }
-      if (source == *index)
-        return true;
-      if (rewrite.bytes.empty())
-        rewrite.bytes.assign(rewrite.original.begin(), rewrite.original.end());
-      return BinaryWriter(rewrite.bytes).patch_u2(offset, index->value);
-    }};
+                                            auto& rewrite = *static_cast<Rewrite*>(state);
+                                            const auto index = rewrite.compact.index(source);
+                                            if (!index) {
+                                              rewrite.error = index.error();
+                                              return false;
+                                            }
+                                            if (source == *index)
+                                              return true;
+                                            if (rewrite.bytes.empty())
+                                              rewrite.bytes.assign(rewrite.original.begin(), rewrite.original.end());
+                                            return BinaryWriter(rewrite.bytes).patch_u2(offset, index->value);
+                                          }};
     BinaryReader reader(*bytes);
     ReadLimits limits;
     limits.max_annotation_depth = bytes->size();
-    const auto checked = validate_opaque_attribute(reader, *spec, context, storage.pool, limits, path,
+    const auto checked = validate_opaque_attribute(reader, spec, context, storage.pool, limits, path,
                                                    nullptr, std::pmr::get_default_resource(), {}, references, true);
     if (rewrite.error)
       return std::unexpected(std::move(*rewrite.error));
     if (!checked) {
       return write_error(checked.error().kind == ReadErrorKind::UnsupportedDialect ? WriteErrorKind::UnsafeOpaqueAttribute
-                                                                                    : WriteErrorKind::InvalidClassModel,
+                                                                                   : WriteErrorKind::InvalidClassModel,
                          path, checked.error().detail);
     }
     if (!rewrite.bytes.empty()) {

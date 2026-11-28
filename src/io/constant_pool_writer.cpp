@@ -18,6 +18,24 @@ namespace {
 
 constexpr auto MAX_COUNT = std::numeric_limits<std::uint16_t>::max(); ///< Largest constant pool slot count.
 
+/// @param tag Constant tag being considered for deduplication.
+/// @return Whether distinct source slots carry separate JVM linkage state.
+bool has_linkage_identity(CpTag tag) noexcept {
+  switch (tag) {
+    case CpTag::Class:
+    case CpTag::Fieldref:
+    case CpTag::Methodref:
+    case CpTag::InterfaceMethodref:
+    case CpTag::MethodHandle:
+    case CpTag::MethodType:
+    case CpTag::Dynamic:
+    case CpTag::InvokeDynamic:
+      return true;
+    default:
+      return false;
+  }
+}
+
 } // namespace
 
 CompactConstantPool::CompactConstantPool(
@@ -29,28 +47,22 @@ CompactConstantPool::CompactConstantPool(
   constants.push_back({{CpTag::Reserved}, {}});
 }
 
-std::size_t CompactConstantPool::KeyHash::operator()(const Key& key) const noexcept {
-  std::size_t hash = std::hash<std::string_view>{}(key.text);
-  const auto combine = [&](std::size_t value) {
-    hash ^= value + 0x9e3779b9U + (hash << 6) + (hash >> 2);
-  };
-  combine(static_cast<std::size_t>(key.tag));
-  combine(key.reference_kind);
-  combine(key.first);
-  combine(key.second);
-  combine(std::hash<std::uint64_t>{}(key.bits));
-  return hash;
-}
-
-CompactConstantPool::ConstantId CompactConstantPool::intern(const Key& key) {
+CompactConstantPool::ConstantId CompactConstantPool::intern(const Key& key, bool from_source) {
   const auto id = constants.size();
-  // Distinct dynamic constants can be resolved independently by the JVM.
-  if (!dynamic_constant(key.tag)) {
+  const bool source_class = from_source && key.tag == CpTag::Class;
+  // JVM resolution results belong to symbolic references (JVMS 5.4.3).
+  // A frame-generated Class can share with one source slot of the same name.
+  if (key.tag == CpTag::Class || !has_linkage_identity(key.tag)) {
     const auto [existing, inserted] = keys.try_emplace(key, id);
-    if (!inserted)
-      return existing->second;
+    if (!inserted) {
+      auto& prior = constants[existing->second];
+      if (!source_class || !prior.has_source_class) {
+        prior.has_source_class |= source_class;
+        return existing->second;
+      }
+    }
   }
-  constants.push_back({key, {}});
+  constants.push_back({key, {}, source_class});
   return id;
 }
 
@@ -102,7 +114,7 @@ std::expected<CompactConstantPool::ConstantId, WriteError> CompactConstantPool::
     if (form == CpForm::Handle)
       key.reference_kind = entry->reference_kind;
   }
-  const auto id = intern(key);
+  const auto id = intern(key, true);
   source_ids.emplace(source.value, id);
   return id;
 }
@@ -217,7 +229,7 @@ std::expected<void, WriteError> CompactConstantPool::build_model(ConstantPool& d
   for (const auto id : output_order) {
     const auto& key = constants[id].key;
     const auto appended = key.tag == CpTag::Utf8 ? destination.append_utf8_copy(key.text, valid_modified_utf8(key.text))
-                                                  : destination.append(remapped_entry(key));
+                                                 : destination.append(remapped_entry(key));
     if (!appended)
       return write_error(WriteErrorKind::InvalidClassModel, "constant_pool", "could not build the compact model pool");
   }
@@ -233,13 +245,14 @@ std::expected<std::vector<std::byte>, WriteError> CompactConstantPool::finish(
   BinaryWriter writer(bytes);
   writer.u2(next_index);
   for (const auto id : output_order) {
-    const auto& [key, index] = constants[id];
+    const auto& constant = constants[id];
+    const auto& key = constant.key;
     if (key.text.size() > MAX_COUNT)
-      return write_error(WriteErrorKind::InvalidClassModel, index_path("constant_pool", index.value),
+      return write_error(WriteErrorKind::InvalidClassModel, index_path("constant_pool", constant.index.value),
                          "Utf8 constant length does not fit u2");
     if (has_invalid_utf8 && !invalid_utf8 && key.tag == CpTag::Utf8 && !valid_modified_utf8(key.text)) {
       invalid_utf8.emplace(Severity::Warning, DiagnosticCode::InvalidModifiedUtf8, origin + writer.size(),
-                           index_path("constant_pool", index.value), "retained invalid modified UTF-8 bytes",
+                           index_path("constant_pool", constant.index.value), "retained invalid modified UTF-8 bytes",
                            RecoveryAction::RetainedRaw);
     }
     write_constant(writer, remapped_entry(key), cp_format(key.tag).form, key.text);

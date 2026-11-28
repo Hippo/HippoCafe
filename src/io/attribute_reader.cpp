@@ -99,7 +99,8 @@ std::expected<bool, ReadError> ClassReader::read_attributes(
       continue;
     }
     if (!spec) {
-      attributes.push_back(Attribute(name, AttributeKind::Unknown, RawAttribute(source_slice_of(body->offset(), body->remaining()))));
+      const auto slice = source_slice_of(body->offset(), body->remaining());
+      attributes.push_back(Attribute(name, AttributeKind::Unknown, RawAttribute(slice, storage->pool_revision)));
       continue;
     }
 
@@ -224,7 +225,7 @@ std::expected<Attribute, ReadError> ClassReader::decode_attribute(
                                                path, location.code, &storage->budget, location.offsets);
       if (!checked)
         return std::unexpected(std::move(checked.error()));
-      return Attribute(name, spec.kind, RawAttribute(slice));
+      return Attribute(name, spec.kind, RawAttribute(slice, storage->pool_revision));
     }
   }
 }
@@ -296,7 +297,7 @@ std::expected<Attribute, ReadError> ClassReader::read_code(
   if (parameters > *locals)
     return recover_opaque(fail(original.offset, "max_locals cannot hold the method parameters"));
 
-  auto attribute = Attribute::new_code(name, &storage->budget);
+  auto attribute = Attribute::new_code(name, *storage);
   auto& code = *attribute.mutable_code();
   const auto& pool = storage->pool;
   auto boundaries = decode_code(code.instructions, *bytes, offset, storage->version, pool, *locals,

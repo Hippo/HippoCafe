@@ -552,6 +552,54 @@ TEST(ConstantPool, CompactsEquivalentStringsAndKeepsLoadWidths) {
   EXPECT_LT(output.constant_pool().size(), 20u);
 }
 
+TEST(ConstantPool, KeepsDistinctSymbolicReferencesDuringBothKindsOfCompaction) {
+  auto model = fixture();
+  auto& body = with_return(model);
+  auto& pool = model.constant_pool();
+  const auto owner_name = text(model, "Owner");
+  const auto descriptor = text(model, "()V");
+  const auto signature = pool.append({CpTag::NameAndType, 0, text(model, "target"), descriptor}).value();
+  const auto anchor = body.code().at(0);
+  (void)text(model, "unused");
+  for (int i = 0; i < 2; ++i) {
+    const auto owner = pool.append({CpTag::Class, 0, owner_name, {}}).value();
+    const auto method = pool.append({CpTag::Methodref, 0, owner, signature}).value();
+    const auto handle = pool.append({CpTag::MethodHandle, 6, method, {}}).value();
+    const auto type = pool.append({CpTag::MethodType, 0, descriptor, {}}).value();
+    for (auto index : {owner, handle, type, handle}) {
+      ASSERT_TRUE(body.code().insert_before(anchor, Instruction::constant(Opcode::Ldc, index).value()));
+      ASSERT_TRUE(body.code().insert_before(anchor, Instruction::pop()));
+    }
+  }
+  body.supply_metadata(1, 0, {});
+
+  const auto check_references = [](const ClassFile& file) {
+    const auto& code = file.methods()[0].code()->code();
+    const auto& constants = file.constant_pool();
+    const auto operand = [&](std::size_t position) { return code.get(code.at(position))->constant_index().value(); };
+    for (const auto position : {0u, 2u, 4u})
+      EXPECT_NE(operand(position), operand(position + 8));
+    for (const auto position : {0u, 8u}) {
+      EXPECT_EQ(operand(position + 2), operand(position + 6));
+      const auto* handle = constants.get(operand(position + 2));
+      ASSERT_NE(handle, nullptr);
+      const auto* method = constants.get(handle->first);
+      ASSERT_NE(method, nullptr);
+      EXPECT_EQ(method->first, operand(position));
+    }
+  };
+  const auto written = write_class(model, SUPPLIED);
+  ASSERT_TRUE(written) << written.error().detail;
+  const auto reopened = read_class(written->bytes, STRICT);
+  ASSERT_TRUE(reopened) << reopened.error().detail;
+  check_references(reopened->class_file);
+
+  const auto reclaimed = model.compact_constant_pool();
+  ASSERT_TRUE(reclaimed) << reclaimed.error().detail;
+  EXPECT_GT(*reclaimed, 0u);
+  check_references(model);
+}
+
 TEST(ConstantPool, AutomaticallyReclaimsSlotsAfterRepeatedReplacements) {
   auto model = fixture();
   auto editor = model.add_method(0x0009, "value", "()Ljava/lang/String;").value();
@@ -609,6 +657,29 @@ TEST(ConstantPool, InMemoryCompactionKeepsCallerSuppliedCodeWidths) {
   EXPECT_EQ(code.get(code.at(0))->encoding_hint(), EncodingHint::Wide);
 }
 
+TEST(ConstantPool, InMemoryCompactionRejectsInvalidLiveReferencesWithoutPublishing) {
+  auto bad_attribute = fixture();
+  const auto signature = text(bad_attribute, "Signature");
+  ASSERT_TRUE(bad_attribute.add_attribute(Attribute(signature, Signature{})));
+  const auto attribute_revision = bad_attribute.declaration_revision();
+  const auto attributes = bad_attribute.compact_constant_pool();
+  ASSERT_FALSE(attributes);
+  EXPECT_EQ(attributes.error().kind, WriteErrorKind::InvalidConstantPoolReference);
+  EXPECT_EQ(bad_attribute.declaration_revision(), attribute_revision);
+  EXPECT_EQ(bad_attribute.attributes().front().name_index(), signature);
+
+  auto bad_instruction = fixture();
+  auto& code = with_return(bad_instruction).code();
+  const auto wrong_tag = text(bad_instruction, "unused Utf8");
+  const auto operand = code.insert_before(code.at(0), Instruction::constant(Opcode::Ldc, wrong_tag).value()).value();
+  const auto code_revision = bad_instruction.declaration_revision();
+  const auto instructions = bad_instruction.compact_constant_pool();
+  ASSERT_FALSE(instructions);
+  EXPECT_EQ(instructions.error().kind, WriteErrorKind::InvalidConstantPoolReference);
+  EXPECT_EQ(bad_instruction.declaration_revision(), code_revision);
+  EXPECT_EQ(code.get(operand)->constant_index(), wrong_tag);
+}
+
 TEST(ConstantPool, ChecksUtf8LengthOnlyForEmittedConstants) {
   auto model = fixture();
   auto editor = model.add_method(0x0009, "value", "()Ljava/lang/String;").value();
@@ -632,7 +703,8 @@ TEST(ConstantPool, PrunesUnusedBootstrapRowsAndArguments) {
   const auto anchor = code.at(0);
   const std::array unused_args{BootstrapArgument{std::string_view("unused bootstrap argument")}};
   const auto removed = editor.insert_before(
-      anchor, DynamicConstant{"discarded", "I", {TEST_BOOTSTRAP.handle, unused_args}}).value();
+                                 anchor, DynamicConstant{"discarded", "I", {TEST_BOOTSTRAP.handle, unused_args}})
+                           .value();
   ASSERT_TRUE(editor.insert_before(anchor, DynamicConstant{"kept", "I", TEST_BOOTSTRAP}));
   ASSERT_TRUE(editor.insert_before(anchor, Instruction::pop()));
   ASSERT_TRUE(editor.erase(removed));

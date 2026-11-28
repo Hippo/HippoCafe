@@ -125,6 +125,24 @@ inline constexpr std::array ATTRIBUTE_SPECS{
 
 static_assert(std::ranges::is_sorted(ATTRIBUTE_SPECS, {}, &AttributeSpec::name));
 
+/// @param kind Attribute kind to emit or relocate.
+/// @return Whether an attribute of this kind uses a typed payload in the model.
+[[nodiscard]] constexpr bool requires_typed_payload(AttributeKind kind) noexcept {
+  switch (kind) {
+    case AttributeKind::Code:
+    case AttributeKind::SourceFile:
+    case AttributeKind::Signature:
+    case AttributeKind::ConstantValue:
+    case AttributeKind::Synthetic:
+    case AttributeKind::Deprecated:
+    case AttributeKind::Exceptions:
+    case AttributeKind::BootstrapMethods:
+      return true;
+    default:
+      return false;
+  }
+}
+
 /**
  * @brief Look up a recognized attribute in the sorted format registry.
  * @param name Exact attribute name to find in the registry.

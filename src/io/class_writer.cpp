@@ -76,7 +76,8 @@ std::expected<WriteResult, WriteError> ClassWriter::write() try {
         bootstraps = table->methods;
     }
     compact_pool.emplace(pool, version, is_module(version, model.access_flags()), bootstraps,
-                         std::pmr::get_default_resource());
+                         options.code_analysis == CodeAnalysisMode::Preserve ? std::pmr::get_default_resource()
+                                                                             : &analysis_budget);
     stack_map_constants.use_compact_pool(*compact_pool);
     if (auto reserved = compact_pool->reserve_narrow_constants(model.methods(), options.preserve_original_encodings); !reserved)
       return std::unexpected(std::move(reserved.error()));

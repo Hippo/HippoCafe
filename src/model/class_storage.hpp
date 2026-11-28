@@ -73,6 +73,7 @@ struct ClassStorage {
 
   ClassVersion version; ///< Exact class-file major and minor version.
   std::uint64_t declaration_stamp = next_declaration_revision(); ///< Current class declaration identity stamp.
+  std::uint64_t pool_revision = declaration_stamp; ///< Identity of the current constant-pool numbering.
   std::uint16_t flags = 0; ///< JVM access bit mask.
   CpIndex this_class; ///< Class constant identifying the owner declaration.
   CpIndex super_class; ///< Direct superclass Class constant, or zero where permitted.

@@ -12,6 +12,7 @@
 #include <locale>
 #include <sstream>
 
+#include "code_access.hpp"
 #include "instruction_format.hpp"
 
 namespace cafe::detail {
@@ -93,6 +94,17 @@ std::expected<const MethodCode*, CodeEditError> decoded_code(const ClassFile& fi
 }
 
 } // namespace
+
+InstructionView::InstructionView(const detail::ClassStorage* storage, std::size_t method_index,
+                                 InstructionEntry entry) noexcept :
+    storage(storage), pool_revision(storage->pool_revision), method_index(method_index), entry(entry) {
+}
+
+Instruction InstructionView::raw() const noexcept {
+  if (pool_revision != storage->pool_revision && entry.instruction.constant_index())
+    return detail::BytecodeAccess::with_constant_index(entry.instruction, {});
+  return entry.instruction;
+}
 
 InstructionViewRange ClassFile::instructions(std::size_t method_index) const noexcept {
   return checked_instructions(method_index).value_or(InstructionViewRange{});

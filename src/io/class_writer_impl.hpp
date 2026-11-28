@@ -116,10 +116,11 @@ private:
   /// @param context Owning declaration or Code context.
   /// @param code Final Code layout if the attribute is nested within Code.
   /// @param path Attribute diagnostic path.
+  /// @param source_backed Whether the payload was retained from a parsed class.
   /// @return Success or an attribute validation or remapping error.
   [[nodiscard]] std::expected<void, WriteError> write_raw_attribute(
       std::span<const std::byte> bytes, const AttributeSpec* spec, AttributeContext context,
-      const CodeAttributeContext* code, std::string_view path);
+      const CodeAttributeContext* code, std::string_view path, bool source_backed);
   /**
    * @brief Validate and serialize original constants and staged frame extensions.
    * @return Success or a constant-tag/reference/version/count error.

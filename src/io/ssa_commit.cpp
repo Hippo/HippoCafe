@@ -146,6 +146,8 @@ std::expected<std::vector<Diagnostic>, WriteError> SsaCommit::finish(
   } else if (stack_map) {
     attributes.push_back(std::move(*stack_map));
   }
+  for (auto& attribute : attributes)
+    attribute.bind_pool(owner.storage->pool_revision);
   std::pmr::vector<ExceptionHandler> final_handlers(handlers.begin(), handlers.end(), storage_resource);
   std::pmr::vector<CodeAttribute::OriginalBoundary> boundaries(storage_resource);
   if (std::ranges::any_of(attributes, [](const Attribute& attribute) {

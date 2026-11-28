@@ -259,7 +259,7 @@ TEST(ClassCorpus, reserved_opcode_requires_explicit_opaque_read_and_write) {
   ASSERT_FALSE(compact);
   EXPECT_EQ(compact.error().kind, cafe::WriteErrorKind::UnsupportedOpaqueCode);
   const auto preserved = cafe::write_class(opaque->class_file, {.allow_opaque_code = true,
-                                                               .constant_pool = cafe::ConstantPoolWritePolicy::Preserve});
+                                                                .constant_pool = cafe::ConstantPoolWritePolicy::Preserve});
   ASSERT_TRUE(preserved) << preserved.error().detail;
   EXPECT_TRUE(preserved->bytes == bytes);
 }

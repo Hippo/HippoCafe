@@ -713,16 +713,22 @@ using PatchResult = std::expected<std::vector<InstructionId>, BlockEditError>;
 /// @param mapping Original pool indices to translate during a compacted retry.
 /// @return Inserted IDs or a failure with the offending element index when available.
 PatchResult apply_edit_once(ClassStorage& storage, MethodCode& code, const CodePatch& patch,
-                           std::span<const MethodInstruction> values, std::span<const CpIndex> mapping = {}) {
+                            std::span<const MethodInstruction> values, std::span<const CpIndex> mapping = {}) {
+  const auto source_pool_size = storage.pool.size();
   SymbolicEdit edit(storage);
   std::pmr::vector<InstructionBuilder> instructions(&storage.budget);
   instructions.reserve(values.size());
   for (const auto& value : values) {
     const auto resolve = [&]() -> EditResult<InstructionBuilder> {
-      if (!mapping.empty()) {
-        if (const auto* raw = std::get_if<Instruction>(&value)) {
-          if (const auto index = raw->constant_index())
+      if (const auto* raw = std::get_if<Instruction>(&value)) {
+        if (const auto index = raw->constant_index()) {
+          if (!mapping.empty()) {
+            if (index->value >= mapping.size() || !mapping[index->value])
+              return std::unexpected(CodeEditError::InvalidOperand);
             return BytecodeAccess::with_constant_index(*raw, mapping[index->value]);
+          }
+          if (index->value >= source_pool_size)
+            return std::unexpected(CodeEditError::InvalidOperand);
         }
       }
       return edit.resolve(value);
@@ -740,7 +746,7 @@ PatchResult apply_edit_once(ClassStorage& storage, MethodCode& code, const CodeP
   return inserted;
 }
 
-/// Apply a symbolic patch and retry once after pool compaction if it runs out of slots.
+/// Apply a symbolic patch and retry once after pool compaction on a slot or bootstrap limit.
 /// @param storage Class whose symbolic operands are resolved.
 /// @param code Decoded target method, or null when unavailable.
 /// @param patch Placement, matched IDs and label fixups.
@@ -752,7 +758,8 @@ PatchResult apply_edit(ClassStorage& storage, CodeAttribute* code, const CodePat
     return std::unexpected(BlockEditError{CodeEditError::NoCode, std::nullopt});
 
   auto result = apply_edit_once(storage, code->code(), patch, values);
-  if (result || result.error().cause != CodeEditError::ConstantPoolLimit)
+  if (result || (result.error().cause != CodeEditError::ConstantPoolLimit &&
+                 result.error().cause != CodeEditError::BootstrapLimit))
     return result;
 
   std::vector<CpIndex> roots;

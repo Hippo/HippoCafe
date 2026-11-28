@@ -32,7 +32,7 @@ namespace cafe {
 namespace detail {
 class ClassPoolCompaction;
 struct ClassStorage;
-}
+} // namespace detail
 
 /**
  * @brief Model provenance and recovery state, independent of JVM verifier acceptance.
@@ -370,6 +370,7 @@ public:
 
 private:
   friend class MethodEditor;
+  friend class RawAttribute;
   /// @param name Internal interface name to intern.
   /// @return Success or a model error.
   std::expected<void, ModelError> add_named_interface(std::string_view name);

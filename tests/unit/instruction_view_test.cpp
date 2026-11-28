@@ -125,6 +125,37 @@ TEST(InstructionViews, ResolvesMembersAndRetainsSnapshotsAcrossClassMoveAndCodeE
   EXPECT_EQ(file.instruction(call_view.location()).error(), CodeEditError::InvalidInstruction);
 }
 
+TEST(InstructionViews, CompactionInvalidatesSavedOperandsEvenWhenTheirSlotIsReused) {
+  auto file = fixture();
+  auto& body = add_body(file);
+  auto editor = file.edit_method(0).value();
+  ASSERT_TRUE(file.constant_pool().append_utf8("unused"));
+  const auto target = editor.append(MethodInvocation{Opcode::InvokeStatic, "Owner", "first", "()V"}).value();
+  const auto saved = editor.instruction(target).value();
+  const auto old_slot = saved.raw().constant_index().value();
+  ASSERT_TRUE(saved.method_invocation().value().matches("Owner", "first", "()V"));
+  for (unsigned i = 0; i < 16; ++i) {
+    const auto name = "other" + std::to_string(i);
+    ASSERT_TRUE(editor.append(MethodInvocation{Opcode::InvokeStatic, "Owner", name, "()V"}));
+  }
+
+  const auto reclaimed = file.compact_constant_pool();
+  ASSERT_TRUE(reclaimed) << reclaimed.error().detail;
+  EXPECT_GT(*reclaimed, 0u);
+  EXPECT_TRUE(file.constant_pool().has(old_slot, CpTag::Methodref));
+  const auto expired = saved.method_invocation();
+  ASSERT_FALSE(expired);
+  EXPECT_EQ(expired.error(), CodeEditError::InvalidOperand);
+  EXPECT_EQ(saved.raw().constant_index(), CpIndex{});
+  EXPECT_EQ(editor.append(saved.raw()), std::unexpected(CodeEditError::InvalidOperand));
+  EXPECT_EQ(body.code().append(saved.raw()), std::unexpected(CodeEditError::InvalidOperand));
+
+  const auto current = file.instruction(saved.location());
+  ASSERT_TRUE(current);
+  EXPECT_NE(current->raw().constant_index(), old_slot);
+  EXPECT_TRUE(current->method_invocation().value().matches("Owner", "first", "()V"));
+}
+
 TEST(InstructionViews, SeparatesMalformedMemberReferencesFromNonmatchingOpcodes) {
   auto file = fixture();
   auto& code = add_body(file).code();

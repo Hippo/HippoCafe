@@ -86,14 +86,16 @@ invalidated by appends, so retain indices or value copies when editing.
 
 `file.compact_constant_pool()` reclaims unused slots and bootstrap rows directly
 in the class, including while Code edits still need fresh metadata.
-`MethodEditor` retries symbolic instruction and exception-handler edits once if
-they run out of pool slots and compaction can free space. It retains references
-used by that edit. If compaction is unsafe or cannot free slots, the edit returns
-`CodeEditError::ConstantPoolLimit`.
+`MethodEditor` retries symbolic instruction edits once when they reach the pool
+or bootstrap table limit and compaction can free space. Exception-handler edits
+also retry on the pool limit. The retry retains references used by the edit. If
+compaction cannot proceed, the edit returns its original limit error.
 
 Compaction keeps instruction handles, labels, and existing code offsets. Both
 manual compaction and a successful retry can renumber pool indices and invalidate
-borrowed constant data. Reacquire them before constructing another edit.
+borrowed constant data. Reacquire indices and borrowed data before constructing
+another edit. Saved instruction views reject symbolic lookup of expired operands,
+and saved raw attribute payloads stop resolving against the class.
 
 ## Inspect instructions
 

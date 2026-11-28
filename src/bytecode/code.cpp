@@ -681,6 +681,8 @@ std::expected<Instruction, CodeEditError> MethodCode::build(const InstructionBui
     if (info.logical_opcode != op || info.form == OperandForm::Illegal || info.form == OperandForm::BranchShort ||
         info.form == OperandForm::TableSwitch || info.form == OperandForm::LookupSwitch || info.form == OperandForm::WidePrefix)
       return std::unexpected(CodeEditError::WrongOperandForm);
+    if (const auto index = instruction->constant_index(); index && !*index)
+      return std::unexpected(CodeEditError::InvalidOperand);
     return *instruction;
   }
   if (auto branch = std::get_if<Branch>(&value)) {

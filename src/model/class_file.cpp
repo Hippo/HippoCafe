@@ -177,8 +177,10 @@ std::expected<std::size_t, ModelError> ClassFile::add_field(
     return std::unexpected(ModelError::InvalidReference);
   Field field(flags, name, descriptor, &storage->budget);
   field.attribute_entries.reserve(attributes.size());
-  for (auto& attribute : attributes)
+  for (auto& attribute : attributes) {
+    attribute.bind_pool(storage->pool_revision);
     field.attribute_entries.push_back(std::move(attribute));
+  }
   storage->field_entries.push_back(std::move(field));
   storage->declaration_stamp = detail::next_declaration_revision();
   return fields().size() - 1;
@@ -194,8 +196,10 @@ std::expected<std::size_t, ModelError> ClassFile::add_method(
     return std::unexpected(ModelError::InvalidReference);
   Method method(flags, name, descriptor, &storage->budget);
   method.attribute_entries.reserve(attributes.size());
-  for (auto& attribute : attributes)
+  for (auto& attribute : attributes) {
+    attribute.bind_pool(storage->pool_revision);
     method.attribute_entries.push_back(std::move(attribute));
+  }
   storage->method_entries.push_back(std::move(method));
   storage->declaration_stamp = detail::next_declaration_revision();
   return methods().size() - 1;
@@ -222,6 +226,7 @@ std::expected<void, ModelError> ClassFile::add_attribute(Attribute value) {
     return std::unexpected(ModelError::LimitExceeded);
   if (!constant_pool().get_utf8(value.name_index()))
     return std::unexpected(ModelError::InvalidReference);
+  value.bind_pool(storage->pool_revision);
   storage->attribute_entries.push_back(std::move(value));
   return {};
 }
@@ -250,7 +255,7 @@ ClassFile::attach_code(detail::ClassStorage& storage, Method& method, CpIndex na
       return std::unexpected(ModelError::DuplicateCode);
   }
 
-  auto& attribute = attributes.emplace_back(Attribute::new_code(name, &storage.budget));
+  auto& attribute = attributes.emplace_back(Attribute::new_code(name, storage));
   return std::ref(*attribute.mutable_code());
 }
 

@@ -6,9 +6,11 @@
 
 #pragma once
 
+#include <compare>
 #include <cstddef>
 #include <expected>
 #include <list>
+#include <map>
 #include <memory_resource>
 #include <optional>
 #include <span>
@@ -133,27 +135,22 @@ private:
     std::uint64_t bits = 0; ///< Exact numeric bits.
     std::string_view text = {}; ///< Borrowed modified UTF-8 bytes.
 
-    /// Compare canonical payloads.
-    /// @return Whether every normalized payload field matches.
-    bool operator==(const Key&) const = default;
-  };
-
-  /// Hash canonical payloads for interning.
-  struct KeyHash {
-    /// @param key Canonical constant payload.
-    /// @return Hash of the normalized payload fields.
-    std::size_t operator()(const Key& key) const noexcept;
+    /// @param other Canonical payload to compare.
+    /// @return The ordering of the normalized payload fields.
+    auto operator<=>(const Key& other) const = default;
   };
 
   /// Interned payload and its optional assigned wire slot.
   struct Constant {
     Key key; ///< Canonical constant payload.
     CpIndex index; ///< Assigned output slot or zero until assignment.
+    bool has_source_class = false; ///< A Class slot already tied to an original symbolic reference.
   };
 
   /// @param key Canonical payload.
+  /// @param from_source Whether this entry represents an original pool slot.
   /// @return The existing or newly allocated canonical ID.
-  ConstantId intern(const Key& key);
+  ConstantId intern(const Key& key, bool from_source = false);
   /// @param value Modified UTF-8 bytes.
   /// @param path Diagnostic path.
   /// @return Canonical ID for the text or an encoding error.
@@ -177,7 +174,7 @@ private:
   std::span<const BootstrapMethod> bootstraps; ///< Borrowed model bootstrap table.
   std::pmr::unordered_map<std::size_t, ConstantId> source_ids; ///< Canonical identity of each visited model slot.
   std::pmr::list<std::pmr::string> generated_text; ///< Stable storage for generated frame constants.
-  std::pmr::unordered_map<Key, ConstantId, KeyHash> keys; ///< Interned payloads eligible for sharing.
+  std::pmr::map<Key, ConstantId> keys; ///< Shareable payloads and the first Class slot per name for generated frames.
   std::pmr::vector<Constant> constants; ///< Payloads indexed by canonical identity.
   std::pmr::vector<ConstantId> output_order; ///< Canonical IDs in wire slot order.
   std::pmr::unordered_map<std::size_t, std::size_t> bootstrap_indices; ///< Output ordinals of visited bootstrap rows.

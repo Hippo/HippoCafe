@@ -96,8 +96,8 @@ remain fatal unless a fully framed Code body qualifies for explicit opaque recov
 
 The writer allocates a separate constant pool from the references in emitted
 instructions, declarations, and attributes. It assigns slots to narrow `ldc`
-operands first so relinking keeps the chosen bytecode offsets. It preserves distinct
-dynamic entries and follows their reachable bootstrap arguments.
+operands first so relinking keeps the chosen bytecode offsets. It keeps independent
+JVM symbolic references in separate slots and follows reachable bootstrap arguments.
 Selecting index preservation allows unchanged Code to use its original bytes.
 
 Re-encoding validates operands, chooses local and load widths, resolves labels, and

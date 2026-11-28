@@ -18,7 +18,7 @@ struct ClassStorage;
 /// Retry callback that receives a map from original to compacted pool indices.
 using CompactedPoolAttempt = std::function<bool(std::span<const CpIndex>)>;
 
-/// Try the edit once against a compacted pool when compaction frees slots.
+/// Try the edit once when compaction frees pool slots or bootstrap rows.
 /// @param storage Class whose constant references need updating.
 /// @param roots Additional pool indices used by the pending edit.
 /// @param attempt Invoked with the old-to-new index map. Returning false or throwing restores the previous pool.

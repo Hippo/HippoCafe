@@ -1,5 +1,6 @@
 #include <array>
 #include <string>
+#include <vector>
 
 #include <gtest/gtest.h>
 #include <hippo/cafe.hpp>
@@ -21,6 +22,23 @@ void fill_pool(ConstantPool& pool) {
     const auto bits = pool.size();
     pool.append({.tag = CpTag::Integer, .first = {}, .second = {}, .bits = bits}).value();
   }
+}
+
+TEST(SequenceResolution, RawOperandCannotReferToAConstantCreatedByTheSameEdit) {
+  auto file = one_method();
+  auto editor = file.edit_method(0).value();
+  auto& code = editor.code()->code();
+  const auto ret = code.at(0);
+  const auto size = file.constant_pool().size();
+  const auto next = CpIndex{static_cast<std::uint16_t>(size)};
+  const auto raw = Instruction::constant(Opcode::Ldc, next).value();
+  const auto result = editor.insert_before(ret, {insn::ldc(0x12345), raw});
+  ASSERT_FALSE(result);
+  EXPECT_EQ(result.error().cause, CodeEditError::InvalidOperand);
+  EXPECT_EQ(result.error().instruction_index, 1u);
+  EXPECT_EQ(file.constant_pool().size(), size);
+  EXPECT_EQ(code.size(), 1u);
+  EXPECT_EQ(code.at(0), ret);
 }
 
 TEST(SequenceResolution, CompactedRetryRemapsRawOperandsAndRetainsBorrowedText) {
@@ -47,12 +65,51 @@ TEST(SequenceResolution, CompactedRetryRemapsRawOperandsAndRetainsBorrowedText) 
   EXPECT_EQ(literal((*result)[2]), "raw operand");
 }
 
+TEST(SequenceResolution, RetriesWhenOnlyTheBootstrapTableIsFull) {
+  auto file = one_method();
+  auto& pool = file.constant_pool();
+  const auto descriptor = file.methods()[0].descriptor_index();
+  const auto target = file.methods()[0].name_index();
+  const auto target_signature = pool.append({CpTag::NameAndType, 0, target, descriptor}).value();
+  const auto method = pool.append({CpTag::Methodref, 0, file.this_class(), target_signature}).value();
+  const auto handle = pool.append({CpTag::MethodHandle, 6, method, {}}).value();
+  const auto original = pool.append({CpTag::InvokeDynamic, 0, CpIndex{UINT16_MAX - 1}, target_signature}).value();
+  const std::vector<BootstrapMethod> rows(UINT16_MAX, BootstrapMethod{handle, {}});
+  ASSERT_TRUE(file.add_attribute(Attribute::bootstrap_methods(pool.append_utf8("BootstrapMethods").value(), rows)));
+  auto editor = file.edit_method(0).value();
+  auto& code = editor.code()->code();
+  const auto ret = code.at(0);
+  const auto existing = editor.insert_before(ret, Instruction::constant(Opcode::InvokeDynamic, original).value()).value();
+
+  const std::array arguments{BootstrapArgument{std::int32_t{42}}};
+  const Bootstrap bootstrap{{MethodHandleKind::InvokeStatic, "Edited", "run", "()V"}, arguments};
+  const DynamicInvocation call{"run", "()V", bootstrap};
+  const auto revision = file.declaration_revision();
+  const auto size = pool.size();
+  const auto failed = editor.insert_before(ret, {call, insn::iload(UINT16_MAX)});
+  ASSERT_FALSE(failed);
+  EXPECT_EQ(failed.error().cause, CodeEditError::InvalidOperand);
+  EXPECT_EQ(file.attributes().front().get<BootstrapMethods>()->methods.size(), UINT16_MAX);
+  EXPECT_EQ(pool.size(), size);
+  EXPECT_EQ(file.declaration_revision(), revision);
+  EXPECT_EQ(code.get(existing)->constant_index(), original);
+
+  const auto inserted = editor.insert_before(ret, call);
+  ASSERT_TRUE(inserted);
+  EXPECT_EQ(file.attributes().front().get<BootstrapMethods>()->methods.size(), 2u);
+  EXPECT_EQ(pool.get(*code.get(existing)->constant_index())->first, CpIndex{0});
+  EXPECT_EQ(pool.get(*code.get(*inserted)->constant_index())->first, CpIndex{1});
+}
+
 TEST(SequenceResolution, FailedRetryRestoresThePoolAndClassAttributes) {
   auto file = one_method();
   auto& pool = file.constant_pool();
   const auto source = pool.append_utf8("SourceFile").value();
   const auto filename = pool.append_utf8("Edited.java").value();
   ASSERT_TRUE(file.add_attribute(Attribute(source, SourceFile{filename})));
+  const auto debug = pool.append_utf8("SourceDebugExtension").value();
+  ASSERT_TRUE(file.add_attribute(Attribute::raw(debug, {std::byte{1}})));
+  const auto saved_debug = *file.attributes().back().get<RawAttribute>();
   const auto saved_text = pool.get_utf8(filename).value();
   const auto scope = file.declaration_revision();
   auto editor = file.edit_method(0).value();
@@ -78,9 +135,11 @@ TEST(SequenceResolution, FailedRetryRestoresThePoolAndClassAttributes) {
   EXPECT_EQ(code.size(), 3u);
   EXPECT_EQ(code.get(load), live);
   EXPECT_EQ(code.at(2), ret);
-  ASSERT_EQ(file.attributes().size(), 1u);
+  ASSERT_EQ(file.attributes().size(), 2u);
   EXPECT_EQ(file.attributes().front().name_index(), source);
   EXPECT_EQ(file.attributes().front().get<SourceFile>()->file_name, filename);
+  EXPECT_TRUE(saved_debug.bytes(file));
+  EXPECT_TRUE(file.attributes().back().get<RawAttribute>()->bytes(file));
 }
 
 TEST(SequenceResolution, OpaqueReferencesLeaveTheOriginalPoolLimitError) {

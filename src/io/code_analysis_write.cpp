@@ -502,7 +502,8 @@ std::expected<void, WriteError> ClassWriter::write_analyzed_code_attributes(
                                     output.size(), attribute_path, std::string(reason), RecoveryAction::Dropped});
       return {};
     };
-    const bool anchored = raw->source_slice() || code.owned_origin_code_size.has_value();
+    const bool source_backed = raw->source_slice() != nullptr;
+    const bool anchored = source_backed || code.owned_origin_code_size.has_value();
     if (compact_pool && !spec) {
       if (auto handled = unsafe(WriteErrorKind::UnsafeOpaqueAttribute,
                                 "opaque Code attribute may refer to original constant-pool indices. Use ConstantPoolWritePolicy::Preserve");
@@ -532,7 +533,10 @@ std::expected<void, WriteError> ClassWriter::write_analyzed_code_attributes(
                    }};
         final_bytes = relocated;
       }
-      if (const auto checked = validate_opaque_attribute(reader, *spec, AttributeContext::Code, pool, ReadLimits{},
+      ReadLimits limits;
+      if (source_backed)
+        limits.max_annotation_depth = bytes->size();
+      if (const auto checked = validate_opaque_attribute(reader, *spec, AttributeContext::Code, pool, limits,
                                                          attribute_path, &context, &attribute_scratch, visitor);
           !checked) {
         if (!anchored)
@@ -551,7 +555,8 @@ std::expected<void, WriteError> ClassWriter::write_analyzed_code_attributes(
     }
     if (auto written = emit_header(name_index, final_bytes); !written)
       return written;
-    if (auto written = write_raw_attribute(final_bytes, spec, AttributeContext::Code, &context, attribute_path); !written)
+    if (auto written = write_raw_attribute(final_bytes, spec, AttributeContext::Code, &context, attribute_path, source_backed);
+        !written)
       return written;
   }
   if (stack_map_name) {

@@ -63,7 +63,7 @@ void write_attribute(Writer& writer, std::uint16_t name, std::span<const std::by
 // Both vendor attributes must survive recovery from the attribute between them.
 Bytes fixture(AttributeContext context, std::string_view name,
               std::optional<std::span<const std::byte>> body,
-              std::optional<std::uint32_t> declared_length = std::nullopt) {
+              std::optional<std::uint32_t> declared_length = std::nullopt, bool include_neighbors = true) {
   Bytes result;
   Writer writer(result);
   writer.u4(CLASS_MAGIC);
@@ -89,14 +89,17 @@ Bytes fixture(AttributeContext context, std::string_view name,
   writer.u2(0x0009);
   writer.u2(METHOD_NAME);
   writer.u2(METHOD_DESCRIPTOR);
-  writer.u2(context == AttributeContext::Method ? (body ? 4 : 3) : 1);
+  const auto attribute_count = static_cast<std::uint16_t>((body ? 1 : 0) + (include_neighbors ? 2 : 0));
+  writer.u2(context == AttributeContext::Method ? attribute_count + 1 : 1);
 
-  const auto write_neighbors = [&](Writer& output) {
-    write_attribute(output, BEFORE_NAME, bytes({0xca, 0xfe}));
+  const auto write_attributes = [&](Writer& output) {
+    if (include_neighbors)
+      write_attribute(output, BEFORE_NAME, bytes({0xca, 0xfe}));
     if (body) {
       write_attribute(output, ATTRIBUTE_NAME, *body, declared_length);
     }
-    write_attribute(output, AFTER_NAME, bytes({}));
+    if (include_neighbors)
+      write_attribute(output, AFTER_NAME, bytes({}));
   };
   Bytes code;
   Writer code_writer(code);
@@ -106,18 +109,18 @@ Bytes fixture(AttributeContext context, std::string_view name,
   code_writer.bytes(bytes({0x10, 0x01, 0x57, 0xb1}));
   code_writer.u2(0);
   if (context == AttributeContext::Code) {
-    code_writer.u2(body ? 3 : 2);
-    write_neighbors(code_writer);
+    code_writer.u2(attribute_count);
+    write_attributes(code_writer);
   } else {
     code_writer.u2(0);
   }
   write_attribute(writer, CODE_NAME, code);
   if (context == AttributeContext::Method) {
-    write_neighbors(writer);
+    write_attributes(writer);
   }
   if (context == AttributeContext::Class) {
-    writer.u2(body ? 3 : 2);
-    write_neighbors(writer);
+    writer.u2(attribute_count);
+    write_attributes(writer);
   } else {
     writer.u2(0);
   }
@@ -233,6 +236,32 @@ TEST(OpaqueAttributes, ChecksStackMapOffsetsAndFrameTypes) {
   EXPECT_EQ(output->bytes, input);
 }
 
+TEST(OpaqueAttributes, CompactionInvalidatesSavedPayloadsAndRemapsLiveReferences) {
+  const auto body = bytes({0, 1, 0, ANNOTATION_TYPE, 0, 1, 0, ELEMENT_NAME, 's', 0, ELEMENT_NAME});
+  const auto input = fixture(AttributeContext::Class, "RuntimeVisibleAnnotations", body, std::nullopt, false);
+  auto parsed = read_class(input, strict_options());
+  ASSERT_TRUE(parsed);
+  auto& file = parsed->class_file;
+  const auto saved = *file.attributes().front().get<RawAttribute>();
+  ASSERT_TRUE(saved.bytes(file));
+
+  const auto reclaimed = file.compact_constant_pool();
+  ASSERT_TRUE(reclaimed) << reclaimed.error().detail;
+  EXPECT_GT(*reclaimed, 0u);
+  EXPECT_FALSE(saved.bytes(file));
+  const auto remapped = *file.attributes().front().get<RawAttribute>();
+  ASSERT_TRUE(remapped.bytes(file));
+  EXPECT_EQ(*remapped.source_slice(), *saved.source_slice());
+  EXPECT_EQ(file.constant_pool().get_utf8(CpIndex{std::to_integer<std::uint16_t>((*remapped.bytes(file))[3])}), "LExample;");
+
+  ASSERT_TRUE(file.constant_pool().append_utf8("discard on second compaction"));
+  ASSERT_EQ(file.compact_constant_pool(), 1u);
+  EXPECT_FALSE(remapped.bytes(file));
+  const auto output = write_class(file, {.constant_pool = ConstantPoolWritePolicy::Preserve});
+  ASSERT_TRUE(output) << output.error().detail;
+  EXPECT_TRUE(read_class(output->bytes, strict_options()));
+}
+
 TEST(OpaqueAttributes, BoundsDeepAnnotationNesting) {
   constexpr std::size_t NESTING = 300;
   Bytes body;
@@ -263,6 +292,15 @@ TEST(OpaqueAttributes, BoundsDeepAnnotationNesting) {
   const auto output = write_class(accepted->class_file, {.constant_pool = ConstantPoolWritePolicy::Preserve});
   ASSERT_TRUE(output) << output.error().detail;
   EXPECT_EQ(output->bytes, input);
+
+  const auto compact_input = fixture(AttributeContext::Class, "RuntimeVisibleAnnotations", body, std::nullopt, false);
+  const auto compact_model = read_class(compact_input, limits);
+  ASSERT_TRUE(compact_model) << compact_model.error().detail;
+  const auto compact_output = write_class(compact_model->class_file);
+  ASSERT_TRUE(compact_output) << compact_output.error().detail;
+  EXPECT_LT(compact_output->bytes.size(), compact_input.size());
+  limits.mode = ParseMode::Strict;
+  EXPECT_TRUE(read_class(compact_output->bytes, limits));
 }
 
 } // namespace

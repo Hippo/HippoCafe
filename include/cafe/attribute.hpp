@@ -36,6 +36,7 @@ class ClassWriter;
 class SsaCommit;
 struct SsaRelocationAccess;
 class SymbolicEdit;
+struct ClassStorage;
 } // namespace detail
 
 /**
@@ -60,10 +61,10 @@ public:
   /**
    * @brief Resolve the opaque payload against its owning class.
    * @param owner Class owning the method, constants, or source slices being inspected.
-   * @return A borrowed byte span, or nullopt if a source slice is out of bounds.
+   * @return A borrowed byte span, or nullopt for an invalid slice or an expired pool revision.
    *
-   * Pass the class that owns this attribute. The returned view is valid for
-   * the lifetime of its source or of this owned payload.
+   * Pass the class that owns this attribute. Reacquire bytes from the model after
+   * compaction. A saved payload cannot resolve against a newer pool.
    */
   [[nodiscard]] std::optional<std::span<const std::byte>> bytes(const ClassFile& owner) const noexcept;
   /**
@@ -79,8 +80,9 @@ private:
   /**
    * @brief Retain a source slice or take ownership of an independent opaque payload.
    * @param slice Byte offset and length within the owner's original source buffer.
+   * @param revision Identity of the class pool supplying the indices.
    */
-  explicit RawAttribute(SourceSlice slice) noexcept;
+  RawAttribute(SourceSlice slice, std::uint64_t revision) noexcept;
   /**
    * @brief Retain a source slice or take ownership of an independent opaque payload.
    * @param bytes Owned byte buffer transferred into this object.
@@ -98,11 +100,12 @@ private:
   /// @param bytes Body containing remapped constant references.
   RawAttribute(SourceSlice source, std::vector<std::byte> bytes);
 
-  /// @param source Original class bytes supplying any retained slice.
-  /// @return Payload bytes or nullopt for an out-of-bounds slice.
-  [[nodiscard]] std::optional<std::span<const std::byte>> bytes(std::span<const std::byte> source) const noexcept;
+  /// @param owner Class storage supplying source bytes and the current pool.
+  /// @return Payload bytes or nullopt for an invalid or expired payload.
+  [[nodiscard]] std::optional<std::span<const std::byte>> bytes(const detail::ClassStorage& owner) const noexcept;
 
   std::variant<SourceSlice, std::vector<std::byte>, std::shared_ptr<const RemappedPayload>> storage; ///< Borrowed or owned payload.
+  std::uint64_t pool_revision = 0; ///< Pool numbering of attached bytes. Zero denotes unattached owned bytes.
 };
 
 /**
@@ -287,6 +290,7 @@ public:
 
 private:
   friend class ClassFile;
+  friend class CodeAttribute;
   friend class MethodEditor;
   friend class detail::ClassPoolCompaction;
   friend class detail::ClassReader;
@@ -327,10 +331,12 @@ private:
   /**
    * @brief Allocate an empty Code attribute using the class resource.
    * @param name UTF-8 constant-pool reference for the name.
-   * @param resource PMR resource that must outlive the allocated object or returned storage.
+   * @param owner Class storage supplying allocation and pool context.
    * @return An attribute owning its allocator-bound Code payload.
    */
-  static Attribute new_code(CpIndex name, std::pmr::memory_resource* resource);
+  static Attribute new_code(CpIndex name, detail::ClassStorage& owner);
+  /// @param revision Pool numbering to associate with the raw payload, if any.
+  void bind_pool(std::uint64_t revision) noexcept;
   /**
    * @brief Access the Code alternative for an authorized editor.
    * @return A borrowed pointer, or nullptr when the payload is not decoded Code.
@@ -500,10 +506,11 @@ private:
 
   /**
    * @brief Create empty allocator-bound code and metadata storage.
-   * @param resource PMR resource that must outlive the allocated object or returned storage.
+   * @param owner Class storage supplying allocation and pool context.
    */
-  explicit CodeAttribute(std::pmr::memory_resource* resource);
+  explicit CodeAttribute(detail::ClassStorage& owner);
 
+  const detail::ClassStorage& owner; ///< Stable class storage owning this Code.
   MethodCode instructions; ///< Owned logical instruction sequence.
   std::uint16_t stack_limit = 0; ///< Stored maximum operand-stack size in JVM slots.
   std::uint16_t locals_limit = 0; ///< Stored maximum local-variable count in JVM slots.
